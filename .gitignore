@@ -84,4 +84,10 @@ Thumbs.db
 
 # Fichiers spécifiques à l'utilisateur
 .ipynb_checkpoints/
-*.ipynb
+*.ipynb# Test data files that may contain sensitive information
+tests/test_data/test_data.json
+**/*test_data*.json
+# Fichiers spécifiques contenant des données sensibles
+files/CARTAN_jira.json
+files/CASM_jira.json
+files/hollard_confluence.json
