@@ -13,16 +13,27 @@ output_matches/
 output_unified/
 *_YYYY-MM-DD-HH-MM-SS/
 
-# Fichiers de données
+# Fichiers de données et artefacts générés
 files/*
 !files/.gitkeep
 llm_ready_*.json
 *_arborescence.txt
+*_transform_*.txt
 *_processed*.json
 *_with_matches.json
 *_matches.json
 *_structure.json
 *_chunks_*/
+*_repaired.json
+confluence_*.txt
+*_confluence.json
+*_jira.json
+temp_mapping.json
+
+# Virtuaenv
+venv*/
+virtualenv/
+.venv/
 
 # Fichiers Python
 __pycache__/

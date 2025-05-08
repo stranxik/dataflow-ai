@@ -5,10 +5,18 @@ import argparse
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from generic_json_processor import safe_json_load, write_tree, write_file_structure
 
-def extract_structure_from_first_object(json_file_path):
+def extract_structure_from_first_object(json_file_path, llm_fallback=False, model=None):
     """
     Extraire la structure du premier objet d'un fichier JSON volumineux
     sans charger l'intégralité du fichier
+    
+    Args:
+        json_file_path: Chemin du fichier JSON
+        llm_fallback: Si True, utilise LLM en cas d'échec de parsing
+        model: Modèle LLM à utiliser
+        
+    Returns:
+        Dictionnaire avec la structure du fichier
     """
     with open(json_file_path, 'r') as file:
         # Lire le début du fichier
@@ -49,7 +57,8 @@ def extract_structure_from_first_object(json_file_path):
                 
             # Parser le JSON
             import io
-            data = safe_json_load(io.StringIO(content), log_prefix=json_file_path)
+            data = safe_json_load(io.StringIO(content), log_prefix=json_file_path, 
+                                 llm_fallback=llm_fallback, model=model)
             if isinstance(data, list) and len(data) > 0:
                 return {
                     "filename": os.path.basename(json_file_path),
@@ -77,65 +86,47 @@ def extract_structure_from_first_object(json_file_path):
             }
 
 def main():
-    # Configuration de l'argument parser
-    parser = argparse.ArgumentParser(description="Extraire la structure des fichiers JSON JIRA")
-    parser.add_argument("files", nargs="*", help="Fichiers à analyser")
-    parser.add_argument("--output", default="jira_structure.json", help="Fichier de sortie")
+    parser = argparse.ArgumentParser(description='Extrait la structure des fichiers JSON JIRA')
+    parser.add_argument('input_files', nargs='+', help='Fichiers JSON JIRA à analyser')
+    parser.add_argument('--output-dir', default='results', help='Dossier de sortie')
+    parser.add_argument('--output-file', default='jira_structure.json', help='Nom du fichier de sortie')
+    parser.add_argument('--llm', action="store_true", help="Activer le fallback LLM pour la correction des fichiers JSON mal formés")
+    parser.add_argument('--model', default=None, help="Modèle LLM à utiliser (ex: gpt-4.1, o3)")
+    parser.add_argument('--output', default=None, help="Fichier de sortie pour la structure")
+    parser.add_argument('--with-openai', action='store_true', help="Utiliser OpenAI pour l'extraction avancée")
+    parser.add_argument('--api-key', default=None, help="Clé API OpenAI")
+    
     args = parser.parse_args()
     
-    # Vérifier si des fichiers à analyser ont été spécifiés
-    if args.files:
-        files_to_analyze = args.files
-    else:
-        files_to_analyze = ['CARTAN (1).json', 'CASM.json']
+    # Créer le dossier de sortie s'il n'existe pas
+    if args.output_dir and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
     
-    print(f"Analyse de {len(files_to_analyze)} fichiers JIRA...")
+    all_structures = {}
     
-    # Extraire la structure de chaque fichier
-    structures = {}
-    for file in files_to_analyze:
-        if not os.path.exists(file):
-            print(f"Erreur: Le fichier {file} n'existe pas.")
-            continue
-            
-        print(f"Analyse de {file}...")
-        try:
-            structure = extract_structure_from_first_object(file)
-            structures[file] = structure
-        except Exception as e:
-            print(f"Erreur lors de l'analyse de {file}: {e}")
-            structures[file] = {
-                "filename": os.path.basename(file),
-                "error": str(e)
-            }
-    
-    # Sauvegarder les résultats
-    with open(args.output, 'w', encoding='utf-8') as f:
-        json.dump(structures, f, indent=2, ensure_ascii=False)
-    
-    print(f"\nStructure extraite et sauvegardée dans '{args.output}'")
-    
-    # Afficher un résumé
-    print("\nRÉSUMÉ DES STRUCTURES:")
-    print("----------------------")
-    for filename, structure in structures.items():
-        print(f"\n{os.path.basename(filename)}:")
-        if "error" in structure:
-            print(f"  Erreur: {structure['error']}")
-        else:
-            print(f"  Clés: {', '.join(structure['structure']['keys'])}")
-            print("  Types de données:")
-            for key, type_info in structure['structure']['nested_structures'].items():
-                print(f"    - {key}: {type_info}")
+    # Traiter chaque fichier
+    for file_path in args.input_files:
+        print(f"Analyse de {file_path}...")
+        
+        # Extraire la structure
+        structure = extract_structure_from_first_object(file_path, llm_fallback=args.llm, model=args.model)
+        
+        # Enregistrer la structure
+        all_structures[file_path] = structure
+        
+        # Générer la visualisation textuelle
+        file_name = os.path.basename(file_path)
+        output_tree = os.path.join(args.output_dir, f"{os.path.splitext(file_name)[0]}_structure.txt")
+        write_file_structure(file_path, args.output_dir)
+        
+        print(f"Arborescence générée: {output_tree}")
 
-    # Générer l'arborescence du fichier traité
-    output_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
-    for file in files_to_analyze:
-        if os.path.exists(file):
-            file_base_name = os.path.splitext(os.path.basename(file))[0]
-            arborescence_file = f"{file_base_name}_arborescence.txt"
-            write_file_structure(file, output_dir, arborescence_file)
-            print(f"Structure du fichier {file} générée dans {os.path.join(output_dir, arborescence_file)}")
+    # Sauvegarder la structure combinée
+    output_path = os.path.join(args.output_dir, args.output_file)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(all_structures, f, indent=2, ensure_ascii=False)
+    
+    print(f"Structure JSON générée: {output_path}")
 
 if __name__ == "__main__":
     main() 

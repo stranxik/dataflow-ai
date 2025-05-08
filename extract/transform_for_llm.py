@@ -189,8 +189,18 @@ def main():
                        help="Nombre maximum de tickets à traiter par fichier")
     parser.add_argument("--generate-arborescence", action="store_true",
                        help="Générer un fichier d'arborescence pour chaque fichier traité")
+    parser.add_argument("--output-dir", default="results",
+                       help="Dossier de sortie pour tous les fichiers générés")
     
     args = parser.parse_args()
+    
+    # S'assurer que le dossier de sortie existe
+    output_dir = args.output_dir
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Construire le chemin complet du fichier de sortie
+    output_file = os.path.join(output_dir, args.output)
     
     all_tickets = []
     processed_files = []
@@ -215,24 +225,25 @@ def main():
         }
     }
     
-    save_results(final_structure, args.output)
+    save_results(final_structure, output_file)
     
     print(f"\nTraitement terminé. {len(all_tickets)} tickets transformés.")
+    print(f"Fichier de sortie: {output_file}")
     
     # Générer les arborescences des fichiers si demandé
     if args.generate_arborescence:
-        output_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
-        
         # Générer une arborescence globale des fichiers LLM-ready
-        write_tree(output_dir, "llm_ready_arborescence.txt")
-        print(f"Arborescence globale générée dans {os.path.join(output_dir, 'llm_ready_arborescence.txt')}")
+        arborescence_file = os.path.join(output_dir, "llm_ready_arborescence.txt")
+        write_tree(output_dir, os.path.basename(arborescence_file))
+        print(f"Arborescence globale générée dans {arborescence_file}")
         
         # Générer une arborescence pour chaque fichier traité
         for file_path in processed_files:
             file_base_name = os.path.splitext(os.path.basename(file_path))[0]
             arborescence_file = f"{file_base_name}_arborescence.txt"
+            output_arborescence = os.path.join(output_dir, arborescence_file)
             write_file_structure(file_path, output_dir, arborescence_file)
-            print(f"Structure du fichier {file_path} générée dans {os.path.join(output_dir, arborescence_file)}")
+            print(f"Structure du fichier {file_path} générée dans {output_arborescence}")
     
 if __name__ == "__main__":
     main() 

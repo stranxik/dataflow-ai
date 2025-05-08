@@ -7,10 +7,18 @@ import argparse
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from generic_json_processor import safe_json_load, write_tree, write_file_structure
 
-def extract_structure_from_first_object(json_file_path):
+def extract_structure_from_first_object(json_file_path, llm_fallback=False, model=None):
     """
     Extraire la structure du premier objet d'un fichier JSON Confluence
     sans charger l'intégralité du fichier
+    
+    Args:
+        json_file_path: Chemin du fichier JSON
+        llm_fallback: Si True, utilise LLM en cas d'échec de parsing
+        model: Modèle LLM à utiliser
+        
+    Returns:
+        Dictionnaire avec la structure du fichier
     """
     with open(json_file_path, 'r', encoding='utf-8') as file:
         # Lire le début du fichier
@@ -51,7 +59,8 @@ def extract_structure_from_first_object(json_file_path):
                 
             # Parser le JSON
             import io
-            data = safe_json_load(io.StringIO(content), log_prefix=json_file_path)
+            data = safe_json_load(io.StringIO(content), log_prefix=json_file_path, 
+                                 llm_fallback=llm_fallback, model=model)
             if isinstance(data, list) and len(data) > 0:
                 return {
                     "filename": os.path.basename(json_file_path),
@@ -197,104 +206,47 @@ def save_results(transformed_data, output_file):
         print(f"Erreur lors de la sauvegarde des résultats: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyse et transformation des fichiers d'export Confluence")
-    parser.add_argument("--files", nargs="+", default=["hollard_confluence.json"], 
-                       help="Fichiers JSON Confluence à analyser")
-    parser.add_argument("--output", default="confluence_structure.json", 
-                       help="Fichier de sortie pour la structure")
-    parser.add_argument("--transform-output", default="llm_ready_confluence.json", 
-                       help="Fichier de sortie pour les données transformées")
-    parser.add_argument("--max-pages", type=int, default=None, 
-                       help="Nombre maximum de pages à traiter par fichier")
-    parser.add_argument("--generate-arborescence", action="store_true",
-                       help="Générer un fichier d'arborescence pour chaque fichier traité")
+    parser = argparse.ArgumentParser(description='Extrait la structure des fichiers JSON Confluence')
+    parser.add_argument('input_files', nargs='+', help='Fichiers JSON Confluence à analyser')
+    parser.add_argument('--output-dir', default='results', help='Dossier de sortie')
+    parser.add_argument('--output-file', default='confluence_structure.json', help='Nom du fichier de sortie')
+    parser.add_argument('--llm', action="store_true", help="Activer le fallback LLM pour la correction des fichiers JSON mal formés")
+    parser.add_argument('--model', default=None, help="Modèle LLM à utiliser (ex: gpt-4.1, o3)")
+    parser.add_argument('--output', default=None, help="Fichier de sortie pour la structure")
+    parser.add_argument('--with-openai', action='store_true', help="Utiliser OpenAI pour l'extraction avancée")
+    parser.add_argument('--api-key', default=None, help="Clé API OpenAI")
     
     args = parser.parse_args()
     
-    print(f"Analyse de {len(args.files)} fichiers Confluence...")
+    # Créer le dossier de sortie s'il n'existe pas
+    if args.output_dir and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
     
-    # Extraire la structure de chaque fichier
-    structures = {}
-    all_pages = []
-    processed_files = []
+    all_structures = {}
     
-    for file in args.files:
-        if not os.path.exists(file):
-            print(f"Erreur: Le fichier {file} n'existe pas.")
-            continue
-            
-        print(f"Analyse de {file}...")
-        try:
-            structure = extract_structure_from_first_object(file)
-            structures[file] = structure
-            
-            # Transformer les pages Confluence si nécessaire
-            pages = transform_confluence_file(file, args.max_pages)
-            all_pages.extend(pages)
-            processed_files.append(file)
-            
-        except Exception as e:
-            print(f"Erreur lors de l'analyse de {file}: {e}")
-            structures[file] = {
-                "filename": os.path.basename(file),
-                "error": str(e)
-            }
-    
-    # Sauvegarder les résultats de structure
-    output_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
-    with open(args.output, 'w', encoding='utf-8') as f:
-        json.dump(structures, f, indent=2, ensure_ascii=False)
-    
-    print(f"\nStructure extraite et sauvegardée dans '{args.output}'")
-    
-    # Créer la structure finale pour les pages transformées
-    final_structure = {
-        "pages": all_pages,
-        "metadata": {
-            "total_pages": len(all_pages),
-            "source_files": args.files,
-            "created_at": datetime.now().isoformat(),
-            "structure_version": "1.0"
-        }
-    }
-    
-    save_results(final_structure, args.transform_output)
-    
-    print(f"\nTraitement terminé. {len(all_pages)} pages transformées.")
-    
-    # Afficher un résumé
-    print("\nRÉSUMÉ DES STRUCTURES:")
-    print("----------------------")
-    for filename, structure in structures.items():
-        print(f"\n{os.path.basename(filename)}:")
-        if "error" in structure:
-            print(f"  Erreur: {structure['error']}")
-        else:
-            print(f"  Clés: {', '.join(structure['structure']['keys'])}")
-            print("  Types de données:")
-            for key, type_info in structure['structure']['nested_structures'].items():
-                print(f"    - {key}: {type_info}")
-    
-    # Générer les arborescences des fichiers si demandé
-    if args.generate_arborescence or True:
-        # Générer une arborescence globale des fichiers structure
-        struct_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
-        write_tree(struct_dir, "confluence_structure_arborescence.txt")
-        print(f"Arborescence globale de structure générée dans {os.path.join(struct_dir, 'confluence_structure_arborescence.txt')}")
+    # Traiter chaque fichier
+    for file_path in args.input_files:
+        print(f"Analyse de {file_path}...")
         
-        # Générer une arborescence globale des fichiers transformés
-        transform_dir = os.path.dirname(args.transform_output) if os.path.dirname(args.transform_output) else "."
-        write_tree(transform_dir, "confluence_transform_arborescence.txt")
-        print(f"Arborescence globale de transformation générée dans {os.path.join(transform_dir, 'confluence_transform_arborescence.txt')}")
+        # Extraire la structure
+        structure = extract_structure_from_first_object(file_path, llm_fallback=args.llm, model=args.model)
         
-        # Générer une arborescence pour chaque fichier traité
-        for file_path in processed_files:
-            file_base_name = os.path.splitext(os.path.basename(file_path))[0]
-            
-            # Arborescence dans le répertoire de structure
-            arborescence_file = f"{file_base_name}_arborescence.txt"
-            write_file_structure(file_path, struct_dir, arborescence_file)
-            print(f"Structure du fichier {file_path} générée dans {os.path.join(struct_dir, arborescence_file)}")
+        # Enregistrer la structure
+        all_structures[file_path] = structure
+        
+        # Générer la visualisation textuelle
+        file_name = os.path.basename(file_path)
+        output_tree = os.path.join(args.output_dir, f"{os.path.splitext(file_name)[0]}_structure.txt")
+        write_file_structure(file_path, args.output_dir)
+        
+        print(f"Arborescence générée: {output_tree}")
+        
+    # Sauvegarder la structure combinée
+    output_path = os.path.join(args.output_dir, args.output_file)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(all_structures, f, indent=2, ensure_ascii=False)
+    
+    print(f"Structure JSON générée: {output_path}")
 
 if __name__ == "__main__":
     main() 

@@ -16,6 +16,7 @@ Il se compose de deux modules principaux :
 - **Découpage et traitement** de fichiers volumineux
 - **Extraction de métadonnées** structurées
 - **Établissement de correspondances** entre différentes sources
+- **Extraction structurée avec Outlines** pour une génération contrainte par schéma
 - **Enrichissement par LLM** (OpenAI) pour l'analyse sémantique
 - **Arborescences détaillées** du contenu de chaque fichier traité
 - **Organisation automatique** des résultats avec timestamps uniques
@@ -28,6 +29,19 @@ Il se compose de deux modules principaux :
 
 ```bash
 pip install -r requirements.txt
+```
+
+### Configuration d'Outlines (optionnelle)
+
+Le système utilise la bibliothèque [Outlines](https://github.com/dottxt/outlines) (v0.2.3) pour l'extraction structurée de données. Deux modes de fonctionnement sont disponibles :
+
+1. **Mode complet** : Avec la bibliothèque Outlines installée et une clé API OpenAI
+2. **Mode stub** : Fonctionnement dégradé sans Outlines ou sans clé API
+
+Le système détecte automatiquement la configuration disponible et s'adapte en conséquence. Pour vérifier votre installation :
+
+```bash
+python test_outlines_integration.py
 ```
 
 ## 📖 Guide d'utilisation rapide
@@ -44,6 +58,12 @@ python -m cli.cli interactive
 
 ```bash
 python -m cli.cli process mon_fichier.json --output resultat.json
+```
+
+### Avec extraction structurée Outlines
+
+```bash
+python -m cli.cli process mon_fichier.json --outlines --llm
 ```
 
 ### Découpage de fichiers volumineux
@@ -90,6 +110,17 @@ L'approche adoptée permet de traiter n'importe quelle structure JSON, grâce à
 3. **Traitement par morceaux** : Gestion efficace de fichiers volumineux
 4. **Transformation flexible** : Structure de sortie adaptable
 
+## 💡 Système de fallback robuste
+
+Notre solution est conçue pour fonctionner dans différents environnements, grâce à un système de fallback à plusieurs niveaux :
+
+1. **Outlines + OpenAI** : Utilisation complète des fonctionnalités d'extraction structurée
+2. **Sans OpenAI** : Outlines fonctionne en mode dégradé, certaines fonctionnalités désactivées
+3. **Sans Outlines** : Le système utilise des stubs internes qui imitent l'API d'Outlines
+4. **Fallback standard** : En dernier recours, utilisation du parseur JSON standard
+
+Cette architecture garantit que le système reste opérationnel même sans connexion internet ou clé API.
+
 ## 🧩 Extension du système
 
 ### Créer vos propres mappers
@@ -117,6 +148,28 @@ def mon_mapper_personnalise(item):
 # Créer le processeur avec votre mapper
 processor = GenericJsonProcessor(custom_mapper=mon_mapper_personnalise)
 processor.process_file("mon_fichier.json", "resultat.json")
+```
+
+### Utiliser Outlines pour l'extraction structurée
+
+```python
+from extract import outlines_robust_json_parser, extract_structured_data
+
+# Parser un fichier JSON avec Outlines
+data = outlines_robust_json_parser("mon_fichier.json", llm_fallback=True)
+
+# Extraire des données structurées selon un schéma
+schema = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "categories": {
+            "type": "array",
+            "items": {"type": "string"}
+        }
+    }
+}
+result = extract_structured_data(text_content, schema)
 ```
 
 ## 🔄 Intégration avec Temporal
@@ -171,7 +224,9 @@ La structure de sortie est optimisée pour Llamendex, permettant une conversion 
 ## ⚠️ Dépendances
 
 - Python 3.8+
-- typer, rich, inquirer, python-dotenv, ijson, openai
+- typer, rich, inquirer, python-dotenv, ijson
+- openai (optionnel, pour les fonctionnalités LLM)
+- outlines==0.2.3 (optionnel, pour l'extraction structurée)
 
 ## 📜 Licence
 

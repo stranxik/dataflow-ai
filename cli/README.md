@@ -38,8 +38,8 @@ OUTPUT_DIR=output
 
 # Paramètres LLM
 OPENAI_API_KEY=votre_cle_api_openai
-DEFAULT_LLM_MODEL=gpt-3.5-turbo
-LLM_MODELS=gpt-3.5-turbo,gpt-4,gpt-4-turbo
+DEFAULT_LLM_MODEL=gpt-4.1
+LLM_MODELS=gpt-4.1,gpt-3.5-turbo,o3,gpt-4
 ```
 
 ## 📖 Guide d'utilisation

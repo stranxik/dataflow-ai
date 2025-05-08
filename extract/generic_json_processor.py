@@ -18,6 +18,13 @@ import argparse
 from datetime import datetime
 from typing import Dict, List, Any, Callable, Optional, Union, Tuple
 import logging
+from dotenv import load_dotenv
+# Import du nouveau module de parsing JSON robuste
+try:
+    from extract.robust_json_parser import robust_json_parser, JsonParsingException
+except ImportError:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from extract.robust_json_parser import robust_json_parser, JsonParsingException
 
 # Types pour les mappers personnalisés
 MapperFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
@@ -32,7 +39,9 @@ class GenericJsonProcessor:
                  field_mappings: Optional[FieldMapType] = None,
                  custom_mapper: Optional[MapperFunc] = None,
                  detect_fields: bool = True,
-                 extract_keywords: bool = True):
+                 extract_keywords: bool = True,
+                 llm_enrichment: bool = False,
+                 llm_model: str = None):
         """
         Initialiser le processeur
         
@@ -41,11 +50,18 @@ class GenericJsonProcessor:
             custom_mapper: Fonction personnalisée pour transformer un objet
             detect_fields: Si vrai, tente de détecter automatiquement les champs importants
             extract_keywords: Si vrai, extrait des mots-clés du texte
+            llm_enrichment: Si vrai, utilise LLM pour améliorer le parsing
+            llm_model: Modèle LLM à utiliser (si llm_enrichment=True)
         """
         self.field_mappings = field_mappings or {}
         self.custom_mapper = custom_mapper
         self.detect_fields = detect_fields
         self.extract_keywords = extract_keywords
+        self.llm_enrichment = llm_enrichment
+        self.llm_model = llm_model
+        
+        # Configurer le logger
+        self.logger = logging.getLogger(__name__)
         
         # Statistiques
         self.stats = {
@@ -371,9 +387,9 @@ class GenericJsonProcessor:
             # 3. Traiter le fichier par morceaux
             transformed_items = []
             
-            with open(input_file, 'r', encoding='utf-8') as f:
-                if structure.get("is_array", True):
-                    # Fichier est un tableau JSON
+            if structure.get("is_array", True):
+                # Fichier est un tableau JSON
+                with open(input_file, 'r', encoding='utf-8') as f:
                     parser = ijson.items(f, 'item')
                     
                     for i, item in enumerate(parser):
@@ -396,20 +412,21 @@ class GenericJsonProcessor:
                         
                         if i % 100 == 0:
                             print(f"Traitement en cours: {i} éléments")
-                else:
-                    # Fichier est un objet JSON unique
-                    data = json.load(f)
-                    transformed = mapper(data)
-                    
-                    if self.field_mappings:
-                        field_mapped = self.apply_field_mapping(data)
-                        # Fusionner
-                        for key, value in field_mapped.items():
-                            if key not in transformed:
-                                transformed[key] = value
-                    
-                    transformed_items.append(transformed)
-                    self.stats["processed_items"] += 1
+            else:
+                # Fichier est un objet JSON unique
+                # Utiliser le parser robuste via load_json_file
+                data = self.load_json_file(input_file)
+                transformed = mapper(data)
+                
+                if self.field_mappings:
+                    field_mapped = self.apply_field_mapping(data)
+                    # Fusionner
+                    for key, value in field_mapped.items():
+                        if key not in transformed:
+                            transformed[key] = value
+                
+                transformed_items.append(transformed)
+                self.stats["processed_items"] += 1
             
             # 4. Sauvegarder le résultat
             result = {
@@ -452,25 +469,47 @@ class GenericJsonProcessor:
             traceback.print_exc()
             return False
 
+    def load_json_file(self, file_path):
+        """Charge un fichier JSON en mémoire"""
+        try:
+            # Utilisation du parser robuste
+            if self.llm_enrichment:
+                # Si LLM activé, utiliser le fallback LLM
+                return robust_json_parser(file_path, llm_fallback=True, model=self.llm_model)
+            else:
+                # Sinon, utiliser seulement les corrections automatiques
+                return robust_json_parser(file_path, llm_fallback=False)
+        except JsonParsingException as e:
+            self.logger.error(f"Impossible de charger le fichier JSON: {file_path}")
+            self.logger.error(str(e))
+            raise
+        except Exception as e:
+            self.logger.error(f"Erreur lors du chargement du fichier: {file_path}")
+            self.logger.error(str(e))
+            raise
+
 def main():
     parser = argparse.ArgumentParser(description="Processeur JSON générique pour analyse et transformation")
     parser.add_argument("--input", required=True, help="Fichier JSON d'entrée")
     parser.add_argument("--output", required=True, help="Fichier JSON de sortie")
     parser.add_argument("--max-items", type=int, default=None, help="Nombre maximum d'éléments à traiter")
-    parser.add_argument("--mapping-file", help="Fichier JSON avec les mappings de champs personnalisés")
+    parser.add_argument("--mapping", "-m", default=None, help="Fichier de mapping à utiliser")
     parser.add_argument("--root-key", default="items", help="Clé de premier niveau pour les éléments dans le JSON de sortie")
     parser.add_argument("--no-keywords", action="store_true", help="Désactiver l'extraction de mots-clés")
     parser.add_argument("--no-detection", action="store_true", help="Désactiver la détection automatique des champs")
+    parser.add_argument("--llm", action="store_true", help="Activer l'enrichissement LLM")
+    parser.add_argument("--api-key", default=None, help="Clé API OpenAI pour l'enrichissement LLM")
+    parser.add_argument("--model", default=None, help="Modèle LLM à utiliser (ex: gpt-4.1, o3)")
     
     args = parser.parse_args()
     
     # Charger les mappings personnalisés
     field_mappings = None
-    if args.mapping_file:
+    if args.mapping:
         try:
-            with open(args.mapping_file, 'r', encoding='utf-8') as f:
+            with open(args.mapping, 'r', encoding='utf-8') as f:
                 field_mappings = json.load(f)
-            print(f"Mappings chargés depuis {args.mapping_file}")
+            print(f"Mappings chargés depuis {args.mapping}")
         except Exception as e:
             print(f"Erreur lors du chargement des mappings: {e}")
             field_mappings = None
@@ -479,7 +518,9 @@ def main():
     processor = GenericJsonProcessor(
         field_mappings=field_mappings,
         detect_fields=not args.no_detection,
-        extract_keywords=not args.no_keywords
+        extract_keywords=not args.no_keywords,
+        llm_enrichment=args.llm,
+        llm_model=args.model
     )
     
     # Traiter le fichier
@@ -501,24 +542,52 @@ def remove_trailing_commas(json_str):
     json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
     return json_str
 
-def safe_json_load(fp, log_prefix=None):
-    """Charge un JSON de façon robuste, corrige les trailing commas si besoin."""
+def safe_json_load(fp, log_prefix=None, llm_fallback=False, model=None):
+    """
+    Charge un objet JSON de manière sécurisée, en gérant les erreurs courantes.
+    
+    Args:
+        fp: File-like object ouvert en lecture
+        log_prefix: Préfixe pour les messages de log
+        llm_fallback: Utiliser le LLM en cas d'échec du parsing
+        model: Modèle LLM à utiliser
+        
+    Returns:
+        Données JSON chargées ou None en cas d'erreur
+    """
     try:
-        return json.load(fp)
+        # Utiliser le parser robuste si le fichier est un chemin,
+        # sinon lire le contenu et le réparer
+        if hasattr(fp, 'name') and os.path.exists(fp.name):
+            # Sauvegarder la position
+            pos = fp.tell()
+            # Revenir au début pour que robust_json_parser puisse lire tout le fichier
+            fp.seek(0)
+            try:
+                from extract.robust_json_parser import robust_json_parser
+                result = robust_json_parser(fp.name, llm_fallback=llm_fallback, model=model)
+                return result
+            except ImportError:
+                # Si le module n'est pas disponible, continuer avec l'ancien comportement
+                # et revenir à la position originale
+                fp.seek(pos)
+        
+        # Si ce n'est pas un fichier sur disque ou si l'import a échoué, utiliser l'ancien comportement
+        content = fp.read()
+        content = remove_trailing_commas(content)
+        return json.loads(content)
     except json.JSONDecodeError as e:
-        # Tenter de corriger les trailing commas
-        fp.seek(0)
-        raw = fp.read()
-        fixed = remove_trailing_commas(raw)
-        try:
-            data = json.loads(fixed)
-            if log_prefix:
-                logging.warning(f"[{log_prefix}] Correction automatique des trailing commas appliquée.")
-            return data
-        except Exception as e2:
-            if log_prefix:
-                logging.error(f"[{log_prefix}] Erreur de parsing JSON même après correction: {e2}")
-            raise
+        if log_prefix:
+            print(f"Erreur JSON dans {log_prefix}: {e}")
+        else:
+            print(f"Erreur JSON: {e}")
+        return None
+    except Exception as e:
+        if log_prefix:
+            print(f"Erreur lors du chargement de {log_prefix}: {e}")
+        else:
+            print(f"Erreur de chargement: {e}")
+        return None
 
 def write_tree(root_path, output_file="arborescence.txt"):
     """

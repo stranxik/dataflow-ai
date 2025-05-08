@@ -27,9 +27,32 @@ from rich.rule import Rule
 # Charger les variables d'environnement
 dotenv.load_dotenv()
 
+# Ajout du répertoire parent au chemin de recherche Python
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 # Import des modules personnalisés du projet
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from extract.generic_json_processor import GenericJsonProcessor
+try:
+    from extract.generic_json_processor import GenericJsonProcessor
+    from extract.extract_jira_structure import extract_structure_from_first_object as extract_jira_structure
+    from extract.extract_confluence_structure import extract_structure_from_first_object as extract_confluence_structure
+    from extract.match_jira_confluence import find_matches, update_with_matches
+    from extract.robust_json_parser import robust_json_parser, JsonParsingException
+except ImportError as e:
+    print(f"Erreur d'importation: {e}")
+    print("Vérifiez que tous les modules requis sont installés et que la structure du projet est correcte.")
+    sys.exit(1)
+
+# Import du nouveau module Outlines (avec gestion d'erreur si non installé)
+try:
+    from extract.outlines_enhanced_parser import outlines_robust_json_parser
+    from extract.outlines_extractor import process_jira_data, process_confluence_data
+    OUTLINES_AVAILABLE = True
+except ImportError:
+    print("Module Outlines non disponible. Fonctionnalités d'extraction avancées désactivées.")
+    OUTLINES_AVAILABLE = False
 
 # Initialisation de Typer et Rich
 app = typer.Typer(help="JSON Processor pour Llamendex")
@@ -38,8 +61,8 @@ console = Console()
 # Constantes
 DEFAULT_MAPPINGS_DIR = os.environ.get("MAPPINGS_DIR", "extract/mapping_examples")
 DEFAULT_OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "output")
-LLM_MODELS = os.environ.get("LLM_MODELS", "gpt-3.5-turbo,gpt-4,gpt-4-turbo").split(",")
-DEFAULT_LLM_MODEL = os.environ.get("DEFAULT_LLM_MODEL", "gpt-3.5-turbo")
+LLM_MODELS = os.environ.get("LLM_MODELS", "gpt-4.1,gpt-3.5-turbo,o3,gpt-4").split(",")
+DEFAULT_LLM_MODEL = os.environ.get("DEFAULT_LLM_MODEL", "gpt-4.1")
 
 # --- HEADER/LOGO ---
 def print_header():
@@ -53,7 +76,7 @@ def print_header():
         "[/bold magenta]"
     )
     console.print(logo)
-    console.print("[bold cyan]B L A I K E   C L I[/bold cyan] [green]v1.0[/green] 🚀\n")
+    console.print("[bold cyan]J S O N    P A R S E R    C L I[/bold cyan] [green]v1.0[/green] 🚀\n")
 
 # --- STEPPER ---
 def print_stepper(current:int, total:int, steps:list):
@@ -133,33 +156,34 @@ def find_mapping_files() -> List[str]:
     mapping_pattern = os.path.join(DEFAULT_MAPPINGS_DIR, "*.json")
     return [os.path.basename(f) for f in glob.glob(mapping_pattern)]
 
-def detect_file_type(file_path: str) -> Optional[str]:
+def detect_file_type(file_path: str) -> dict:
     """
-    Tente de détecter le type de fichier JSON (JIRA, Confluence, etc.)
-    en analysant sa structure.
+    Détecte le type de fichier JSON (JIRA ou Confluence)
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            # Lire les premiers octets pour un aperçu
-            sample = f.read(10000)
-            
-        # Détection basée sur des patterns types
-        if '"key": "JIRA-' in sample or '"project": {' in sample:
-            return "jira"
-        elif '"space": {' in sample or '"title": "' in sample and '"children": [' in sample:
-            return "confluence"
-        elif '"html_url": "https://github.com/' in sample:
-            return "github"
-        elif '"pull_request": {' in sample:
-            return "github_pr"
-        elif '"commit": {' in sample:
-            return "git"
+        # Extraire la structure JIRA
+        jira_structure = extract_jira_structure(file_path)
         
-        # Si pas de pattern spécifique détecté
-        return None
+        # Vérifier si c'est un fichier JIRA
+        if not jira_structure.get("error") and jira_structure.get("structure"):
+            keys = jira_structure["structure"].get("keys", [])
+            if any(key in keys for key in ["key", "summary", "issuetype", "status"]):
+                return {"type": "jira", "structure": jira_structure["structure"]}
+        
+        # Extraire la structure Confluence
+        confluence_structure = extract_confluence_structure(file_path)
+        
+        # Vérifier si c'est un fichier Confluence
+        if not confluence_structure.get("error") and confluence_structure.get("structure"):
+            keys = confluence_structure["structure"].get("keys", [])
+            if any(key in keys for key in ["title", "space", "body", "content"]):
+                return {"type": "confluence", "structure": confluence_structure["structure"]}
+        
+        # Type inconnu
+        return {"type": "unknown", "message": "Type de fichier non reconnu"}
+    
     except Exception as e:
-        console.print(f"[bold red]Erreur lors de la détection du type: {e}[/bold red]")
-        return None
+        return {"type": "error", "message": str(e)}
 
 def process_with_llm(content: Dict[str, Any], model: str = None, api_key: str = None) -> Dict[str, Any]:
     """
@@ -176,7 +200,7 @@ def process_with_llm(content: Dict[str, Any], model: str = None, api_key: str = 
     try:
         # Utiliser les variables d'environnement si non spécifiées
         api_key = api_key or os.environ.get("OPENAI_API_KEY")
-        model = model or os.environ.get("DEFAULT_LLM_MODEL", "gpt-3.5-turbo")
+        model = model or os.environ.get("DEFAULT_LLM_MODEL", "gpt-4.1")
         
         if not api_key:
             console.print("[bold red]Erreur: Clé API OpenAI manquante. Définissez la variable d'environnement OPENAI_API_KEY ou utilisez l'option --api-key.[/bold red]")
@@ -277,6 +301,7 @@ def process(
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Mode interactif pour les choix"),
     max_items: Optional[int] = typer.Option(None, "--max", help="Nombre maximum d'éléments à traiter"),
     root_key: str = typer.Option("items", "--root-key", help="Clé racine pour les éléments dans le JSON de sortie"),
+    outlines: bool = typer.Option(False, help="Utiliser Outlines pour l'extraction structurée")
 ):
     """
     Traite un fichier JSON en le transformant pour utilisation avec LLM/Llamendex.
@@ -319,7 +344,7 @@ def process(
             file_type = detect_file_type(input_file)
         
         if file_type:
-            console.print(f"Type détecté : [bold green]{file_type}[/bold green]")
+            console.print(f"Type détecté : [bold green]{file_type['type']}[/bold green]")
         else:
             console.print("[yellow]Type de fichier non détecté. Traitement générique sera utilisé.[/yellow]")
     
@@ -332,7 +357,7 @@ def process(
             inquirer.List('mapping_choice',
                           message="Choisissez un mapping pour le traitement",
                           choices=mapping_choices,
-                          default="Sans mapping (détection automatique)" if not file_type else f"{file_type}_mapping.json" if f"{file_type}_mapping.json" in mapping_choices else "Sans mapping (détection automatique)")
+                          default="Sans mapping (détection automatique)" if not file_type else f"{file_type['type']}_mapping.json" if f"{file_type['type']}_mapping.json" in mapping_choices else "Sans mapping (détection automatique)")
         ]
         answers = inquirer.prompt(questions)
         if answers["mapping_choice"] == "Sans mapping (détection automatique)":
@@ -376,7 +401,7 @@ def process(
     
     # 5. Si auto_mapping et qu'on a détecté un type, mais pas de mapping spécifié
     elif auto_mapping and file_type and not mapping_file:
-        auto_mapping_file = os.path.join(DEFAULT_MAPPINGS_DIR, f"{file_type}_mapping.json")
+        auto_mapping_file = os.path.join(DEFAULT_MAPPINGS_DIR, f"{file_type['type']}_mapping.json")
         if os.path.exists(auto_mapping_file):
             mapping_file = auto_mapping_file
             console.print(f"Utilisation automatique du mapping : [cyan]{mapping_file}[/cyan]")
@@ -396,7 +421,7 @@ def process(
                 inquirer.List('llm_model',
                             message="Choisissez un modèle LLM",
                             choices=LLM_MODELS,
-                            default="gpt-3.5-turbo")
+                            default="gpt-4.1")
             ]
             answers = inquirer.prompt(questions)
             llm_model = answers["llm_model"]
@@ -440,7 +465,7 @@ def process(
                 api_key = os.environ.get("OPENAI_API_KEY")
             
             if not llm_model:
-                llm_model = os.environ.get("DEFAULT_LLM_MODEL", "gpt-3.5-turbo")
+                llm_model = os.environ.get("DEFAULT_LLM_MODEL", "gpt-4.1")
             
             if not api_key:
                 console.print("[bold yellow]Pas de clé API OpenAI trouvée. L'analyse LLM ne sera pas effectuée.[/bold yellow]")
@@ -630,7 +655,7 @@ def match(
             api_key = os.environ.get("OPENAI_API_KEY")
             
         if not llm_model:
-            llm_model = os.environ.get("DEFAULT_LLM_MODEL", "gpt-3.5-turbo")
+            llm_model = os.environ.get("DEFAULT_LLM_MODEL", "gpt-4.1")
             
         if not api_key:
             console.print("[bold yellow]Pas de clé API OpenAI trouvée. L'assistance LLM ne sera pas effectuée.[/bold yellow]")
@@ -964,7 +989,7 @@ def _run_interactive_process():
     # Détection automatique du type
     file_type = detect_file_type(input_file)
     if file_type:
-        console.print(f"Type détecté : [bold green]{file_type}[/bold green]")
+        console.print(f"Type détecté : [bold green]{file_type['type']}[/bold green]")
     
     # Demander le fichier de sortie
     default_output = f"{os.path.splitext(input_file)[0]}_processed.json"
@@ -980,9 +1005,7 @@ def _run_interactive_process():
         inquirer.List('mapping_choice',
                      message="Choisissez un mapping pour le traitement",
                      choices=mapping_choices,
-                     default="Sans mapping (détection automatique)" if not file_type 
-                             else f"{file_type}_mapping.json" if f"{file_type}_mapping.json" in mapping_choices 
-                             else "Sans mapping (détection automatique)")
+                     default="Sans mapping (détection automatique)" if not file_type else f"{file_type['type']}_mapping.json" if f"{file_type['type']}_mapping.json" in mapping_choices else "Sans mapping (détection automatique)")
     ]
     answers = inquirer.prompt(questions)
     
@@ -1022,7 +1045,7 @@ def _run_interactive_process():
             inquirer.List('llm_model',
                          message="Choisissez un modèle LLM",
                          choices=LLM_MODELS,
-                         default=DEFAULT_LLM_MODEL)
+                         default="gpt-4.1")
         ]
         llm_answers = inquirer.prompt(questions)
         llm_model = llm_answers['llm_model']
@@ -1060,7 +1083,8 @@ def _run_interactive_process():
         api_key=api_key,
         interactive=False,  # Déjà en mode interactif
         max_items=max_items,
-        root_key="items"
+        root_key="items",
+        outlines=False
     )
 
 
@@ -1189,7 +1213,7 @@ def _run_interactive_match():
             inquirer.List('llm_model',
                          message="Choisissez un modèle LLM",
                          choices=LLM_MODELS,
-                         default=DEFAULT_LLM_MODEL)
+                         default="gpt-4.1")
         ]
         llm_answers = inquirer.prompt(questions)
         llm_model = llm_answers['llm_model']

@@ -1,0 +1,11 @@
+[MASTER]
+# Indiquer à Pylint d'ignorer les erreurs d'importation pour certains modules
+ignored-modules=outlines.regex,outlines.json_schema,outlines_core
+disable=missing-module-docstring,import-error
+
+[TYPECHECK]
+# Liste de modules où Pylance/Pylint peuvent avoir des problèmes pour inférer les types
+ignored-modules=outlines.regex,outlines.json_schema,outlines_core
+
+[pycodestyle]
+max-line-length=100 

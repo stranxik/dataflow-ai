@@ -1,0 +1,25 @@
+[tool.pyright]
+include = ["extract"]
+exclude = ["**/node_modules", "**/__pycache__"]
+reportMissingImports = false
+reportMissingModuleSource = false
+pythonVersion = "3.9"
+typeCheckingMode = "off"
+stubPath = "typings"
+
+[tool.pylint.MESSAGES_CONTROL]
+disable = [
+    "missing-module-docstring",
+    "import-error",
+    "no-member"
+]
+
+[tool.pylint.TYPECHECK]
+ignored-modules = [
+    "outlines",
+    "outlines.regex",
+    "outlines.json_schema",
+    "outlines.models",
+    "outlines.prompts",
+    "outlines_core"
+] 
