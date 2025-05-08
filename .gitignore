@@ -1,0 +1,76 @@
+# Environnement et configuration personnelle
+.env
+*.env
+.env.*
+!.env.example
+config.local.json
+
+# Dossiers de résultats générés
+results/*
+!results/.gitkeep
+output/
+output_matches/
+output_unified/
+*_YYYY-MM-DD-HH-MM-SS/
+
+# Fichiers de données
+files/*
+!files/.gitkeep
+llm_ready_*.json
+*_arborescence.txt
+*_processed*.json
+*_with_matches.json
+*_matches.json
+*_structure.json
+*_chunks_*/
+
+# Fichiers Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Données volumineuses et temporaires
+*.chunks
+*.temp
+*.tmp
+*.bak
+*.swp
+*.cache
+.coverage
+htmlcov/
+
+# Fichiers de log
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Éditeurs et IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Fichiers spécifiques à l'utilisateur
+.ipynb_checkpoints/
+*.ipynb

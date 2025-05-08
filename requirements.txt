@@ -1,0 +1,6 @@
+typer>=0.15.3
+rich>=14.0.0
+inquirer>=3.4.0
+python-dotenv>=1.1.0
+ijson>=3.4.0
+openai>=1.77.0
