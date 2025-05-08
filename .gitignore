@@ -91,3 +91,8 @@ tests/test_data/test_data.json
 files/CARTAN_jira.json
 files/CASM_jira.json
 files/hollard_confluence.json
+# Prévention des fuites de données sensibles
+# Exclusion de tous les fichiers de données volumineux
+files/*.json
+results/*/jira/*.json
+results/*/confluence/*.json
