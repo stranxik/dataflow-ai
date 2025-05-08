@@ -1,5 +1,7 @@
 # JSON Processor & CLI pour Llamendex - Extraction et analyse robuste de données structurées
 
+![Version](https://img.shields.io/badge/version-1.0-blue) ![Python](https://img.shields.io/badge/Python-3.8%2B-green) ![License](https://img.shields.io/badge/license-MIT-orange)
+
 ## 🔍 Introduction
 
 Ce projet est une solution complète pour traiter, analyser et transformer des fichiers JSON provenant de différentes sources (JIRA, Confluence, GitHub, etc.) en préparation pour l'indexation dans Llamendex ou tout autre système RAG moderne.
@@ -12,6 +14,8 @@ La particularité de cette solution réside dans sa capacité à **s'adapter aut
 - **Rapports détaillés** générés automatiquement
 - **Correction automatique** des erreurs de syntaxe JSON
 - **Interface CLI interactive** et accessible
+
+> 💡 **NOUVEAU!** Intégration complète des outils de sécurité et de nettoyage des données sensibles directement dans l'interface CLI et dans les processeurs JSON.
 
 ### Pourquoi cette solution ?
 
@@ -32,12 +36,42 @@ Notre solution répond à ces défis en proposant un pipeline complet et robuste
 
 De plus, contrairement aux outils ETL génériques ou aux solutions de traitement tabulaire comme pandas, notre solution est spécifiquement conçue pour préparer des données textuelles riches pour les systèmes de RAG, avec une attention particulière à la préservation du contexte et à l'enrichissement sémantique.
 
-## �� Vue d'ensemble
+## 🎯 Vue d'ensemble
 
 Le projet se compose de trois modules principaux :
 - **CLI** : Interface en ligne de commande interactive et puissante pour toutes les opérations
 - **Extract** : Moteur de traitement flexible pour l'analyse et la transformation des données
 - **Tools** : Utilitaires pour résoudre des problèmes spécifiques (nettoyage, validation)
+
+<!-- DÉBUT ENCART DE RÉFÉRENCE RAPIDE -->
+<div align="center">
+
+## 📋 Guide de référence rapide
+
+</div>
+
+| Commande | Description | Exemple |
+|---------|-------------|---------|
+| `interactive` | **Mode interactif** avec assistant guidé | `python -m cli.cli interactive` |
+| `process` | **Traiter** un fichier JSON | `python -m cli.cli process fichier.json --llm` |
+| `chunks` | **Découper** un fichier volumineux | `python -m cli.cli chunks gros_fichier.json --items-per-file 500` |
+| `match` | **Correspondances** JIRA-Confluence | `python -m cli.cli match jira.json confluence.json` |
+| `unified` | **Flux complet** de traitement | `python -m cli.cli unified jira1.json jira2.json --confluence conf1.json` |
+| `clean` | **Nettoyer** les données sensibles | `python -m cli.cli clean fichier.json --recursive` |
+
+<div align="center">
+
+### 🛠️ Outils indépendants
+
+</div>
+
+| Outil | Description | Exemple |
+|-------|-------------|---------|
+| `check_json.py` | **Vérifier** la validité des fichiers JSON | `python -m tools.check_json fichier.json` |
+| `clean_sensitive_data.py` | **Nettoyer** les données sensibles | `python -m tools.clean_sensitive_data fichier.json` |
+| `fix_paths.py` | **Réparer** les chemins et les fichiers | `python -m tools.fix_paths --all --source-dir=files` |
+
+<!-- FIN ENCART DE RÉFÉRENCE RAPIDE -->
 
 ## 🎯 Fonctionnalités principales
 
@@ -79,7 +113,9 @@ python -m tests.test_outlines_integration
 
 ## 📖 Guide d'utilisation rapide
 
-### Mode interactif (recommandé)
+<div class="command-box">
+
+### 🔍 Mode interactif (recommandé)
 
 Lancez l'assistant complet qui vous guide étape par étape :
 
@@ -87,35 +123,63 @@ Lancez l'assistant complet qui vous guide étape par étape :
 python -m cli.cli interactive
 ```
 
-### Traitement de fichiers JSON
+</div>
+
+<div class="command-box">
+
+### 📄 Traitement de fichiers JSON
 
 ```bash
 python -m cli.cli process mon_fichier.json --output resultat.json
 ```
 
-### Avec enrichissement LLM et préservation des sources
+#### Avec enrichissement LLM et préservation des sources
 
 ```bash
 python -m cli.cli process mon_fichier.json --llm --preserve-source
 ```
 
-### Découpage de fichiers volumineux
+</div>
+
+<div class="command-box">
+
+### 🔪 Découpage de fichiers volumineux
 
 ```bash
 python -m cli.cli chunks mon_gros_fichier.json --output-dir dossier_morceaux --items-per-file 500
 ```
 
-### Correspondances entre JIRA et Confluence
+</div>
+
+<div class="command-box">
+
+### 🔗 Correspondances entre JIRA et Confluence
 
 ```bash
 python -m cli.cli match jira_processed.json confluence_processed.json --output-dir resultats_match
 ```
 
-### Flux de traitement complet
+</div>
+
+<div class="command-box">
+
+### 🚀 Flux de traitement complet
 
 ```bash
 python -m cli.cli unified jira1.json jira2.json --confluence conf1.json conf2.json --output-dir resultats_complets
 ```
+
+</div>
+
+<div class="command-box">
+
+### 🧹 Nettoyage des données sensibles
+
+```bash
+python -m cli.cli clean fichier.json --output fichier_propre.json
+```
+
+</div>
 
 ## 📊 Organisation des résultats
 
@@ -140,7 +204,12 @@ results/
 
 ## 🧠 Résumés LLM automatiques
 
-Pour chaque traitement utilisant un LLM, un rapport de résumé est automatiquement généré au format Markdown:
+> 📝 **Fonctionnalité avancée**: Pour chaque traitement utilisant un LLM, un rapport de résumé est automatiquement généré au format Markdown.
+
+Exemple de résumé généré:
+
+<details>
+<summary>👉 Voir un exemple de résumé LLM (cliquez pour développer)</summary>
 
 ```markdown
 # Résumé de l'enrichissement LLM
@@ -162,6 +231,8 @@ projet, développement, API, backend, utilisateur, interface, base de données
 **Résumé LLM**: Ce ticket concerne l'intégration du protocole OAuth2 pour sécuriser l'API...
 ```
 
+</details>
+
 Ces résumés permettent:
 1. Une vue d'ensemble rapide du contenu traité
 2. L'extraction des principaux thèmes et sentiments
@@ -182,10 +253,12 @@ L'approche adoptée permet de traiter n'importe quelle structure JSON, grâce à
 
 Notre solution est conçue pour fonctionner dans différents environnements, grâce à un système de fallback à plusieurs niveaux :
 
-1. **Outlines + OpenAI** : Utilisation complète des fonctionnalités d'extraction structurée
-2. **Sans OpenAI** : Outlines fonctionne en mode dégradé, certaines fonctionnalités désactivées
-3. **Sans Outlines** : Le système utilise des stubs internes qui imitent l'API d'Outlines
-4. **Fallback standard** : En dernier recours, utilisation du parseur JSON standard
+| Niveau | Configuration | Fonctionnalités |
+|--------|--------------|-----------------|
+| **1** | Outlines + OpenAI | Extraction structurée complète, réparation automatique |
+| **2** | Sans OpenAI | Mode dégradé d'Outlines, certaines fonctionnalités désactivées |
+| **3** | Sans Outlines | Utilisation de stubs internes imitant l'API d'Outlines |
+| **4** | Fallback standard | Parseur JSON standard en dernier recours |
 
 Cette architecture garantit que le système reste opérationnel même sans connexion internet ou clé API.
 
@@ -202,6 +275,46 @@ Le projet inclut des outils pratiques dans le dossier `tools/` :
    ```bash
    python -m tools.fix_paths --all --source-dir=files --target-dir=results/fixed
    ```
+
+3. **clean_sensitive_data.py** : Nettoyer les données sensibles (clés API, emails, etc.)
+   ```bash
+   python -m tools.clean_sensitive_data fichier.json --output fichier_clean.json
+   ```
+
+### Utilisation des outils dans le CLI
+
+Les outils sont intégrés au CLI principal et peuvent être utilisés de manière interactive :
+
+```bash
+# Lancer le nettoyage des données sensibles via le CLI
+python -m cli.cli clean fichier.json --output fichier_clean.json
+
+# Utiliser le mode interactif
+python -m cli.cli interactive
+# Puis sélectionner "Nettoyer les données sensibles (clean)"
+```
+
+### Intégration programmatique
+
+Les outils peuvent également être importés et utilisés directement dans votre code :
+
+```python
+# Vérifier la validité d'un fichier JSON
+from tools import validate_file
+is_valid, error_msg = validate_file("mon_fichier.json")
+if not is_valid:
+    print(f"Erreur dans le fichier: {error_msg}")
+
+# Nettoyer les données sensibles
+from tools import clean_json_file
+clean_json_file("fichier_avec_api_keys.json", "fichier_securise.json")
+
+# Corriger les chemins dupliqués
+from tools import fix_duplicate_paths
+fix_duplicate_paths("dossier_résultats")
+```
+
+Le traitement principal via `GenericJsonProcessor` intègre automatiquement ces outils pour vérifier la validité des fichiers JSON et nettoyer les données sensibles avant sauvegarde.
 
 ## 🧩 Extension du système
 
@@ -309,6 +422,46 @@ La structure de sortie est optimisée pour Llamendex, permettant une conversion 
 }
 ```
 
+## 🔒 Sécurité
+
+### Bonnes pratiques de sécurité
+
+Ce projet inclut des mesures de protection pour éviter la fuite de données sensibles :
+
+#### 🚫 Ne jamais commiter de données sensibles
+- **Clés API** (AWS, OpenAI, etc.)
+- **Informations personnelles** (emails, noms, etc.)
+- **Données de test réelles**
+- **Tokens d'authentification**
+- **Identifiants de connexion**
+
+#### ✅ Manipulation des données sensibles
+1. **Variables d'environnement** : Toujours stocker les clés API dans le fichier `.env` (jamais dans le code)
+2. **Données de test** : Utiliser uniquement des données synthétiques ou anonymisées
+3. **Protection du Git** : Un hook pre-commit détecte automatiquement les fuites potentielles
+
+#### 🧹 Nettoyage des données sensibles
+Le projet inclut un outil pour nettoyer les fichiers de test :
+
+```bash
+# Nettoyer un fichier spécifique
+python -m tools.clean_sensitive_data path/to/file.json
+
+# Nettoyer un dossier
+python -m tools.clean_sensitive_data path/to/directory --output path/to/output
+```
+
+#### 🚨 En cas de fuite
+1. **Éliminer** la donnée sensible de l'historique Git
+   ```bash
+   git filter-branch --force --index-filter "git rm --cached --ignore-unmatch path/to/file" --prune-empty --tag-name-filter cat -- --all
+   git push origin --force
+   ```
+2. **Invalider** les clés ou tokens compromis
+3. **Informer** les personnes concernées
+
+Pour plus de détails, consultez le fichier [SECURITY.md](SECURITY.md).
+
 ## ⚠️ Dépendances
 
 - Python 3.8+
@@ -318,4 +471,18 @@ La structure de sortie est optimisée pour Llamendex, permettant une conversion 
 
 ## 📜 Licence
 
-Ce projet est distribué sous licence MIT. 
+Ce projet est distribué sous licence MIT.
+
+<style>
+.command-box {
+  background-color: #f6f8fa;
+  border-left: 4px solid #58a6ff;
+  padding: 10px 15px;
+  margin: 20px 0;
+  border-radius: 3px;
+}
+
+.command-box h3 {
+  margin-top: 0;
+}
+</style> 

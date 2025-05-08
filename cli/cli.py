@@ -352,6 +352,30 @@ def process(
         console.print(f"[bold red]Le fichier {input_file} n'existe pas.[/bold red]")
         raise typer.Exit(1)
     
+    # 2. Vérifier que le fichier est un JSON valide
+    try:
+        from tools import validate_file
+        is_valid, error_msg = validate_file(input_file)
+        if not is_valid:
+            console.print(f"[bold red]Le fichier JSON n'est pas valide: {error_msg}[/bold red]")
+            
+            # Proposer de réparer le fichier
+            if typer.confirm("Voulez-vous essayer de réparer le fichier?"):
+                try:
+                    from tools import repair_json_files
+                    repaired_file = input_file + ".repaired"
+                    if repair_json_files(input_file, repaired_file):
+                        console.print(f"[bold green]Fichier réparé et sauvegardé dans {repaired_file}[/bold green]")
+                        input_file = repaired_file
+                    else:
+                        console.print("[bold red]Impossible de réparer le fichier.[/bold red]")
+                        raise typer.Exit(1)
+                except ImportError:
+                    console.print("[bold yellow]Module tools non trouvé. Impossible de réparer le fichier.[/bold yellow]")
+                    raise typer.Exit(1)
+    except ImportError:
+        console.print("[bold yellow]Module tools non trouvé. Vérification de validité ignorée.[/bold yellow]")
+    
     # Générer un timestamp pour le nom du fichier
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     
@@ -760,15 +784,15 @@ def unified(
             
             # Corriger les éventuels problèmes de dossiers dupliqués
             try:
-                # Importer la fonction de correction de chemins
-                from fix_paths import fix_duplicate_paths
+                # Importer le module tools
+                from tools import fix_duplicate_paths
                 
                 # Appliquer la correction au répertoire de sortie
                 moved_count = fix_duplicate_paths(full_output_dir)
                 if moved_count > 0:
                     console.print(f"[yellow]⚠️ Correction de {moved_count} fichiers dans des chemins dupliqués[/yellow]")
             except ImportError:
-                console.print("[yellow]Module fix_paths non trouvé. Pas de correction de chemins dupliqués.[/yellow]")
+                console.print("[yellow]Module tools non trouvé. Pas de correction de chemins dupliqués.[/yellow]")
             except Exception as e:
                 console.print(f"[yellow]Erreur lors de la correction des chemins: {str(e)}[/yellow]")
             
@@ -923,6 +947,7 @@ def interactive():
         "Découper un fichier volumineux (chunks)",
         "Établir des correspondances JIRA-Confluence (match)",
         "Flux complet JIRA + Confluence (unified)",
+        "Nettoyer les données sensibles (clean)",
         "Quitter"
     ]
     
@@ -945,6 +970,8 @@ def interactive():
         _run_interactive_match()
     elif "Flux complet" in answers['operation']:
         _run_interactive_unified()
+    elif "Nettoyer les données sensibles" in answers['operation']:
+        _run_interactive_clean()
 
 
 def _run_interactive_process():
@@ -1359,6 +1386,143 @@ def _create_custom_mapping() -> str:
     except json.JSONDecodeError:
         console.print("[bold red]Le mapping créé n'est pas un JSON valide.[/bold red]")
         return None
+
+
+@app.command()
+def clean(
+    input_file: str = typer.Argument(..., help="Fichier ou dossier à nettoyer"),
+    output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Fichier ou dossier de sortie"),
+    recursive: bool = typer.Option(True, "--recursive/--no-recursive", help="Traiter récursivement les sous-dossiers"),
+):
+    """
+    Nettoie les données sensibles (clés API, identifiants, etc.) des fichiers JSON.
+    Utile pour préparer des données de test ou avant de commit des fichiers.
+    """
+    console = Console()
+    
+    # Vérifier que le chemin existe
+    if not os.path.exists(input_file):
+        console.print(f"[bold red]Le chemin {input_file} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    
+    # Importer le module clean_sensitive_data
+    try:
+        from tools import clean_json_file
+    except ImportError:
+        console.print("[bold red]Module tools non trouvé. Installez-le avec pip install -e .[/bold red]")
+        raise typer.Exit(1)
+    
+    # Afficher les infos
+    console.print(Panel.fit(
+        "[bold]Nettoyage des données sensibles[/bold]\n\n"
+        f"Chemin d'entrée : [cyan]{input_file}[/cyan]\n"
+        f"Chemin de sortie : [cyan]{output_file or 'Auto-généré'}[/cyan]\n"
+        f"Récursif : [cyan]{'Oui' if recursive else 'Non'}[/cyan]",
+        title="Nettoyage de données",
+        border_style="blue"
+    ))
+    
+    # Traitement selon le type de chemin
+    if os.path.isfile(input_file):
+        # Fichier unique
+        out_file = output_file if output_file else f"{os.path.splitext(input_file)[0]}_clean{os.path.splitext(input_file)[1]}"
+        
+        with console.status(f"[bold blue]Nettoyage de {input_file}..."):
+            result = clean_json_file(input_file, out_file)
+        
+        if result:
+            console.print(f"[bold green]✅ Fichier nettoyé: {out_file}[/bold green]")
+        else:
+            console.print(f"[bold red]❌ Échec du nettoyage de {input_file}[/bold red]")
+            
+    elif os.path.isdir(input_file):
+        # Répertoire
+        out_dir = output_file if output_file else os.path.join(input_file, "cleaned")
+        
+        # Créer le répertoire de sortie s'il n'existe pas
+        os.makedirs(out_dir, exist_ok=True)
+        
+        # Trouver tous les fichiers JSON
+        if recursive:
+            json_files = glob.glob(os.path.join(input_file, "**", "*.json"), recursive=True)
+        else:
+            json_files = glob.glob(os.path.join(input_file, "*.json"))
+        
+        if not json_files:
+            console.print(f"[bold yellow]Aucun fichier JSON trouvé dans {input_file}[/bold yellow]")
+            return
+        
+        # Traiter chaque fichier
+        success_count = 0
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(),
+            TextColumn("[bold]{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+        ) as progress:
+            task = progress.add_task("[cyan]Nettoyage des fichiers...", total=len(json_files))
+            
+            for file_path in json_files:
+                # Calculer le chemin relatif au dossier d'entrée
+                rel_path = os.path.relpath(file_path, input_file)
+                # Construire le chemin dans le dossier de sortie
+                out_file_dir = os.path.dirname(os.path.join(out_dir, rel_path))
+                os.makedirs(out_file_dir, exist_ok=True)
+                out_file = os.path.join(out_dir, f"{os.path.splitext(rel_path)[0]}_clean{os.path.splitext(rel_path)[1]}")
+                
+                # Nettoyer le fichier
+                result = clean_json_file(file_path, out_file)
+                if result:
+                    success_count += 1
+                    
+                progress.update(task, advance=1)
+        
+        console.print(f"[bold green]✅ Nettoyage terminé: {success_count}/{len(json_files)} fichiers nettoyés.[/bold green]")
+        console.print(f"Fichiers nettoyés disponibles dans : [bold cyan]{out_dir}[/bold cyan]")
+
+
+def _run_interactive_clean():
+    """Interface interactive pour la commande clean."""
+    # Sélection du fichier ou dossier d'entrée
+    input_path = _prompt_for_file("Sélectionnez le fichier ou dossier à nettoyer:")
+    if not input_path:
+        return
+    
+    # Options
+    questions = [
+        inquirer.Confirm('recursive',
+                         message="Traiter récursivement les sous-dossiers?",
+                         default=True),
+        inquirer.Text('output',
+                      message="Dossier/fichier de sortie (vide = auto-généré)",
+                      default="")
+    ]
+    answers = inquirer.prompt(questions)
+    
+    recursive = answers['recursive'] if os.path.isdir(input_path) else False
+    output = answers['output'] if answers['output'].strip() else None
+    
+    # Confirmation
+    console.print("\n[bold]Récapitulatif :[/bold]")
+    console.print(f"- Chemin d'entrée : [cyan]{input_path}[/cyan]")
+    console.print(f"- Chemin de sortie : [cyan]{output or 'Auto-généré'}[/cyan]")
+    if os.path.isdir(input_path):
+        console.print(f"- Récursif : [cyan]{'Oui' if recursive else 'Non'}[/cyan]")
+    
+    questions = [
+        inquirer.Confirm('confirm',
+                         message="Lancer le nettoyage?",
+                         default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    
+    if not confirm or not confirm['confirm']:
+        console.print("[yellow]Opération annulée.[/yellow]")
+        return
+    
+    # Exécuter clean
+    clean(input_path, output, recursive)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ import traceback
 from typing import Dict, Any, List, Union, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
+import shutil
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -632,39 +633,70 @@ class GenericJsonProcessor:
             logger.error(f"Erreur lors de la sauvegarde dans {output_path}: {e}")
             return False
     
-    def process_file(self, input_file, output_file=None, max_items=None, root_key="items"):
+    def process_file(self, input_file, output_file=None, max_items=None, root_key="items", **kwargs):
         """
-        Traite un fichier JSON et sauvegarde le résultat dans un nouveau fichier
+        Traite un fichier JSON en utilisant le mapper spécifié.
         
         Args:
-            input_file: Chemin du fichier d'entrée
-            output_file: Chemin du fichier de sortie (par défaut: {input}_processed.json)
+            input_file: Chemin vers le fichier JSON d'entrée
+            output_file: Chemin vers le fichier JSON de sortie (optionnel)
             max_items: Nombre maximum d'éléments à traiter
             root_key: Clé racine pour les éléments dans le JSON de sortie
+            **kwargs: Arguments supplémentaires pour le processing
             
         Returns:
             bool: True si le traitement a réussi, False sinon
         """
+        # Générer un output_file par défaut si non spécifié
+        if output_file is None:
+            base_name = os.path.basename(input_file)
+            name, ext = os.path.splitext(base_name)
+            timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+            output_file = f"{name}_processed_{timestamp}{ext}"
+        
+        # Vérifier que le fichier d'entrée existe
         if not os.path.exists(input_file):
-            print(f"⚠️ Le fichier {input_file} n'existe pas")
+            print(f"Erreur: le fichier {input_file} n'existe pas.")
             return False
         
-        # Déterminer le fichier de sortie si non spécifié
-        if not output_file:
-            base, ext = os.path.splitext(input_file)
-            output_file = f"{base}_processed{ext}"
+        # Vérifier la validité du fichier JSON
+        try:
+            # Essayer d'importer les outils de validation
+            try:
+                from tools import validate_file
+                is_valid, error_msg = validate_file(input_file)
+                if not is_valid:
+                    print(f"Attention: Le fichier JSON n'est pas valide: {error_msg}")
+                    print("Utilisation du parser robuste pour tenter de récupérer les données...")
+            except ImportError:
+                # Si tools n'est pas disponible, continuer sans vérification
+                pass
+        except Exception as e:
+            print(f"Erreur lors de la vérification du fichier: {e}")
+            # Continuer malgré l'erreur
         
-        # Ne jamais écraser le fichier source si preserve_source est activé
-        if self.preserve_source and os.path.abspath(input_file) == os.path.abspath(output_file):
-            base, ext = os.path.splitext(input_file)
-            output_file = f"{base}_processed{ext}"
-            print(f"⚠️ Protection du fichier source activée: utilisation de {output_file} comme sortie")
-        
-        # Créer les répertoires nécessaires
-        os.makedirs(os.path.dirname(output_file) or '.', exist_ok=True)
+        # Sauvegarde du fichier original si nécessaire
+        if self.preserve_source and input_file != output_file:
+            backup_dir = os.path.join(os.path.dirname(output_file), "source_backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            backup_file = os.path.join(backup_dir, os.path.basename(input_file))
+            try:
+                # Vérifier si le fichier contient des données sensibles
+                try:
+                    from tools import clean_json_file
+                    # Nettoyage avant la sauvegarde pour éviter les fuites de données sensibles
+                    print("Nettoyage des données sensibles avant sauvegarde...")
+                    clean_json_file(input_file, backup_file)
+                    print(f"✅ Sauvegarde nettoyée créée: {backup_file}")
+                except ImportError:
+                    # Si le module de nettoyage n'est pas disponible, faire une copie simple
+                    shutil.copy2(input_file, backup_file)
+                    print(f"✅ Sauvegarde créée: {backup_file}")
+            except Exception as e:
+                print(f"⚠️ Erreur lors de la sauvegarde du fichier source: {e}")
         
         try:
-            # Charger le fichier JSON
+            # Essai avec le parser robuste
             data = self.load_file(input_file)
             if not data:
                 return False
@@ -717,9 +749,8 @@ class GenericJsonProcessor:
             root_key: Clé racine pour les éléments dans le JSON de sortie
             
         Returns:
-            Données JSON traitées
+            dict: Données traitées
         """
-        # Extraire les éléments
         items = self.extract_items(data)
         
         # Limiter le nombre d'éléments si demandé
