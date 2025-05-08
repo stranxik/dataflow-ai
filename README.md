@@ -2,6 +2,26 @@
 
 ![Version](https://img.shields.io/badge/version-1.0-blue) ![Python](https://img.shields.io/badge/Python-3.8%2B-green) ![License](https://img.shields.io/badge/license-MIT-orange)
 
+## 📑 Sommaire
+
+- [Introduction](#-introduction)
+- [Vue d'ensemble](#-vue-densemble)
+- [Guide de référence rapide](#-guide-de-référence-rapide)
+- [Fonctionnalités principales](#-fonctionnalités-principales)
+- [Installation](#️-installation)
+- [Guide d'utilisation rapide](#-guide-dutilisation-rapide)
+- [Organisation des résultats](#-organisation-des-résultats)
+- [Résumés LLM automatiques](#-résumés-llm-automatiques)
+- [Approche flexible et générique](#-approche-flexible-et-générique)
+- [Système de fallback robuste](#-système-de-fallback-robuste)
+- [Utilitaires](#️-utilitaires)
+- [Extension du système](#-extension-du-système)
+- [Intégration avec Temporal et Llamendex](#-intégration-avec-temporal-et-llamendex)
+- [Format pour Llamendex](#-format-pour-llamendex)
+- [Sécurité](#-sécurité)
+- [Dépendances](#️-dépendances)
+- [Licence](#-licence)
+
 ## 🔍 Introduction
 
 Ce projet est une solution complète pour traiter, analyser et transformer des fichiers JSON provenant de différentes sources (JIRA, Confluence, GitHub, etc.) en préparation pour l'indexation dans Llamendex ou tout autre système RAG moderne.
