@@ -2,41 +2,24 @@
   "id": "id",
   "title": "title",
   "content": {
-    "field": "markdown",
-    "transform": "clean_text"
+    "body": "body.storage.value",
+    "markdown": "body.view.value",
+    "comments": "comments"
   },
-  "plain_text": {
-    "field": "markdown",
-    "transform": "clean_text"
-  },
-  "html_content": "body.view.value",
   "metadata": {
-    "created_by": ["creator.displayName", "creator.username"],
-    "created_at": "history.createdDate",
-    "updated_at": "history.lastUpdated",
-    "space_key": "space.key",
-    "space_name": "space.name",
-    "content_type": "type",
-    "version": "version.number"
+    "created_by": "author.displayName",
+    "created_at": "created",
+    "updated_at": "updated",
+    "space": "space.name",
+    "type": "type"
   },
-  "parent_page": {
-    "id": "ancestors[0].id",
-    "title": "ancestors[0].title"
-  },
-  "comments_text": "comments.*.body.view.value",
-  "labels": "metadata.labels.*.name",
-  "attachments": "attachments.*.filename",
-  "keywords": {
-    "field": "markdown",
-    "transform": "extract_keywords"
-  },
-  "entities": {
-    "field": "markdown",
-    "transform": "detect_entities"
+  "analysis": {
+    "keywords": "auto",
+    "length": "auto"
   },
   "relationships": {
-    "children": "children.*.id",
-    "links": "links.*.href",
-    "mentions": "mentions.*.accountId"
+    "parent": "parent.id",
+    "children": "children",
+    "jira_tickets": []
   }
 } 

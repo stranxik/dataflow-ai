@@ -1,212 +1,940 @@
 #!/usr/bin/env python3
 """
-Processeur JSON générique capable d'analyser, transformer et adapter
-n'importe quelle structure JSON pour l'utilisation avec LLM.
-
-Ce script offre :
-1. Détection automatique de la structure JSON
-2. Système de mappers personnalisables
-3. Transformation flexible des données
+Module de traitement générique des fichiers JSON.
+Capable de charger, parser et transformer des données JSON indépendamment de leur structure.
 """
 
 import json
 import os
 import sys
-import re
-import ijson
-import argparse
-from datetime import datetime
-from typing import Dict, List, Any, Callable, Optional, Union, Tuple
 import logging
-from dotenv import load_dotenv
-# Import du nouveau module de parsing JSON robuste
+import re
+import traceback
+from typing import Dict, Any, List, Union, Optional, Tuple
+from pathlib import Path
+from datetime import datetime
+
+# Configuration du logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("generic_json_processor")
+
+# Ajouter l'import pour le résumé LLM
 try:
-    from extract.robust_json_parser import robust_json_parser, JsonParsingException
+    from .llm_summary import generate_llm_summary
 except ImportError:
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from extract.robust_json_parser import robust_json_parser, JsonParsingException
+    # Si importé depuis un autre répertoire
+    try:
+        from llm_summary import generate_llm_summary
+    except ImportError:
+        # Fallback si le module n'est pas trouvé
+        generate_llm_summary = None
+        print("⚠️ Module llm_summary non trouvé, la génération de résumés LLM est désactivée")
 
-# Types pour les mappers personnalisés
-MapperFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
-FieldMapType = Dict[str, Union[str, List[str], Dict[str, str]]]
+class JsonParsingException(Exception):
+    """Exception personnalisée pour les erreurs de parsing JSON"""
+    pass
 
-class GenericJsonProcessor:
+def escape_special_chars_in_strings(content: str) -> str:
     """
-    Classe qui traite n'importe quelle structure JSON de manière flexible
-    """
+    Échapper les caractères spéciaux dans les chaînes de caractères JSON
     
-    def __init__(self, 
-                 field_mappings: Optional[FieldMapType] = None,
-                 custom_mapper: Optional[MapperFunc] = None,
-                 detect_fields: bool = True,
-                 extract_keywords: bool = True,
-                 llm_enrichment: bool = False,
-                 llm_model: str = None):
+    Args:
+        content: Contenu JSON à corriger
+    
+    Returns:
+        Contenu JSON corrigé
+    """
+    # Motif pour identifier les chaînes de caractères JSON (entre guillemets doubles)
+    # Prend en compte les échappements existants
+    string_pattern = r'"((?:[^"\\]|\\.)*)"'
+    
+    def escape_special_chars(match):
+        # Récupérer la chaîne entre guillemets
+        string = match.group(1)
+        
+        # Échapper les caractères spéciaux non échappés
+        # Nouvelle ligne, tabulation, retour chariot
+        string = re.sub(r'(?<!\\)\n', '\\n', string)
+        string = re.sub(r'(?<!\\)\t', '\\t', string)
+        string = re.sub(r'(?<!\\)\r', '\\r', string)
+        
+        # Retourner la chaîne corrigée entre guillemets
+        return f'"{string}"'
+    
+    # Remplacer toutes les occurrences dans le contenu
+    return re.sub(string_pattern, escape_special_chars, content)
+
+def fix_unclosed_strings(content: str) -> str:
+    """
+    Corriger les chaînes non fermées dans le JSON
+    
+    Args:
+        content: Contenu JSON à corriger
+    
+    Returns:
+        Contenu JSON corrigé
+    """
+    # Motif pour identifier les lignes avec des chaînes non fermées
+    # Une chaîne commence par un guillemet et il n'y a pas de guillemet fermant 
+    # ou il est précédé d'un antislash
+    unclosed_string_pattern = r'("(?:[^"\\]|\\.)*)\s*$'
+    
+    # Traiter ligne par ligne
+    lines = content.split('\n')
+    for i in range(len(lines)):
+        if re.search(unclosed_string_pattern, lines[i]):
+            # Ajouter un guillemet fermant à la fin de la ligne
+            lines[i] = lines[i] + '"'
+            logger.info(f"Chaîne non fermée corrigée à la ligne {i+1}")
+    
+    return '\n'.join(lines)
+
+def fix_missing_quotes_around_property_names(content: str) -> str:
+    """
+    Corriger les noms de propriétés sans guillemets dans le JSON
+    
+    Args:
+        content: Contenu JSON à corriger
+    
+    Returns:
+        Contenu JSON corrigé
+    """
+    # Motif pour identifier les propriétés sans guillemets
+    # Un nom de propriété suivi de deux-points sans être entouré de guillemets
+    missing_quotes_pattern = r'(?<=\{|\,)\s*([a-zA-Z0-9_]+)\s*:'
+    
+    # Remplacer par le nom de propriété entre guillemets
+    return re.sub(missing_quotes_pattern, r' "\1":', content)
+
+def fix_trailing_commas(content: str) -> str:
+    """
+    Corriger les virgules en trop dans le JSON
+    
+    Args:
+        content: Contenu JSON à corriger
+    
+    Returns:
+        Contenu JSON corrigé
+    """
+    # Motif pour identifier les virgules en trop avant la fermeture d'un objet ou d'un tableau
+    trailing_comma_pattern = r',\s*(\}|\])'
+    
+    # Remplacer par la fermeture sans virgule
+    return re.sub(trailing_comma_pattern, r'\1', content)
+
+def repair_json_content(content: str) -> Tuple[bool, str]:
+    """
+    Tenter de réparer un contenu JSON invalide
+    
+    Args:
+        content: Contenu JSON à réparer
+        
+    Returns:
+        Tuple (succès, contenu réparé)
+    """
+    # Vérifier si le JSON est déjà valide
+    try:
+        json.loads(content)
+        return True, content
+    except json.JSONDecodeError:
+        # Appliquer les corrections
+        try:
+            repaired = escape_special_chars_in_strings(content)
+            repaired = fix_unclosed_strings(repaired)
+            repaired = fix_missing_quotes_around_property_names(repaired)
+            repaired = fix_trailing_commas(repaired)
+            
+            # Vérifier si le JSON est maintenant valide
+            json.loads(repaired)
+            return True, repaired
+        except json.JSONDecodeError:
+            return False, content
+
+def safe_json_load(file_obj, log_prefix="", llm_fallback=False, model=None):
+    """
+    Charger un fichier JSON avec gestion robuste des erreurs
+    
+    Args:
+        file_obj: Fichier ouvert à charger
+        log_prefix: Préfixe pour les messages de log
+        llm_fallback: Si True, tenter d'utiliser un LLM pour réparer le JSON
+        model: Modèle LLM à utiliser
+        
+    Returns:
+        Données JSON chargées
+    """
+    try:
+        # Lire le contenu du fichier
+        content = file_obj.read()
+        
+        # Tenter de parser directement
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.warning(f"{log_prefix} Erreur JSON: {str(e)}")
+            
+            # Tenter de réparer le JSON
+            success, repaired = repair_json_content(content)
+            if success:
+                logger.info(f"{log_prefix} JSON réparé avec succès")
+                return json.loads(repaired)
+            
+            # Tenter d'utiliser un LLM si demandé
+            if llm_fallback:
+                logger.info(f"{log_prefix} Tentative de réparation avec LLM")
+                try:
+                    # Importer le module outlines_enhanced_parser seulement si nécessaire
+                    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    try:
+                        from extract.outlines_enhanced_parser import repair_json_content as llm_repair
+                        
+                        # Utiliser Outlines pour réparer
+                        repaired_content = llm_repair(content, use_outlines=True)
+                        if repaired_content:
+                            logger.info(f"{log_prefix} JSON réparé avec LLM")
+                            return json.loads(repaired_content)
+                    except (ImportError, Exception) as e:
+                        logger.error(f"{log_prefix} Échec de l'utilisation d'Outlines pour réparer: {e}")
+                except Exception as e:
+                    logger.error(f"{log_prefix} Erreur lors de la réparation LLM: {e}")
+            
+            # Si toutes les tentatives échouent, lever l'exception
+            raise JsonParsingException(f"Impossible de parser le JSON: {str(e)}")
+    except Exception as e:
+        logger.error(f"{log_prefix} Erreur lors du chargement: {str(e)}")
+        raise JsonParsingException(f"Erreur de lecture du fichier: {str(e)}")
+
+def detect_json_structure(data):
+    """
+    Détecte automatiquement la structure du JSON et l'adapte à un format standard
+    
+    Args:
+        data: Données JSON chargées
+        
+    Returns:
+        Données standardisées et informations sur la structure
+    """
+    structure_info = {
+        "original_type": type(data).__name__,
+        "is_collection": isinstance(data, list),
+        "detected_item_type": None,
+        "item_count": 0,
+        "data_format": "unknown",
+        "has_items_key": False,
+        "has_tickets_key": False,
+        "has_pages_key": False
+    }
+    
+    standardized_data = {}
+    
+    # Cas 1: Liste d'objets
+    if isinstance(data, list):
+        structure_info["is_collection"] = True
+        structure_info["item_count"] = len(data)
+        structure_info["data_format"] = "array"
+        
+        # Détecter le type d'éléments si la liste n'est pas vide
+        if data and isinstance(data[0], dict):
+            # Regarder les clés pour essayer de deviner le type d'élément
+            first_item = data[0]
+            keys = set(first_item.keys())
+            
+            if "title" in keys and "markdown" in keys:
+                structure_info["detected_item_type"] = "confluence_page"
+            elif "key" in keys and "description" in keys:
+                structure_info["detected_item_type"] = "jira_ticket"
+            else:
+                structure_info["detected_item_type"] = "generic_object"
+        
+        # Standardiser au format {items: [data]}
+        standardized_data = {"items": data}
+        
+    # Cas 2: Objet avec une clé items/tickets/pages
+    elif isinstance(data, dict):
+        structure_info["is_collection"] = False
+        
+        # Détecter les clés de collections
+        if "items" in data:
+            structure_info["has_items_key"] = True
+            structure_info["item_count"] = len(data["items"])
+            structure_info["data_format"] = "object_with_items"
+            standardized_data = data  # Déjà au format standard
+            
+        elif "tickets" in data:
+            structure_info["has_tickets_key"] = True
+            structure_info["item_count"] = len(data["tickets"])
+            structure_info["data_format"] = "object_with_tickets"
+            # Standardiser en renommant tickets en items
+            standardized_data = {"items": data["tickets"]}
+            if "metadata" in data:
+                standardized_data["metadata"] = data["metadata"]
+                
+        elif "pages" in data:
+            structure_info["has_pages_key"] = True
+            structure_info["item_count"] = len(data["pages"])
+            structure_info["data_format"] = "object_with_pages"
+            # Standardiser en renommant pages en items
+            standardized_data = {"items": data["pages"]}
+            if "metadata" in data:
+                standardized_data["metadata"] = data["metadata"]
+                
+        else:
+            # Objet sans clé de collection connue
+            structure_info["data_format"] = "object_without_items"
+            # Traiter comme un seul élément
+            standardized_data = {"items": [data]}
+            structure_info["item_count"] = 1
+    
+    # Autres cas (non gérés)
+    else:
+        standardized_data = {"items": [data]}
+        structure_info["item_count"] = 1
+        structure_info["data_format"] = "other"
+    
+    return standardized_data, structure_info
+
+def load_and_standardize_json(file_path, llm_fallback=False, model=None):
+    """
+    Charger un fichier JSON et le convertir dans un format standard
+    
+    Args:
+        file_path: Chemin du fichier à charger
+        llm_fallback: Si True, utiliser un LLM pour réparer le JSON en cas d'erreur
+        model: Modèle LLM à utiliser (si applicable)
+        
+    Returns:
+        Tuple (données standardisées, info structure)
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = safe_json_load(f, log_prefix=file_path, llm_fallback=llm_fallback, model=model)
+        
+        # Détecter la structure et standardiser
+        standardized, structure_info = detect_json_structure(data)
+        
+        logger.info(f"Fichier chargé: {file_path}")
+        logger.info(f"Structure détectée: {structure_info['data_format']}")
+        logger.info(f"Nombre d'éléments: {structure_info['item_count']}")
+        
+        return standardized, structure_info
+        
+    except Exception as e:
+        logger.error(f"Erreur lors du chargement de {file_path}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return None, None
+
+def get_items_from_data(data, original_format=None):
+    """
+    Extraire les éléments d'un objet JSON standardisé ou non
+    
+    Args:
+        data: Données JSON
+        original_format: Format d'origine pour savoir comment extraire les éléments
+        
+    Returns:
+        Liste d'éléments
+    """
+    if data is None:
+        return []
+        
+    # Si c'est déjà une liste, la retourner directement
+    if isinstance(data, list):
+        return data
+        
+    # Si c'est un objet avec une clé connue pour les éléments
+    if isinstance(data, dict):
+        # Tenter avec les clés connues
+        for key in ["items", "tickets", "pages"]:
+            if key in data and isinstance(data[key], list):
+                return data[key]
+        
+        # Si le format original est spécifié, essayer de l'utiliser
+        if original_format:
+            if original_format == "array":
+                return data.get("items", [])
+            elif original_format == "object_with_tickets":
+                return data.get("tickets", [])
+            elif original_format == "object_with_pages":
+                return data.get("pages", [])
+    
+    # Si aucun cas ne correspond, retourner une liste vide
+    return []
+
+def write_tree(directory, output_filename="arborescence.txt"):
+    """
+    Générer un fichier texte avec l'arborescence d'un répertoire et analyser les fichiers JSON
+    
+    Args:
+        directory: Répertoire à analyser
+        output_filename: Nom du fichier de sortie
+    
+    Returns:
+        True si réussi
+    """
+    output_path = os.path.join(directory, output_filename)
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(f"# Arborescence des fichiers traités dans {os.path.basename(directory)}\n")
+        f.write(f"# Généré le {datetime.now().isoformat()}\n")
+        f.write("="*80 + "\n\n")
+        
+        # Parcourir les fichiers JSON et les analyser
+        for root, dirs, files in os.walk(directory):
+            # Ignorer le fichier d'arborescence lui-même
+            files = [f for f in files if f != output_filename]
+            
+            json_files = [f for f in files if f.endswith('.json')]
+            subdirs = []
+            
+            # Analyser les fichiers JSON
+            for json_file in json_files:
+                file_path = os.path.join(root, json_file)
+                rel_path = os.path.relpath(file_path, directory)
+                
+                f.write(f"## {rel_path}\n")
+                
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as jf:
+                        data = json.load(jf)
+                    
+                    # Analyser la structure
+                    if isinstance(data, dict):
+                        f.write(f"- Type: Object avec {len(data)} clés\n")
+                        f.write(f"- Clés principales: {', '.join(data.keys())}\n")
+                        
+                        # Afficher plus de détails sur chaque clé principale
+                        for key, value in data.items():
+                            if isinstance(value, dict):
+                                f.write(f"  - {key}: Object avec {len(value)} clés\n")
+                            elif isinstance(value, list):
+                                f.write(f"  - {key}: Array avec {len(value)} éléments\n")
+                            else:
+                                f.write(f"  - {key}: {type(value).__name__}\n")
+                    
+                    elif isinstance(data, list):
+                        f.write(f"- Type: Array avec {len(data)} éléments\n")
+                        if data and isinstance(data[0], dict):
+                            f.write(f"- Premier élément contient: {', '.join(data[0].keys())}\n")
+                    
+                    else:
+                        f.write(f"- Type: {type(data).__name__}\n")
+                
+                except json.JSONDecodeError as e:
+                    f.write(f"- Erreur de parsing JSON: {str(e)}\n")
+                except Exception as e:
+                    f.write(f"- Erreur lors de l'analyse: {str(e)}\n")
+                
+                f.write("\n")
+            
+            # Collecter les sous-répertoires pour l'arborescence
+            for d in dirs:
+                dir_path = os.path.join(root, d)
+                rel_dir = os.path.relpath(dir_path, directory)
+                dir_files = len([f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))])
+                subdirs.append(f"- {rel_dir}/ ({dir_files} fichiers)")
+        
+        # Afficher les sous-répertoires à la fin
+        if subdirs:
+            f.write("## Sous-dossiers:\n")
+            for subdir in subdirs:
+                f.write(f"{subdir}\n")
+    
+    return True
+
+def write_file_structure(file_path, output_dir, output_filename=None):
+    """
+    Analyser et générer un rapport sur la structure d'un fichier JSON
+    
+    Args:
+        file_path: Chemin du fichier à analyser
+        output_dir: Répertoire pour le fichier de sortie
+        output_filename: Nom du fichier de sortie (optionnel)
+    
+    Returns:
+        Chemin du fichier de sortie
+    """
+    # Déterminer le nom du fichier de sortie s'il n'est pas fourni
+    if output_filename is None:
+        base_name = os.path.basename(file_path)
+        name_without_ext = os.path.splitext(base_name)[0]
+        output_filename = f"{name_without_ext}_structure.txt"
+    
+    output_path = os.path.join(output_dir, output_filename)
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(f"Structure et contenu du fichier: {os.path.basename(file_path)}\n")
+        f.write("=" * 50 + "\n\n")
+        
+        # Informations sur le fichier
+        f.write(f"Nom: {os.path.basename(file_path)}\n")
+        f.write(f"Chemin: {file_path}\n")
+        f.write(f"Taille: {os.path.getsize(file_path)} octets\n")
+        f.write(f"Date de traitement: {datetime.now().isoformat()}\n\n")
+        
+        # Analyser la structure interne
+        f.write("Structure interne:\n")
+        f.write("-" * 17 + "\n")
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as jf:
+                data = json.load(jf)
+            
+            # Détecter la structure
+            standardized, structure_info = detect_json_structure(data)
+            
+            f.write(f"Type: {structure_info['original_type']}\n")
+            f.write(f"Format: {structure_info['data_format']}\n")
+            f.write(f"Nombre d'éléments: {structure_info['item_count']}\n")
+            
+            if structure_info['detected_item_type']:
+                f.write(f"Type d'éléments détecté: {structure_info['detected_item_type']}\n")
+            
+            # Arborescence du contenu
+            f.write("\nArborescence du contenu:\n")
+            f.write("-" * 23 + "\n")
+            
+            # Pour un dictionnaire, afficher les clés de premier niveau
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, dict):
+                        f.write(f"- {key}: Object avec {len(value)} clés\n")
+                        # Afficher quelques clés du niveau suivant
+                        for subkey in list(value.keys())[:5]:
+                            f.write(f"  - {subkey}: {type(value[subkey]).__name__}\n")
+                        if len(value) > 5:
+                            f.write(f"  - ... ({len(value) - 5} autres clés)\n")
+                    
+                    elif isinstance(value, list):
+                        f.write(f"- {key}: Array avec {len(value)} éléments\n")
+                        # Afficher le type du premier élément si la liste n'est pas vide
+                        if value:
+                            f.write(f"  - Type d'élément: {type(value[0]).__name__}\n")
+                    
+                    else:
+                        f.write(f"- {key}: {type(value).__name__}\n")
+            
+            # Pour une liste, afficher des informations sur les premiers éléments
+            elif isinstance(data, list):
+                f.write(f"- Liste de {len(data)} éléments\n")
+                
+                if data:
+                    # Afficher les clés du premier élément si c'est un dict
+                    if isinstance(data[0], dict):
+                        keys = list(data[0].keys())
+                        f.write(f"- Clés du premier élément: {', '.join(keys[:10])}")
+                        if len(keys) > 10:
+                            f.write(f" ... ({len(keys) - 10} autres)\n")
+                        else:
+                            f.write("\n")
+            
+        except json.JSONDecodeError as e:
+            f.write(f"Type: Inconnu - Erreur de parsing\n\n")
+            f.write(f"Erreur lors de l'analyse: {str(e)}\n\n")
+            f.write("Arborescence du contenu:\n")
+            f.write("-" * 23 + "\n")
+            f.write(f"Impossible de générer l'arborescence: {str(e)}\n")
+            
+        except Exception as e:
+            f.write(f"Erreur lors de l'analyse: {str(e)}\n")
+    
+    return output_path
+
+# Ajout de la classe principale pour traitement générique
+class GenericJsonProcessor:
+    """Classe pour traiter génériquement des fichiers JSON indépendamment de leur structure"""
+    
+    def __init__(self, field_mappings=None, detect_fields=True, extract_keywords=False, 
+                 use_llm_fallback=False, llm_model=None, preserve_source=True, generate_llm_reports=True):
         """
-        Initialiser le processeur
+        Initialiser le processeur JSON générique
         
         Args:
-            field_mappings: Correspondances entre champs source et cible
-            custom_mapper: Fonction personnalisée pour transformer un objet
-            detect_fields: Si vrai, tente de détecter automatiquement les champs importants
-            extract_keywords: Si vrai, extrait des mots-clés du texte
-            llm_enrichment: Si vrai, utilise LLM pour améliorer le parsing
-            llm_model: Modèle LLM à utiliser (si llm_enrichment=True)
+            field_mappings: Dictionnaire de mappings de champs pour la transformation
+            detect_fields: Si True, tente de détecter les champs clés 
+            extract_keywords: Si True, extrait des mots-clés du contenu
+            use_llm_fallback: Si True, utiliser un LLM pour réparer les JSON invalides
+            llm_model: Modèle LLM à utiliser
+            preserve_source: Si True, ne modifie jamais les fichiers sources
+            generate_llm_reports: Si True, génère des rapports d'enrichissement LLM
         """
-        self.field_mappings = field_mappings or {}
-        self.custom_mapper = custom_mapper
+        self.field_mappings = field_mappings
         self.detect_fields = detect_fields
         self.extract_keywords = extract_keywords
-        self.llm_enrichment = llm_enrichment
+        self.use_llm_fallback = use_llm_fallback
         self.llm_model = llm_model
-        
-        # Configurer le logger
-        self.logger = logging.getLogger(__name__)
-        
-        # Statistiques
-        self.stats = {
-            "processed_items": 0,
-            "extracted_keywords": 0,
-            "detected_fields": set()
-        }
+        self.preserve_source = preserve_source
+        self.generate_llm_reports = generate_llm_reports and generate_llm_summary is not None
     
-    def detect_json_structure(self, file_path: str) -> Dict[str, Any]:
+    def load_file(self, file_path):
         """
-        Détecte la structure d'un fichier JSON en analysant un échantillon
+        Charger un fichier JSON et le convertir en format standard
         
         Args:
-            file_path: Chemin vers le fichier JSON
+            file_path: Chemin du fichier à charger
             
         Returns:
-            Dictionnaire avec les informations sur la structure détectée
+            Données standardisées
+        """
+        standardized, info = load_and_standardize_json(
+            file_path, 
+            llm_fallback=self.use_llm_fallback, 
+            model=self.llm_model
+        )
+        
+        return standardized
+    
+    def extract_items(self, data):
+        """
+        Extraire les éléments d'un objet JSON
+        
+        Args:
+            data: Données JSON (standardisées ou non)
+            
+        Returns:
+            Liste des éléments
+        """
+        return get_items_from_data(data)
+    
+    def transform_to_standard_format(self, data):
+        """
+        Transformer des données en format standard
+        
+        Args:
+            data: Données à standardiser
+            
+        Returns:
+            Données au format standard
+        """
+        standardized, _ = detect_json_structure(data)
+        return standardized
+    
+    def save_as_json(self, data, output_path):
+        """
+        Sauvegarder des données au format JSON
+        
+        Args:
+            data: Données à sauvegarder
+            output_path: Chemin de sortie
+            
+        Returns:
+            True si réussi
         """
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                # Lire les 8KB pour l'analyse
-                sample = f.read(8192)
-                
-                # Vérifier si c'est un tableau ou un objet
-                is_array = sample.strip().startswith('[')
-                
-                # Revenir au début du fichier
-                f.seek(0)
-                
-                # Essayer de lire le premier élément pour en extraire les champs
-                if is_array:
-                    # Pour un tableau, lire le premier élément
-                    parser = ijson.items(f, 'item')
-                    try:
-                        first_item = next(parser)
-                        fields = list(first_item.keys()) if isinstance(first_item, dict) else []
-                    except StopIteration:
-                        fields = []
-                else:
-                    # Pour un objet, lire les clés de premier niveau
-                    try:
-                        # Lire juste assez pour obtenir la structure de premier niveau
-                        first_level = json.loads(sample + '}' if '{' in sample and '}' not in sample else sample)
-                        fields = list(first_level.keys()) if isinstance(first_level, dict) else []
-                    except json.JSONDecodeError:
-                        # Si erreur de décodage, essayer de lire tout le fichier
-                        f.seek(0)
-                        try:
-                            data = json.load(f)
-                            fields = list(data.keys()) if isinstance(data, dict) else []
-                        except json.JSONDecodeError:
-                            fields = []
-                
-                # Détecter les champs qui pourraient contenir du texte, des identifiants, des dates, etc.
-                detected_structure = {}
-                if self.detect_fields and fields:
-                    field_types = {}
-                    text_fields = []
-                    id_fields = []
-                    date_fields = []
-                    
-                    common_text_fields = ['title', 'description', 'content', 'text', 'body', 'markdown', 'comment', 'message']
-                    common_id_fields = ['id', 'key', 'uuid', 'slug', 'ref']
-                    common_date_fields = ['date', 'created', 'updated', 'timestamp', 'time', 'modified']
-                    
-                    for field in fields:
-                        field_lower = field.lower()
-                        
-                        # Détecter les champs textuels
-                        if any(text_field in field_lower for text_field in common_text_fields):
-                            text_fields.append(field)
-                            field_types[field] = 'text'
-                        
-                        # Détecter les champs d'identifiants
-                        elif any(id_field in field_lower for id_field in common_id_fields):
-                            id_fields.append(field)
-                            field_types[field] = 'id'
-                        
-                        # Détecter les champs de dates
-                        elif any(date_field in field_lower for date_field in common_date_fields):
-                            date_fields.append(field)
-                            field_types[field] = 'date'
-                        
-                        else:
-                            field_types[field] = 'unknown'
-                    
-                    detected_structure = {
-                        "text_fields": text_fields,
-                        "id_fields": id_fields,
-                        "date_fields": date_fields,
-                        "field_types": field_types
-                    }
-                    
-                    self.stats["detected_fields"] = set(fields)
-                
-                return {
-                    "is_array": is_array,
-                    "all_fields": fields,
-                    "detected_structure": detected_structure,
-                    "filename": os.path.basename(file_path),
-                    "filesize": os.path.getsize(file_path)
-                }
-                
+            # Créer le répertoire parent si nécessaire
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Données sauvegardées dans {output_path}")
+            return True
         except Exception as e:
-            return {
-                "error": str(e),
-                "filename": os.path.basename(file_path)
-            }
+            logger.error(f"Erreur lors de la sauvegarde dans {output_path}: {e}")
+            return False
     
-    def extract_keywords_from_text(self, text: str, max_keywords: int = 10) -> List[str]:
+    def process_file(self, input_file, output_file=None, max_items=None, root_key="items"):
         """
-        Extrait des mots-clés pertinents d'un texte
+        Traite un fichier JSON et sauvegarde le résultat dans un nouveau fichier
         
         Args:
-            text: Texte à analyser
-            max_keywords: Nombre maximum de mots-clés à extraire
+            input_file: Chemin du fichier d'entrée
+            output_file: Chemin du fichier de sortie (par défaut: {input}_processed.json)
+            max_items: Nombre maximum d'éléments à traiter
+            root_key: Clé racine pour les éléments dans le JSON de sortie
             
         Returns:
-            Liste de mots-clés
+            bool: True si le traitement a réussi, False sinon
         """
-        if not text or not isinstance(text, str):
-            return []
+        if not os.path.exists(input_file):
+            print(f"⚠️ Le fichier {input_file} n'existe pas")
+            return False
         
-        # Nettoyer le texte
-        cleaned_text = re.sub(r'[^\w\s]', ' ', text.lower())
+        # Déterminer le fichier de sortie si non spécifié
+        if not output_file:
+            base, ext = os.path.splitext(input_file)
+            output_file = f"{base}_processed{ext}"
         
-        # Diviser en mots et filtrer les mots courts
-        words = [word for word in cleaned_text.split() if len(word) > 3]
+        # Ne jamais écraser le fichier source si preserve_source est activé
+        if self.preserve_source and os.path.abspath(input_file) == os.path.abspath(output_file):
+            base, ext = os.path.splitext(input_file)
+            output_file = f"{base}_processed{ext}"
+            print(f"⚠️ Protection du fichier source activée: utilisation de {output_file} comme sortie")
         
-        # Compter la fréquence des mots
-        word_freq = {}
-        for word in words:
-            word_freq[word] = word_freq.get(word, 0) + 1
+        # Créer les répertoires nécessaires
+        os.makedirs(os.path.dirname(output_file) or '.', exist_ok=True)
         
-        # Trier par fréquence et prendre les top mots
-        sorted_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)
-        keywords = [word for word, _ in sorted_words[:max_keywords]]
-        
-        self.stats["extracted_keywords"] += len(keywords)
-        
-        return keywords
+        try:
+            # Charger le fichier JSON
+            data = self.load_file(input_file)
+            if not data:
+                return False
+            
+            # Traiter les données
+            processed_data = self.process_data(data, max_items=max_items, root_key=root_key)
+            
+            # Sauvegarder les données traitées
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(processed_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"✅ Fichier traité et sauvegardé: {output_file}")
+            
+            # Générer un résumé LLM si demandé et si l'enrichissement LLM a été utilisé
+            if self.generate_llm_reports and self.use_llm_fallback:
+                try:
+                    # Déterminer le répertoire de sortie
+                    output_dir = os.path.dirname(output_file)
+                    if not output_dir:
+                        output_dir = "."
+                    
+                    # Nom du fichier de résumé basé sur le fichier de sortie
+                    summary_filename = f"{os.path.splitext(os.path.basename(output_file))[0]}_llm_summary.md"
+                    
+                    # Générer le résumé
+                    summary_file = generate_llm_summary(
+                        output_dir, 
+                        data=processed_data, 
+                        filename=summary_filename
+                    )
+                    print(f"✅ Résumé LLM généré: {summary_file}")
+                except Exception as e:
+                    print(f"⚠️ Impossible de générer le résumé LLM: {e}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erreur lors du traitement: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
     
-    def clean_text(self, text: str) -> str:
+    def process_data(self, data, max_items=None, root_key="items"):
         """
-        Nettoie un texte en supprimant les balises et caractères spéciaux
+        Traite les données JSON pour les standardiser et les enrichir
+        
+        Args:
+            data: Données JSON à traiter
+            max_items: Nombre maximum d'éléments à traiter
+            root_key: Clé racine pour les éléments dans le JSON de sortie
+            
+        Returns:
+            Données JSON traitées
+        """
+        # Extraire les éléments
+        items = self.extract_items(data)
+        
+        # Limiter le nombre d'éléments si demandé
+        if max_items and len(items) > max_items:
+            logger.info(f"Limitation à {max_items} éléments (sur {len(items)})")
+            items = items[:max_items]
+        
+        # Transformer les éléments si des mappings sont définis
+        processed_items = items
+        if self.field_mappings:
+            processed_items = self._transform_items(items)
+        
+        # Extraire des mots-clés si demandé
+        if self.extract_keywords:
+            processed_items = self._extract_keywords_from_items(processed_items)
+        
+        # Créer les métadonnées
+        metadata = {
+            "source_file": data.get("metadata", {}).get("source_file", "unknown"),
+            "processed_at": datetime.now().isoformat(),
+            "processor_version": "1.0",
+            "items_count": len(processed_items),
+            "stats": {
+                "total_items": len(items),
+                "processed_items": len(processed_items)
+            }
+        }
+        
+        # Assembler les données finales
+        result = {
+            root_key: processed_items,
+            "metadata": metadata
+        }
+        
+        return result
+    
+    def _transform_items(self, items):
+        """
+        Transforme les éléments selon les mappings définis
+        
+        Args:
+            items: Liste d'éléments à transformer
+            
+        Returns:
+            Liste d'éléments transformés
+        """
+        # Simple implémentation, à compléter selon les besoins spécifiques
+        transformed = []
+        for item in items:
+            new_item = {}
+            for target_key, source_path in self.field_mappings.items():
+                # Gestion simple des chemins plats
+                if isinstance(source_path, str) and source_path in item:
+                    new_item[target_key] = item[source_path]
+                # Gestion des objets imbriqués
+                elif isinstance(source_path, dict) and "field" in source_path:
+                    field = source_path["field"]
+                    if field in item:
+                        # Appliquer une transformation si spécifiée
+                        if "transform" in source_path:
+                            transform = source_path["transform"]
+                            if transform == "clean_text":
+                                new_item[target_key] = self._clean_text(item[field])
+                            # Ajouter d'autres transformations selon les besoins
+                        else:
+                            new_item[target_key] = item[field]
+            
+            # Si aucun mapping n'a été appliqué, conserver l'élément original
+            if not new_item and self.detect_fields:
+                new_item = self._detect_and_map_fields(item)
+            elif not new_item:
+                new_item = item
+            
+            transformed.append(new_item)
+        
+        return transformed
+    
+    def _detect_and_map_fields(self, item):
+        """
+        Détecte et mappe automatiquement les champs communs
+        
+        Args:
+            item: Élément à analyser
+            
+        Returns:
+            Élément avec champs mappés
+        """
+        result = {}
+        
+        # Détecter le champ ID (key, id, _id, etc.)
+        for id_field in ["key", "id", "_id", "uuid", "identifier"]:
+            if id_field in item:
+                result["id"] = item[id_field]
+                break
+        
+        # Détecter le champ titre (title, summary, name, etc.)
+        for title_field in ["title", "summary", "name", "header", "subject"]:
+            if title_field in item:
+                result["title"] = item[title_field]
+                break
+        
+        # Détecter le contenu (content, body, text, description, etc.)
+        content = {}
+        for content_field in ["content", "body", "text", "description", "markdown"]:
+            if content_field in item:
+                if isinstance(item[content_field], dict):
+                    content = item[content_field]
+                else:
+                    content["text"] = item[content_field]
+                break
+        
+        if content:
+            result["content"] = content
+        
+        # Détecter les métadonnées (created_at, updated_at, author, etc.)
+        metadata = {}
+        date_fields = {
+            "created_at": ["created", "created_at", "createdAt", "date_created"],
+            "updated_at": ["updated", "updated_at", "updatedAt", "modified", "lastModified"]
+        }
+        
+        author_fields = ["author", "creator", "created_by", "createdBy", "reporter"]
+        
+        for meta_key, field_names in date_fields.items():
+            for field in field_names:
+                if field in item:
+                    metadata[meta_key] = item[field]
+                    break
+        
+        for field in author_fields:
+            if field in item:
+                metadata["created_by"] = item[field]
+                break
+        
+        if metadata:
+            result["metadata"] = metadata
+        
+        # Si aucun champ clé n'a été trouvé, retourner l'élément original
+        if not result or (len(result) == 1 and "metadata" in result):
+            return item
+        
+        # Copier les champs restants qui n'ont pas été mappés
+        for key, value in item.items():
+            if key not in ["key", "id", "_id", "uuid", "identifier", 
+                          "title", "summary", "name", "header", "subject",
+                          "content", "body", "text", "description", "markdown"] + \
+                         date_fields["created_at"] + date_fields["updated_at"] + author_fields:
+                if key not in result:
+                    result[key] = value
+        
+        return result
+    
+    def _extract_keywords_from_items(self, items):
+        """
+        Extrait des mots-clés du contenu des éléments
+        
+        Args:
+            items: Liste d'éléments
+            
+        Returns:
+            Liste d'éléments enrichis avec des mots-clés
+        """
+        import re
+        from collections import Counter
+        
+        # Liste des mots vides (stop words) en français
+        stop_words = set([
+            "le", "la", "les", "un", "une", "des", "et", "est", "il", "elle", "nous", "vous", 
+            "ils", "elles", "son", "sa", "ses", "leur", "leurs", "ce", "cette", "ces", "que", 
+            "qui", "quoi", "dont", "où", "quand", "comment", "pourquoi", "avec", "sans", "pour", 
+            "par", "dans", "sur", "sous", "de", "du", "au", "aux", "à", "en", "vers", "chez"
+        ])
+        
+        enhanced_items = []
+        for item in items:
+            # Récupérer le texte depuis différents champs possibles
+            text = ""
+            if "content" in item:
+                if isinstance(item["content"], dict):
+                    for k, v in item["content"].items():
+                        if isinstance(v, str):
+                            text += v + " "
+                elif isinstance(item["content"], str):
+                    text += item["content"] + " "
+            
+            if "title" in item and isinstance(item["title"], str):
+                text += item["title"] + " "
+            
+            if "description" in item and isinstance(item["description"], str):
+                text += item["description"] + " "
+            
+            # Extraire les mots
+            words = re.findall(r'\b\w{3,}\b', text.lower())
+            
+            # Filtrer les mots vides
+            filtered_words = [w for w in words if w not in stop_words]
+            
+            # Compter les occurrences
+            word_counts = Counter(filtered_words)
+            
+            # Sélectionner les mots-clés les plus fréquents (max 10)
+            keywords = [word for word, count in word_counts.most_common(10)]
+            
+            # Ajouter les mots-clés à l'élément
+            if "analysis" not in item:
+                item["analysis"] = {}
+            
+            item["analysis"]["keywords"] = keywords
+            enhanced_items.append(item)
+        
+        return enhanced_items
+    
+    def _clean_text(self, text):
+        """
+        Nettoie le texte (supprime les balises HTML, etc.)
         
         Args:
             text: Texte à nettoyer
@@ -217,708 +945,83 @@ class GenericJsonProcessor:
         if not text or not isinstance(text, str):
             return ""
         
-        # Nettoyer les balises HTML
-        cleaned_text = re.sub(r'<.*?>', '', text)
+        # Supprimer les balises HTML (implémentation simple)
+        import re
+        clean = re.sub(r'<[^>]+>', '', text)
         
-        # Nettoyer les balises markdown et wiki
-        cleaned_text = re.sub(r'!\[.*?\]\(.*?\)', '', cleaned_text)  # Images
-        cleaned_text = re.sub(r'\[.*?\]\(.*?\)', '', cleaned_text)    # Liens
-        cleaned_text = re.sub(r'`.*?`', '', cleaned_text)             # Code inline
-        cleaned_text = re.sub(r'```.*?```', '', cleaned_text, flags=re.DOTALL)  # Blocs de code
+        # Normaliser les espaces
+        clean = re.sub(r'\s+', ' ', clean).strip()
         
-        return cleaned_text.strip()
+        return clean
     
-    def detect_entities_in_text(self, text: str) -> Dict[str, List[str]]:
+    def analyze_structure(self, file_path, output_dir, output_filename=None):
         """
-        Détecte des entités dans un texte (IDs, emails, URLs)
+        Analyser la structure d'un fichier JSON
         
         Args:
-            text: Texte à analyser
+            file_path: Chemin du fichier à analyser
+            output_dir: Répertoire pour le rapport
+            output_filename: Nom du fichier de rapport (optionnel)
             
         Returns:
-            Dictionnaire avec des listes d'entités détectées
+            Chemin du rapport généré
         """
-        if not text or not isinstance(text, str):
-            return {"ids": [], "emails": [], "urls": []}
-        
-        # Détecter les IDs (format clé-nombre, comme PROJ-123)
-        ids = re.findall(r'([A-Z]+-\d+)', text)
-        
-        # Détecter les emails
-        emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
-        
-        # Détecter les URLs
-        urls = re.findall(r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+', text)
-        
-        return {
-            "ids": list(set(ids)),
-            "emails": list(set(emails)),
-            "urls": list(set(urls))
-        }
+        return write_file_structure(file_path, output_dir, output_filename)
     
-    def apply_field_mapping(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def generate_directory_tree(self, directory, output_filename="arborescence.txt"):
         """
-        Applique une transformation basée sur les mappings de champs définis
+        Générer l'arborescence d'un répertoire
         
         Args:
-            item: Élément JSON à transformer
+            directory: Répertoire à analyser
+            output_filename: Nom du fichier d'arborescence
             
         Returns:
-            Élément transformé
+            True si réussi
         """
-        if not self.field_mappings:
-            return item
-        
-        result = {}
-        
-        # Appliquer les mappings
-        for target_field, source_spec in self.field_mappings.items():
-            # Cas simple: mapping direct d'un champ à un autre
-            if isinstance(source_spec, str):
-                if source_spec in item:
-                    result[target_field] = item[source_spec]
-            
-            # Cas composé: liste de champs à essayer (premier non vide)
-            elif isinstance(source_spec, list):
-                for source_field in source_spec:
-                    if source_field in item and item[source_field]:
-                        result[target_field] = item[source_field]
-                        break
-            
-            # Cas complexe: dictionnaire avec spécifications supplémentaires
-            elif isinstance(source_spec, dict):
-                if "field" in source_spec and source_spec["field"] in item:
-                    value = item[source_spec["field"]]
-                    
-                    # Appliquer transformations selon les specs
-                    if "transform" in source_spec:
-                        transform_type = source_spec["transform"]
-                        if transform_type == "clean_text" and isinstance(value, str):
-                            value = self.clean_text(value)
-                        elif transform_type == "extract_keywords" and isinstance(value, str):
-                            value = self.extract_keywords_from_text(value)
-                        elif transform_type == "detect_entities" and isinstance(value, str):
-                            value = self.detect_entities_in_text(value)
-                    
-                    result[target_field] = value
-        
-        return result
-    
-    def generate_standard_mapper(self, structure: Dict[str, Any]) -> MapperFunc:
-        """
-        Génère un mapper standard basé sur la structure détectée
-        
-        Args:
-            structure: Structure détectée du JSON
-            
-        Returns:
-            Fonction de mapping
-        """
-        detected = structure.get("detected_structure", {})
-        id_fields = detected.get("id_fields", [])
-        text_fields = detected.get("text_fields", [])
-        date_fields = detected.get("date_fields", [])
-        
-        def standard_mapper(item: Dict[str, Any]) -> Dict[str, Any]:
-            result = {"metadata": {}, "content": {}, "analysis": {}}
-            
-            # ID principal
-            for id_field in id_fields:
-                if id_field in item:
-                    result["id"] = item[id_field]
-                    break
-            
-            # Contenu textuel
-            for text_field in text_fields:
-                if text_field in item:
-                    clean_text = self.clean_text(item[text_field])
-                    result["content"][text_field] = clean_text
-                    
-                    # Si c'est le titre, le mettre aussi au niveau principal
-                    if text_field.lower() in ["title", "name", "subject"]:
-                        result["title"] = clean_text
-            
-            # Métadonnées (dates)
-            for date_field in date_fields:
-                if date_field in item:
-                    result["metadata"][date_field] = item[date_field]
-            
-            # Analyse de texte
-            all_text = " ".join([
-                result["content"].get(field, "") 
-                for field in result["content"]
-            ])
-            
-            if all_text and self.extract_keywords:
-                result["analysis"]["keywords"] = self.extract_keywords_from_text(all_text)
-                result["analysis"]["entities"] = self.detect_entities_in_text(all_text)
-            
-            return result
-        
-        return standard_mapper
-    
-    def process_file(self, 
-                     input_file: str, 
-                     output_file: str, 
-                     max_items: Optional[int] = None,
-                     root_key: str = "items") -> bool:
-        """
-        Traite un fichier JSON complet, transforme les données et les sauvegarde
-        
-        Args:
-            input_file: Chemin du fichier JSON d'entrée
-            output_file: Chemin du fichier JSON de sortie
-            max_items: Nombre maximum d'éléments à traiter
-            root_key: Clé de premier niveau pour les éléments dans le JSON de sortie
-            
-        Returns:
-            True si le traitement a réussi, False sinon
-        """
-        try:
-            # 1. Détecter la structure
-            structure = self.detect_json_structure(input_file)
-            print(f"Structure détectée: {len(structure.get('all_fields', []))} champs")
-            
-            # 2. Définir un mapper (personnalisé ou standard)
-            mapper = self.custom_mapper
-            if not mapper:
-                mapper = self.generate_standard_mapper(structure)
-            
-            # 3. Traiter le fichier par morceaux
-            transformed_items = []
-            
-            if structure.get("is_array", True):
-                # Fichier est un tableau JSON
-                with open(input_file, 'r', encoding='utf-8') as f:
-                    parser = ijson.items(f, 'item')
-                    
-                    for i, item in enumerate(parser):
-                        if max_items and i >= max_items:
-                            break
-                        
-                        # Appliquer le mapping personnalisé
-                        transformed = mapper(item)
-                        
-                        # Appliquer le mapping de champs
-                        if self.field_mappings:
-                            field_mapped = self.apply_field_mapping(item)
-                            # Fusionner avec les résultats du mapper
-                            for key, value in field_mapped.items():
-                                if key not in transformed:
-                                    transformed[key] = value
-                        
-                        transformed_items.append(transformed)
-                        self.stats["processed_items"] += 1
-                        
-                        if i % 100 == 0:
-                            print(f"Traitement en cours: {i} éléments")
-            else:
-                # Fichier est un objet JSON unique
-                # Utiliser le parser robuste via load_json_file
-                data = self.load_json_file(input_file)
-                transformed = mapper(data)
-                
-                if self.field_mappings:
-                    field_mapped = self.apply_field_mapping(data)
-                    # Fusionner
-                    for key, value in field_mapped.items():
-                        if key not in transformed:
-                            transformed[key] = value
-                
-                transformed_items.append(transformed)
-                self.stats["processed_items"] += 1
-            
-            # 4. Sauvegarder le résultat
-            result = {
-                root_key: transformed_items,
-                "metadata": {
-                    "source_file": os.path.basename(input_file),
-                    "processed_at": datetime.now().isoformat(),
-                    "structure": {
-                        "fields": structure.get("all_fields", []),
-                        "is_array": structure.get("is_array", True)
-                    },
-                    "stats": {
-                        "processed_items": self.stats["processed_items"],
-                        "extracted_keywords": self.stats["extracted_keywords"]
-                    }
-                }
-            }
-            
-            # Créer le répertoire de sortie s'il n'existe pas
-            output_dir = os.path.dirname(output_file)
-            if output_dir and not os.path.exists(output_dir):
-                os.makedirs(output_dir)
-            
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(result, f, indent=2, ensure_ascii=False)
-            
-            # 5. Générer l'arborescence du fichier traité
-            output_dir = os.path.dirname(output_file) if os.path.dirname(output_file) else "."
-            file_base_name = os.path.splitext(os.path.basename(input_file))[0]
-            arborescence_file = f"{file_base_name}_arborescence.txt"
-            write_file_structure(input_file, output_dir, arborescence_file)
-            
-            print(f"Traitement terminé: {len(transformed_items)} éléments sauvegardés dans {output_file}")
-            print(f"Structure du fichier générée dans {os.path.join(output_dir, arborescence_file)}")
-            return True
-            
-        except Exception as e:
-            print(f"Erreur lors du traitement de {input_file}: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
+        return write_tree(directory, output_filename)
 
-    def load_json_file(self, file_path):
-        """Charge un fichier JSON en mémoire"""
-        try:
-            # Utilisation du parser robuste
-            if self.llm_enrichment:
-                # Si LLM activé, utiliser le fallback LLM
-                return robust_json_parser(file_path, llm_fallback=True, model=self.llm_model)
-            else:
-                # Sinon, utiliser seulement les corrections automatiques
-                return robust_json_parser(file_path, llm_fallback=False)
-        except JsonParsingException as e:
-            self.logger.error(f"Impossible de charger le fichier JSON: {file_path}")
-            self.logger.error(str(e))
-            raise
-        except Exception as e:
-            self.logger.error(f"Erreur lors du chargement du fichier: {file_path}")
-            self.logger.error(str(e))
-            raise
-
-def main():
-    parser = argparse.ArgumentParser(description="Processeur JSON générique pour analyse et transformation")
-    parser.add_argument("--input", required=True, help="Fichier JSON d'entrée")
-    parser.add_argument("--output", required=True, help="Fichier JSON de sortie")
-    parser.add_argument("--max-items", type=int, default=None, help="Nombre maximum d'éléments à traiter")
-    parser.add_argument("--mapping", "-m", default=None, help="Fichier de mapping à utiliser")
-    parser.add_argument("--root-key", default="items", help="Clé de premier niveau pour les éléments dans le JSON de sortie")
-    parser.add_argument("--no-keywords", action="store_true", help="Désactiver l'extraction de mots-clés")
-    parser.add_argument("--no-detection", action="store_true", help="Désactiver la détection automatique des champs")
-    parser.add_argument("--llm", action="store_true", help="Activer l'enrichissement LLM")
-    parser.add_argument("--api-key", default=None, help="Clé API OpenAI pour l'enrichissement LLM")
-    parser.add_argument("--model", default=None, help="Modèle LLM à utiliser (ex: gpt-4.1, o3)")
+# Pour utilisation en import
+if __name__ == "__main__":
+    # Si exécuté directement, faire une démonstration
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Traiter génériquement des fichiers JSON")
+    parser.add_argument("--file", "-f", help="Fichier JSON à analyser")
+    parser.add_argument("--dir", "-d", help="Répertoire à analyser")
+    parser.add_argument("--output", "-o", default="output", help="Répertoire de sortie")
+    parser.add_argument("--repair", "-r", action="store_true", help="Tenter de réparer les fichiers JSON invalides")
     
     args = parser.parse_args()
     
-    # Charger les mappings personnalisés
-    field_mappings = None
-    if args.mapping:
-        try:
-            with open(args.mapping, 'r', encoding='utf-8') as f:
-                field_mappings = json.load(f)
-            print(f"Mappings chargés depuis {args.mapping}")
-        except Exception as e:
-            print(f"Erreur lors du chargement des mappings: {e}")
-            field_mappings = None
+    if args.file:
+        # Analyser un seul fichier
+        processor = GenericJsonProcessor(use_llm_fallback=args.repair)
+        
+        # Créer le répertoire de sortie si nécessaire
+        os.makedirs(args.output, exist_ok=True)
+        
+        # Générer le rapport de structure
+        analysis_path = processor.analyze_structure(args.file, args.output)
+        print(f"Rapport de structure généré: {analysis_path}")
+        
+        # Charger et standardiser le fichier
+        data = processor.load_file(args.file)
+        if data:
+            items = processor.extract_items(data)
+            print(f"Nombre d'éléments trouvés: {len(items)}")
+            
+            # Sauvegarder en format standard
+            standardized_path = os.path.join(args.output, "standardized.json")
+            processor.save_as_json(data, standardized_path)
+            print(f"Format standardisé sauvegardé dans: {standardized_path}")
     
-    # Créer le processeur
-    processor = GenericJsonProcessor(
-        field_mappings=field_mappings,
-        detect_fields=not args.no_detection,
-        extract_keywords=not args.no_keywords,
-        llm_enrichment=args.llm,
-        llm_model=args.model
-    )
+    elif args.dir:
+        # Analyser un répertoire
+        processor = GenericJsonProcessor()
+        tree_path = os.path.join(args.dir, "arborescence.txt")
+        processor.generate_directory_tree(args.dir, os.path.basename(tree_path))
+        print(f"Arborescence générée: {tree_path}")
     
-    # Traiter le fichier
-    success = processor.process_file(
-        input_file=args.input,
-        output_file=args.output,
-        max_items=args.max_items,
-        root_key=args.root_key
-    )
-    
-    if success:
-        print("Traitement terminé avec succès")
     else:
-        print("Erreur lors du traitement")
-        sys.exit(1)
-
-def remove_trailing_commas(json_str):
-    # Supprime les virgules en trop avant ] ou }
-    json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
-    return json_str
-
-def safe_json_load(fp, log_prefix=None, llm_fallback=False, model=None):
-    """
-    Charge un objet JSON de manière sécurisée, en gérant les erreurs courantes.
-    
-    Args:
-        fp: File-like object ouvert en lecture
-        log_prefix: Préfixe pour les messages de log
-        llm_fallback: Utiliser le LLM en cas d'échec du parsing
-        model: Modèle LLM à utiliser
-        
-    Returns:
-        Données JSON chargées ou None en cas d'erreur
-    """
-    try:
-        # Utiliser le parser robuste si le fichier est un chemin,
-        # sinon lire le contenu et le réparer
-        if hasattr(fp, 'name') and os.path.exists(fp.name):
-            # Sauvegarder la position
-            pos = fp.tell()
-            # Revenir au début pour que robust_json_parser puisse lire tout le fichier
-            fp.seek(0)
-            try:
-                from extract.robust_json_parser import robust_json_parser
-                result = robust_json_parser(fp.name, llm_fallback=llm_fallback, model=model)
-                return result
-            except ImportError:
-                # Si le module n'est pas disponible, continuer avec l'ancien comportement
-                # et revenir à la position originale
-                fp.seek(pos)
-        
-        # Si ce n'est pas un fichier sur disque ou si l'import a échoué, utiliser l'ancien comportement
-        content = fp.read()
-        content = remove_trailing_commas(content)
-        return json.loads(content)
-    except json.JSONDecodeError as e:
-        if log_prefix:
-            print(f"Erreur JSON dans {log_prefix}: {e}")
-        else:
-            print(f"Erreur JSON: {e}")
-        return None
-    except Exception as e:
-        if log_prefix:
-            print(f"Erreur lors du chargement de {log_prefix}: {e}")
-        else:
-            print(f"Erreur de chargement: {e}")
-        return None
-
-def write_tree(root_path, output_file="arborescence.txt"):
-    """
-    Génère une arborescence combinant les structures des fichiers dans root_path.
-    Cette fonction agrège les arborescences de contenu de chaque fichier JSON.
-    
-    Args:
-        root_path: Dossier contenant les fichiers à analyser
-        output_file: Nom du fichier de sortie pour l'arborescence
-    """
-    import os
-    import json
-    import glob
-    from datetime import datetime
-    
-    # Créer un rapport d'arborescence
-    report = [f"# Arborescence des fichiers traités dans {os.path.basename(os.path.abspath(root_path))}"]
-    report.append(f"# Généré le {datetime.now().isoformat()}")
-    report.append("=" * 80)
-    report.append("")
-    
-    # Trouver tous les fichiers JSON
-    json_files = []
-    for root, _, files in os.walk(root_path):
-        for file in files:
-            if file.endswith('.json'):
-                json_files.append(os.path.join(root, file))
-    
-    # Si aucun fichier JSON trouvé, analyser tous les fichiers dans le répertoire principal
-    if not json_files and os.path.isdir(root_path):
-        files = [f for f in os.listdir(root_path) if os.path.isfile(os.path.join(root_path, f))]
-        if files:
-            report.append(f"## Aucun fichier JSON trouvé, liste des fichiers dans {root_path}:")
-            for file in sorted(files):
-                file_path = os.path.join(root_path, file)
-                file_size = os.path.getsize(file_path)
-                report.append(f"- {file} ({file_size} octets)")
-            
-            with open(os.path.join(root_path, output_file), "w", encoding="utf-8") as f:
-                f.write("\n".join(report))
-            return
-    
-    # Pour chaque fichier JSON, essayer d'extraire sa structure
-    for json_file in sorted(json_files):
-        rel_path = os.path.relpath(json_file, root_path)
-        report.append(f"## {rel_path}")
-        
-        try:
-            # Lire un échantillon du fichier
-            with open(json_file, 'r', encoding='utf-8') as f:
-                try:
-                    sample_content = f.read(50000)
-                    if os.path.getsize(json_file) > 50000:
-                        sample_content += "..."
-                    
-                    try:
-                        # Essayer de parser le JSON
-                        data = json.loads(sample_content)
-                        
-                        # Analyser la structure
-                        if isinstance(data, list):
-                            report.append(f"- Type: Array avec {len(data)} éléments")
-                            if data:
-                                if isinstance(data[0], dict):
-                                    report.append(f"- Premier élément: Object avec clés {', '.join(data[0].keys())}")
-                                else:
-                                    report.append(f"- Premier élément: {type(data[0]).__name__}")
-                        elif isinstance(data, dict):
-                            report.append(f"- Type: Object avec {len(data)} clés")
-                            report.append(f"- Clés principales: {', '.join(data.keys())}")
-                            
-                            # Afficher quelques valeurs d'exemple
-                            for key, value in list(data.items())[:3]:
-                                if isinstance(value, (dict, list)):
-                                    if isinstance(value, dict):
-                                        report.append(f"  - {key}: Object avec {len(value)} clés")
-                                    else:
-                                        report.append(f"  - {key}: Array avec {len(value)} éléments")
-                                else:
-                                    val_str = str(value)
-                                    if len(val_str) > 50:
-                                        val_str = val_str[:47] + "..."
-                                    report.append(f"  - {key}: {val_str}")
-                        
-                        report.append("")
-                    except json.JSONDecodeError as e:
-                        report.append(f"- Erreur de parsing JSON: {str(e)}")
-                        report.append("")
-                except Exception as e:
-                    report.append(f"- Erreur lors de la lecture: {str(e)}")
-                    report.append("")
-        except Exception as e:
-            report.append(f"- Erreur d'accès au fichier: {str(e)}")
-            report.append("")
-    
-    # Ajouter des infos sur les sous-dossiers
-    if os.path.isdir(root_path):
-        subdirs = [d for d in os.listdir(root_path) if os.path.isdir(os.path.join(root_path, d))]
-        if subdirs:
-            report.append("## Sous-dossiers:")
-            for subdir in sorted(subdirs):
-                subdir_path = os.path.join(root_path, subdir)
-                files_count = sum(1 for _ in os.listdir(subdir_path) if os.path.isfile(os.path.join(subdir_path, _)))
-                report.append(f"- {subdir}/ ({files_count} fichiers)")
-            report.append("")
-    
-    # Écrire le rapport dans le fichier
-    with open(os.path.join(root_path, output_file), "w", encoding="utf-8") as f:
-        f.write("\n".join(report))
-
-def write_file_structure(input_file, output_dir, output_file="arborescence.txt"):
-    """
-    Génère un fichier décrivant la structure et le contenu d'un fichier JSON traité.
-    
-    Args:
-        input_file: Le fichier JSON source qui a été traité
-        output_dir: Le répertoire où écrire le fichier d'arborescence
-        output_file: Nom du fichier d'arborescence à générer
-    """
-    import os
-    import json
-    import re
-    from datetime import datetime
-    
-    # Structure de base pour le rapport
-    file_structure = {
-        "nom_fichier": os.path.basename(input_file),
-        "chemin_complet": os.path.abspath(input_file),
-        "taille": os.path.getsize(input_file) if os.path.exists(input_file) else "Fichier non trouvé",
-        "date_traitement": datetime.now().isoformat(),
-        "structure": {},
-        "arborescence": []
-    }
-    
-    def format_value(value, level=0):
-        """Formate une valeur pour l'affichage dans l'arborescence"""
-        indent = "    " * level
-        if isinstance(value, dict):
-            lines = [f"{indent}{{"]
-            for k, v in value.items():
-                if isinstance(v, (dict, list)):
-                    lines.append(f"{indent}    \"{k}\": {format_value(v, level+1)}")
-                else:
-                    v_str = f'"{v}"' if isinstance(v, str) else str(v)
-                    if len(v_str) > 50:  # Tronquer les valeurs longues
-                        v_str = f'"{str(v)[:47]}..."'
-                    lines.append(f"{indent}    \"{k}\": {v_str}")
-            lines.append(f"{indent}}}")
-            return "\n".join(lines)
-        elif isinstance(value, list):
-            if not value:
-                return "[]"
-            if len(value) > 5:  # Limiter le nombre d'éléments à afficher
-                sample = value[:5]
-                lines = [f"{indent}["]
-                for item in sample:
-                    lines.append(f"{indent}    {format_value(item, level+1)},")
-                lines.append(f"{indent}    ... {len(value)-5} éléments supplémentaires")
-                lines.append(f"{indent}]")
-                return "\n".join(lines)
-            else:
-                lines = [f"{indent}["]
-                for item in value:
-                    lines.append(f"{indent}    {format_value(item, level+1)},")
-                lines.append(f"{indent}]")
-                return "\n".join(lines)
-        else:
-            return f'"{value}"' if isinstance(value, str) else str(value)
-    
-    def extract_json_structure(json_data, max_depth=3, current_depth=0):
-        """Extrait récursivement la structure d'un objet JSON"""
-        if current_depth >= max_depth:
-            return "..."  # Arrêter la récursion à max_depth
-        
-        if isinstance(json_data, dict):
-            result = {}
-            for key, value in json_data.items():
-                if isinstance(value, (dict, list)):
-                    result[key] = extract_json_structure(value, max_depth, current_depth + 1)
-                else:
-                    # Pour les valeurs simples, juste indiquer le type
-                    result[key] = f"<{type(value).__name__}>"
-            return result
-        elif isinstance(json_data, list):
-            if not json_data:
-                return []
-            # Pour les listes, prendre juste quelques exemples
-            sample = json_data[:min(3, len(json_data))]
-            result = [extract_json_structure(item, max_depth, current_depth + 1) for item in sample]
-            if len(json_data) > 3:
-                result.append(f"... {len(json_data)-3} éléments supplémentaires")
-            return result
-        else:
-            return f"<{type(json_data).__name__}>"
-    
-    try:
-        if os.path.exists(input_file):
-            with open(input_file, 'r', encoding='utf-8') as f:
-                try:
-                    # Essayer d'abord avec json standard
-                    sample_content = f.read(50000)  # Lire un échantillon
-                    
-                    # Si le fichier est trop grand, ne lire qu'un échantillon
-                    if os.path.getsize(input_file) > 50000:
-                        sample_content += "..."  # Indiquer que c'est tronqué
-                    
-                    # Nettoyer le contenu pour éviter les erreurs courantes
-                    clean_content = re.sub(r'\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', sample_content)
-                    clean_content = re.sub(r'(?<!\\)"(?![:,}\] ])', r'\"', clean_content)
-                    
-                    try:
-                        # Essayer de parser le JSON nettoyé
-                        sample = json.loads(clean_content)
-                    except json.JSONDecodeError:
-                        # Si ça échoue, essayer de lire ligne par ligne pour trouver un objet complet
-                        f.seek(0)
-                        bracket_count = 0
-                        brace_count = 0
-                        json_content = ""
-                        
-                        for i, line in enumerate(f):
-                            if i > 1000:  # Limiter le nombre de lignes lues
-                                break
-                            
-                            json_content += line
-                            bracket_count += line.count('[') - line.count(']')
-                            brace_count += line.count('{') - line.count('}')
-                            
-                            # Si on trouve un objet ou tableau complet, arrêter
-                            if (bracket_count == 0 and brace_count == 0) and (']' in line or '}' in line):
-                                break
-                        
-                        # Essayer de parser ce qu'on a lu
-                        try:
-                            sample = json.loads(json_content)
-                        except json.JSONDecodeError:
-                            # En dernier recours, essayer de réparer le JSON
-                            try:
-                                # Fixer les problèmes courants
-                                fixed_content = remove_trailing_commas(json_content)
-                                fixed_content = re.sub(r'(?<!\\)"(?![:,}\] ])', r'\"', fixed_content)
-                                
-                                # S'assurer que c'est un JSON valide
-                                if not fixed_content.strip().startswith('{') and not fixed_content.strip().startswith('['):
-                                    fixed_content = '[' + fixed_content
-                                if not fixed_content.strip().endswith('}') and not fixed_content.strip().endswith(']'):
-                                    fixed_content = fixed_content + ']'
-                                
-                                sample = json.loads(fixed_content)
-                            except:
-                                # Si tout échoue, abandonner
-                                raise
-                    
-                    # Analyser la structure
-                    if isinstance(sample, list):
-                        file_structure["structure"]["type"] = "array"
-                        file_structure["structure"]["nombre_elements"] = len(sample)
-                        if sample:
-                            first_item = sample[0]
-                            if isinstance(first_item, dict):
-                                file_structure["structure"]["schema_premier_element"] = list(first_item.keys())
-                                # Extraire la structure détaillée
-                                file_structure["structure"]["exemple_structure"] = extract_json_structure(first_item)
-                            else:
-                                file_structure["structure"]["type_elements"] = type(first_item).__name__
-                        
-                        # Générer l'arborescence textuelle
-                        file_structure["arborescence"] = ["["]
-                        if sample:
-                            # Montrer le premier élément en détail
-                            if isinstance(sample[0], dict):
-                                formatted = format_value(sample[0]).split('\n')
-                                file_structure["arborescence"].extend(["    " + line for line in formatted])
-                            else:
-                                file_structure["arborescence"].append(f"    {sample[0]}")
-                            
-                            # Indiquer combien d'éléments supplémentaires
-                            if len(sample) > 1:
-                                file_structure["arborescence"].append(f"    ... {len(sample)-1} éléments supplémentaires")
-                        file_structure["arborescence"].append("]")
-                            
-                    elif isinstance(sample, dict):
-                        file_structure["structure"]["type"] = "object"
-                        file_structure["structure"]["cles_principales"] = list(sample.keys())
-                        file_structure["structure"]["exemple_structure"] = extract_json_structure(sample)
-                        
-                        # Générer l'arborescence textuelle
-                        formatted = format_value(sample).split('\n')
-                        file_structure["arborescence"] = formatted
-                except Exception as e:
-                    file_structure["erreur_analyse"] = str(e)
-                    file_structure["structure"]["type"] = "Inconnu - Erreur de parsing"
-                    file_structure["arborescence"] = [f"Impossible de générer l'arborescence: {str(e)}"]
-    except Exception as e:
-        file_structure["erreur_analyse"] = str(e)
-        file_structure["structure"]["type"] = "Inconnu - Erreur de lecture du fichier"
-        file_structure["arborescence"] = [f"Impossible de générer l'arborescence: {str(e)}"]
-    
-    # Générer le fichier d'arborescence au format texte
-    with open(os.path.join(output_dir, output_file), "w", encoding="utf-8") as f:
-        f.write(f"Structure et contenu du fichier: {os.path.basename(input_file)}\n")
-        f.write("="*50 + "\n\n")
-        
-        f.write(f"Nom: {file_structure['nom_fichier']}\n")
-        f.write(f"Chemin: {file_structure['chemin_complet']}\n")
-        f.write(f"Taille: {file_structure['taille']} octets\n")
-        f.write(f"Date de traitement: {file_structure['date_traitement']}\n\n")
-        
-        f.write("Structure interne:\n")
-        f.write("-----------------\n")
-        if "structure" in file_structure:
-            f.write(f"Type: {file_structure['structure'].get('type', 'Inconnu')}\n\n")
-            
-            if "nombre_elements" in file_structure["structure"]:
-                f.write(f"Nombre d'éléments: {file_structure['structure']['nombre_elements']}\n")
-            
-            if "cles_principales" in file_structure["structure"]:
-                f.write(f"Clés principales: {', '.join(file_structure['structure']['cles_principales'])}\n\n")
-            
-            if "schema_premier_element" in file_structure["structure"]:
-                f.write(f"Schéma du premier élément: {', '.join(file_structure['structure']['schema_premier_element'])}\n\n")
-        
-        if "erreur_analyse" in file_structure:
-            f.write(f"Erreur lors de l'analyse: {file_structure['erreur_analyse']}\n\n")
-        
-        f.write("Arborescence du contenu:\n")
-        f.write("-----------------------\n")
-        if "arborescence" in file_structure and file_structure["arborescence"]:
-            f.write("\n".join(file_structure["arborescence"]))
-        else:
-            f.write("Impossible de générer l'arborescence du contenu")
-
-if __name__ == "__main__":
-    main() 
+        parser.print_help() 

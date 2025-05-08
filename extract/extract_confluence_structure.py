@@ -207,7 +207,8 @@ def save_results(transformed_data, output_file):
 
 def main():
     parser = argparse.ArgumentParser(description='Extrait la structure des fichiers JSON Confluence')
-    parser.add_argument('input_files', nargs='+', help='Fichiers JSON Confluence à analyser')
+    parser.add_argument('input_files', nargs='*', help='Fichiers JSON Confluence à analyser')
+    parser.add_argument('--files', nargs='+', help='Fichiers JSON Confluence à analyser (alternative)')
     parser.add_argument('--output-dir', default='results', help='Dossier de sortie')
     parser.add_argument('--output-file', default='confluence_structure.json', help='Nom du fichier de sortie')
     parser.add_argument('--llm', action="store_true", help="Activer le fallback LLM pour la correction des fichiers JSON mal formés")
@@ -218,14 +219,31 @@ def main():
     
     args = parser.parse_args()
     
+    # Fusionner les arguments input_files et files
+    input_files = args.input_files or []
+    if args.files:
+        input_files.extend(args.files)
+    
+    if not input_files:
+        parser.error("Vous devez spécifier au moins un fichier d'entrée")
+    
+    # Fusionner les arguments input_files et files
+    input_files = args.input_files or []
+    if args.files:
+        input_files.extend(args.files)
+    
+    if not input_files:
+        parser.error("Vous devez spécifier au moins un fichier d'entrée")
+    
     # Créer le dossier de sortie s'il n'existe pas
-    if args.output_dir and not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
+    output_dir = os.path.dirname(args.output) if args.output else args.output_dir
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     
     all_structures = {}
     
     # Traiter chaque fichier
-    for file_path in args.input_files:
+    for file_path in input_files:
         print(f"Analyse de {file_path}...")
         
         # Extraire la structure
@@ -242,7 +260,13 @@ def main():
         print(f"Arborescence générée: {output_tree}")
         
     # Sauvegarder la structure combinée
-    output_path = os.path.join(args.output_dir, args.output_file)
+    output_path = args.output if args.output else os.path.join(args.output_dir, args.output_file)
+    
+    # S'assurer que le dossier de destination existe
+    output_dir_path = os.path.dirname(output_path)
+    if output_dir_path and not os.path.exists(output_dir_path):
+        os.makedirs(output_dir_path)
+        
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(all_structures, f, indent=2, ensure_ascii=False)
     

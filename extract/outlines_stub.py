@@ -14,6 +14,26 @@ IS_STUB = True
 T = TypeVar('T')
 
 # ===== Module outlines ======
+class Template:
+    """Classe pour créer des templates de prompt avec variables"""
+    
+    def __init__(self, template_string):
+        self.template_string = template_string
+    
+    @staticmethod
+    def from_string(template_string):
+        """Crée un template à partir d'une chaîne de caractères"""
+        return Template(template_string)
+    
+    def __call__(self, **kwargs):
+        """Rend le template avec les variables spécifiées"""
+        # Version simplifiée qui remplace les variables {{var}} par leur valeur
+        result = self.template_string
+        for key, value in kwargs.items():
+            placeholder = "{{{{ {} }}}}".format(key)
+            result = result.replace(placeholder, str(value))
+        return result
+
 class models:
     @staticmethod
     def openai(model: str, api_key: str, temperature: float = 0.0) -> 'OpenAIModel':
@@ -76,7 +96,17 @@ class generate:
     def json(model: Any, schema: Union[Dict[str, Any], Any]) -> Callable:
         """Génère du JSON suivant un schéma"""
         def _generate_json(prompt: str, **kwargs) -> Dict[str, Any]:
-            return {"result": "Données JSON générées avec stub"}
+            return {
+                "summary": "Résumé généré par le stub",
+                "keywords": ["mot-clé1", "mot-clé2"],
+                "entities": {
+                    "people": ["Personne1", "Personne2"],
+                    "organizations": ["Organisation1", "Organisation2"],
+                    "locations": ["Lieu1", "Lieu2"],
+                    "technical_terms": ["Terme1", "Terme2"]
+                },
+                "sentiment": "neutral"
+            }
         return _generate_json
     
     @staticmethod

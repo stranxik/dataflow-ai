@@ -173,6 +173,23 @@ def process_jira_file(file_path, max_tickets=None):
 def save_results(transformed_data, output_file):
     """Sauvegarde les données transformées dans un fichier JSON"""
     try:
+        # S'assurer que le dossier de destination existe
+        output_dir = os.path.dirname(output_file)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(transformed_data, f, indent=2, ensure_ascii=False)
+        print(f"Données transformées sauvegardées dans {output_file}")
+    except Exception as e:
+        print(f"Erreur lors de la sauvegarde des résultats: {e}")
+    """Sauvegarde les données transformées dans un fichier JSON"""
+    try:
+        # S'assurer que le dossier de destination existe
+        output_dir = os.path.dirname(output_file)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(transformed_data, f, indent=2, ensure_ascii=False)
         print(f"Données transformées sauvegardées dans {output_file}")
@@ -199,8 +216,15 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Construire le chemin complet du fichier de sortie
-    output_file = os.path.join(output_dir, args.output)
+    # Vérifier si le chemin de sortie est absolu ou relatif
+    if os.path.isabs(args.output):
+        output_file = args.output
+    else:
+        # Si le chemin est relatif mais contient déjà 'results/', ne pas ajouter le préfixe
+        if args.output.startswith(f"{output_dir}/"):
+            output_file = args.output
+        else:
+            output_file = os.path.join(output_dir, args.output)
     
     all_tickets = []
     processed_files = []

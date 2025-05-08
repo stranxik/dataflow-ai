@@ -10,6 +10,10 @@ import sys
 import json
 import glob
 import dotenv
+import time
+import shutil
+import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 
@@ -54,6 +58,17 @@ except ImportError:
     print("Module Outlines non disponible. Fonctionnalités d'extraction avancées désactivées.")
     OUTLINES_AVAILABLE = False
 
+# Ajouter l'import pour le résumé LLM
+try:
+    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "extract"))
+    from extract.llm_summary import generate_llm_summary
+except ImportError:
+    try:
+        from llm_summary import generate_llm_summary
+    except ImportError:
+        generate_llm_summary = None
+        print("⚠️ Module llm_summary non trouvé, la génération de résumés LLM est désactivée")
+
 # Initialisation de Typer et Rich
 app = typer.Typer(help="JSON Processor pour Llamendex")
 console = Console()
@@ -95,31 +110,61 @@ def print_stepper(current:int, total:int, steps:list):
 # --- NAVIGATION AVEC ICONES ---
 def _prompt_for_file(message: str, allow_validate: bool = False) -> Optional[str]:
     current_dir = os.getcwd()
+    
+    # Vérifier si le dossier "files" existe à la racine du projet
+    files_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "files")
+    
     while True:
         console.print(f"\n[bold]Répertoire actuel:[/bold] {current_dir}")
         items = os.listdir(current_dir)
         files = [f for f in items if os.path.isfile(os.path.join(current_dir, f)) and f.endswith('.json')]
         dirs = [d for d in items if os.path.isdir(os.path.join(current_dir, d))]
+        
+        # Trier les dossiers et les fichiers
         dirs.sort()
         files.sort()
+        
         choices = []
+        
+        # Option pour remonter au dossier parent si nous ne sommes pas à la racine
         if current_dir != os.path.dirname(current_dir):
             choices.append("⬆️  [Dossier parent]")
+        
+        # Mettre le dossier "files" en premier si nous sommes à la racine du projet
+        if os.path.exists(files_dir) and os.path.dirname(files_dir) == current_dir:
+            dirs.remove("files")
+            choices.append("📁 [Dir] files")
+        
+        # Ajouter les autres dossiers
         choices += [f"📁 [Dir] {d}" for d in dirs]
+        
+        # Ajouter les fichiers JSON
         choices += [f"📄 [Fichier] {f}" for f in files]
+        
+        # Si nous ne sommes pas dans le dossier "files", proposer d'y aller directement
+        if os.path.exists(files_dir) and current_dir != files_dir:
+            choices.insert(1, "📂 [Aller au dossier files]")
+        
+        # Ajouter les options de validation/annulation
         if allow_validate:
             choices.append("✅ [Valider la sélection]")
         choices.append("✏️  [Entrer un chemin manuellement]")
         choices.append("❌ [Annuler]")
+        
         questions = [
             inquirer.List('selection', message=message, choices=choices)
         ]
         answer = inquirer.prompt(questions)
+        
         if not answer:
             return None
+            
         selection = answer['selection']
+        
         if selection.startswith("⬆️"):
             current_dir = os.path.dirname(current_dir)
+        elif selection == "📂 [Aller au dossier files]":
+            current_dir = files_dir
         elif selection.startswith("✏️"):
             path = typer.prompt("Entrez le chemin complet du fichier")
             if os.path.isfile(path) and path.endswith('.json'):
@@ -295,24 +340,19 @@ def process(
     mapping_file: Optional[str] = typer.Option(None, "--mapping", "-m", help="Fichier de mapping à utiliser"),
     detect: bool = typer.Option(True, "--detect/--no-detect", help="Détecter automatiquement le type de fichier"),
     auto_mapping: bool = typer.Option(True, "--auto-mapping/--no-auto-mapping", help="Utiliser le mapping correspondant au type détecté"),
-    use_llm: bool = typer.Option(False, "--llm/--no-llm", help="Utiliser un LLM pour l'enrichissement"),
+    use_llm: bool = typer.Option(True, "--llm/--no-llm", help="Utiliser un LLM pour l'enrichissement"),
     llm_model: str = typer.Option(None, "--model", help="Modèle LLM à utiliser"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API pour le LLM (ou variable d'environnement OPENAI_API_KEY)"),
-    interactive: bool = typer.Option(False, "--interactive", "-i", help="Mode interactif pour les choix"),
-    max_items: Optional[int] = typer.Option(None, "--max", help="Nombre maximum d'éléments à traiter"),
-    root_key: str = typer.Option("items", "--root-key", help="Clé racine pour les éléments dans le JSON de sortie"),
-    outlines: bool = typer.Option(False, help="Utiliser Outlines pour l'extraction structurée")
+    preserve_source: bool = typer.Option(True, "--preserve-source/--overwrite-source", help="Préserver les fichiers sources originaux"),
 ):
-    """
-    Traite un fichier JSON en le transformant pour utilisation avec LLM/Llamendex.
-    """
+    """Traiter un fichier JSON selon son type détecté."""
+    console = Console()
+    
     # 1. Vérifier que le fichier existe
     if not os.path.exists(input_file):
         console.print(f"[bold red]Le fichier {input_file} n'existe pas.[/bold red]")
         raise typer.Exit(1)
     
     # Générer un timestamp pour le nom du fichier
-    from datetime import datetime
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     
     # Utiliser le dossier results comme base
@@ -332,7 +372,8 @@ def process(
     console.print(Panel.fit(
         "[bold]Traitement de fichier JSON pour Llamendex[/bold]\n\n"
         f"Fichier d'entrée : [cyan]{input_file}[/cyan]\n"
-        f"Fichier de sortie : [cyan]{output_file}[/cyan]",
+        f"Fichier de sortie : [cyan]{output_file}[/cyan]\n"
+        f"Préservation des sources : [cyan]{'Oui' if preserve_source else 'Non'}[/cyan]",
         title="JSON Processor",
         border_style="blue"
     ))
@@ -349,82 +390,11 @@ def process(
             console.print("[yellow]Type de fichier non détecté. Traitement générique sera utilisé.[/yellow]")
     
     # 4. Gestion du mapping (interactif ou automatique)
-    if interactive:
-        mapping_choices = find_mapping_files()
-        mapping_choices.append("Sans mapping (détection automatique)")
-        mapping_choices.append("Créer un mapping personnalisé")
-        questions = [
-            inquirer.List('mapping_choice',
-                          message="Choisissez un mapping pour le traitement",
-                          choices=mapping_choices,
-                          default="Sans mapping (détection automatique)" if not file_type else f"{file_type['type']}_mapping.json" if f"{file_type['type']}_mapping.json" in mapping_choices else "Sans mapping (détection automatique)")
-        ]
-        answers = inquirer.prompt(questions)
-        if answers["mapping_choice"] == "Sans mapping (détection automatique)":
-            mapping_file = None
-        elif answers["mapping_choice"] == "Créer un mapping personnalisé":
-            # Ouvrir un éditeur pour créer un mapping personnalisé
-            temp_mapping_file = "temp_mapping.json"
-            template = '''{
-  "id": "key_field",
-  "title": "title_field",
-  "content": {
-    "field": "content_field",
-    "transform": "clean_text"
-  },
-  "metadata": {
-    "created_by": "author_field",
-    "created_at": "date_field"
-  }
-}'''
-            with open(temp_mapping_file, 'w') as f:
-                f.write(template)
-            console.print("[bold]Créez votre mapping personnalisé dans l'éditeur.[/bold]")
-            console.print("[yellow]Appuyez sur Entrée pour continuer après avoir sauvegardé et fermé l'éditeur.[/yellow]")
-            # Ouvrir l'éditeur par défaut
-            if sys.platform == 'win32':
-                os.system(f'notepad {temp_mapping_file}')
-            else:
-                editor = os.environ.get('EDITOR', 'nano')
-                os.system(f'{editor} {temp_mapping_file}')
-            input("Appuyez sur Entrée pour continuer...")
-            # Vérifier que le mapping est valide
-            try:
-                with open(temp_mapping_file, 'r') as f:
-                    json.load(f)
-                mapping_file = temp_mapping_file
-            except json.JSONDecodeError:
-                console.print("[bold red]Le mapping créé n'est pas un JSON valide. Poursuite sans mapping.[/bold red]")
-                mapping_file = None
-        else:
-            mapping_file = os.path.join(DEFAULT_MAPPINGS_DIR, answers["mapping_choice"])
-    
-    # 5. Si auto_mapping et qu'on a détecté un type, mais pas de mapping spécifié
-    elif auto_mapping and file_type and not mapping_file:
+    if auto_mapping and file_type and not mapping_file:
         auto_mapping_file = os.path.join(DEFAULT_MAPPINGS_DIR, f"{file_type['type']}_mapping.json")
         if os.path.exists(auto_mapping_file):
             mapping_file = auto_mapping_file
             console.print(f"Utilisation automatique du mapping : [cyan]{mapping_file}[/cyan]")
-    
-    # 6. Traitement LLM interactif (si demandé)
-    if use_llm and interactive and not api_key:
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            api_key = typer.prompt("Entrez votre clé API OpenAI", hide_input=True)
-        
-        if not api_key:
-            console.print("[bold yellow]Pas de clé API fournie. L'analyse LLM sera désactivée.[/bold yellow]")
-            use_llm = False
-        
-        if use_llm:
-            questions = [
-                inquirer.List('llm_model',
-                            message="Choisissez un modèle LLM",
-                            choices=LLM_MODELS,
-                            default="gpt-4.1")
-            ]
-            answers = inquirer.prompt(questions)
-            llm_model = answers["llm_model"]
     
     # 7. Traitement principal
     try:
@@ -441,64 +411,48 @@ def process(
         # Créer le processeur
         processor = GenericJsonProcessor(
             field_mappings=field_mappings,
-            detect_fields=True,
-            extract_keywords=True
+            detect_fields=detect,
+            extract_keywords=True,
+            use_llm_fallback=use_llm,
+            llm_model=llm_model,
+            preserve_source=preserve_source
         )
         
         # Traiter le fichier
-        with console.status("[bold blue]Traitement en cours..."):
-            success = processor.process_file(
-                input_file=input_file,
-                output_file=output_file,
-                max_items=max_items,
-                root_key=root_key
-            )
+        result = processor.process_file(input_file, output_file)
         
-        if not success:
-            console.print("[bold red]Erreur lors du traitement du fichier.[/bold red]")
-            raise typer.Exit(1)
-        
-        # 8. Post-traitement avec LLM si demandé
-        if use_llm:
-            # Utiliser les valeurs par défaut si non spécifiées
-            if not api_key:
-                api_key = os.environ.get("OPENAI_API_KEY")
+        if result:
+            console.print(f"[bold green]✅ Fichier traité avec succès: [cyan]{output_file}[/cyan][/bold green]")
             
-            if not llm_model:
-                llm_model = os.environ.get("DEFAULT_LLM_MODEL", "gpt-4.1")
-            
-            if not api_key:
-                console.print("[bold yellow]Pas de clé API OpenAI trouvée. L'analyse LLM ne sera pas effectuée.[/bold yellow]")
-                use_llm = False
-            
+            # Générer un résumé LLM si l'option est activée et que des données sont disponibles
             if use_llm:
-                console.print(f"Enrichissement avec LLM ([cyan]{llm_model}[/cyan])...")
-                
-                # Charger le fichier de sortie
-                with open(output_file, 'r', encoding='utf-8') as f:
-                    processed_data = json.load(f)
-                
-                # Enrichir avec LLM
-                enriched_data = process_with_llm(
-                    content=processed_data,
-                    model=llm_model,
-                    api_key=api_key
-                )
-                
-                # Sauvegarder les données enrichies
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    json.dump(enriched_data, f, indent=2, ensure_ascii=False)
-                
-                console.print("[bold green]Enrichissement LLM terminé ![/bold green]")
-        
-        # 9. Afficher un résumé et des statistiques
-        show_summary(output_file)
-        
+                try:
+                    # Charger les données enrichies
+                    with open(output_file, 'r', encoding='utf-8') as f:
+                        processed_data = json.load(f)
+                    
+                    # Déterminer le répertoire de sortie à partir du fichier de sortie
+                    output_dir = os.path.dirname(output_file)
+                    if not output_dir:
+                        output_dir = "."
+                    
+                    # Générer le résumé LLM
+                    llm_summary_file = generate_llm_summary(
+                        output_dir, 
+                        data=processed_data, 
+                        filename=f"{os.path.splitext(os.path.basename(output_file))[0]}_llm_summary.md"
+                    )
+                    console.print(f"[bold green]✅ Résumé LLM généré: [cyan]{llm_summary_file}[/cyan][/bold green]")
+                except Exception as e:
+                    console.print(f"[bold yellow]⚠️ Impossible de générer le résumé LLM: {e}[/bold yellow]")
+            
+            return True
+        else:
+            console.print("[bold red]❌ Erreur lors du traitement du fichier[/bold red]")
+            return False
     except Exception as e:
-        console.print(f"[bold red]Erreur lors du traitement: {e}[/bold red]")
-        import traceback
-        traceback.print_exc()
-        raise typer.Exit(1)
+        console.print(f"[bold red]❌ Erreur: {e}[/bold red]")
+        return False
 
 
 def show_summary(file_path: str):
@@ -709,112 +663,126 @@ def unified(
     output_dir: str = typer.Option(None, "--output-dir", "-o", help="Répertoire de sortie"),
     min_match_score: float = typer.Option(None, "--min-score", "-s", help="Score minimum pour les correspondances"),
     max_items: Optional[int] = typer.Option(None, "--max", help="Nombre maximum d'éléments à traiter par fichier"),
-    use_llm: bool = typer.Option(False, "--llm", help="Utiliser un LLM pour l'enrichissement"),
+    use_llm: bool = typer.Option(True, "--llm/--no-llm", help="Utiliser un LLM pour l'enrichissement"),
     api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API pour le LLM"),
     skip_matching: bool = typer.Option(False, "--skip-matching", help="Ne pas effectuer le matching entre JIRA et Confluence"),
 ):
     """
-    Exécute le flux unifié : traitement JIRA + Confluence et matching.
+    Exécute un flux complet: JIRA + Confluence + Matching
     """
-    # Générer un timestamp pour le nom du dossier
-    from datetime import datetime
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    print_header()
     
-    # Utiliser le dossier results comme base et ajouter le timestamp
-    base_results_dir = "results"
-    ensure_dir(base_results_dir)
-    
-    # Si output_dir est spécifié, l'utiliser comme nom de dossier avec le timestamp
-    if output_dir:
-        output_dir = os.path.join(base_results_dir, f"{output_dir}_{timestamp}")
-    else:
-        default_dir = os.environ.get("UNIFIED_OUTPUT_DIR", "output_unified")
-        output_dir = os.path.join(base_results_dir, f"{default_dir}_{timestamp}")
-    
-    # Vérifier les fichiers
-    for file in jira_files + confluence_files:
+    # Vérifier l'existence des fichiers
+    for file in jira_files:
         if not os.path.exists(file):
-            console.print(f"[bold red]Le fichier {file} n'existe pas.[/bold red]")
-            raise typer.Exit(1)
+            print_error(f"Fichier JIRA introuvable: {file}")
+            return
     
-    # Créer le répertoire de sortie
-    ensure_dir(output_dir)
+    for file in confluence_files:
+        if not os.path.exists(file):
+            print_error(f"Fichier Confluence introuvable: {file}")
+            return
     
-    # Créer les sous-répertoires pour une meilleure organisation
-    jira_dir = os.path.join(output_dir, "jira")
-    confluence_dir = os.path.join(output_dir, "confluence")
-    matches_dir = os.path.join(output_dir, "matches")
-    split_jira_dir = os.path.join(output_dir, "split_jira_files")
-    split_confluence_dir = os.path.join(output_dir, "split_confluence_files")
-    llm_ready_dir = os.path.join(output_dir, "llm_ready")
+    # Générer un nom de répertoire avec timestamp s'il n'est pas spécifié
+    if not output_dir:
+        output_dir = f"jira_confluence_{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
     
-    for directory in [jira_dir, confluence_dir, matches_dir, split_jira_dir, split_confluence_dir, llm_ready_dir]:
-        ensure_dir(directory)
+    # Préparer le chemin complet
+    timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     
-    # Afficher les infos
-    console.print(Panel.fit(
+    # S'assurer que le chemin n'est pas dupliqué
+    if output_dir.startswith("results/"):
+        full_output_dir = output_dir
+    else:
+        results_dir = "results"
+        ensure_dir(results_dir)
+        full_output_dir = os.path.join(results_dir, output_dir)
+    
+    # Créer la structure de répertoires
+    dirs = {
+        "jira": os.path.join(full_output_dir, "jira"),
+        "confluence": os.path.join(full_output_dir, "confluence"),
+        "matches": os.path.join(full_output_dir, "matches"),
+        "split_jira": os.path.join(full_output_dir, "split_jira_files"),
+        "split_confluence": os.path.join(full_output_dir, "split_confluence_files"),
+        "llm_ready": os.path.join(full_output_dir, "llm_ready")
+    }
+    
+    # Créer tous les répertoires
+    for dir_name, dir_path in dirs.items():
+        ensure_dir(dir_path)
+    
+    # Récupérer les valeurs par défaut des variables d'environnement si nécessaire
+    min_score = min_match_score or float(os.environ.get("MIN_MATCH_SCORE", "0.2"))
+    
+    console.print(Panel(
         f"[bold]Traitement unifié JIRA + Confluence[/bold]\n\n"
-        f"Fichiers JIRA : [cyan]{', '.join(jira_files)}[/cyan]\n"
-        f"Fichiers Confluence : [cyan]{', '.join(confluence_files)}[/cyan]\n"
-        f"Répertoire de sortie : [cyan]{output_dir}[/cyan]",
+        f"Fichiers JIRA : {', '.join(jira_files)}\n"
+        f"Fichiers Confluence : {', '.join(confluence_files)}\n"
+        f"Répertoire de sortie : {full_output_dir}",
         title="Traitement Unifié",
-        border_style="blue"
+        expand=False
     ))
     
-    # Construire le chemin vers le script unified_analysis
-    unified_script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                               "extract", "run_unified_analysis.py")
-    
-    # Exécuter le script unifié avec la nouvelle structure de dossiers
+    # Options pour run_unified_analysis.py
     cmd = [
-        sys.executable, unified_script,
+        sys.executable,
+        os.path.join(parent_dir, "extract", "run_unified_analysis.py"),
         "--jira-files"
     ] + jira_files
     
     if confluence_files:
-        cmd += ["--confluence-files"] + confluence_files
+        cmd.extend(["--confluence-files"] + confluence_files)
     
-    cmd += [
-        "--output-dir", output_dir,
-        "--min-match-score", str(min_match_score),
-        "--jira-dir", jira_dir,
-        "--confluence-dir", confluence_dir,
-        "--matches-dir", matches_dir,
-        "--split-jira-dir", split_jira_dir,
-        "--split-confluence-dir", split_confluence_dir,
-        "--llm-ready-dir", llm_ready_dir
-    ]
+    cmd.extend([
+        "--output-dir", full_output_dir,
+        "--min-match-score", str(min_score)
+    ])
     
     if max_items:
-        cmd += ["--max-items", str(max_items)]
-    
-    if skip_matching:
-        cmd += ["--skip-matching"]
+        cmd.extend(["--max-items", str(max_items)])
     
     if use_llm:
-        cmd += ["--with-openai"]
-        if api_key or os.environ.get("OPENAI_API_KEY"):
-            cmd += ["--api-key", api_key or os.environ.get("OPENAI_API_KEY")]
+        cmd.append("--with-openai")
+        if api_key:
+            cmd.extend(["--api-key", api_key])
     
-    with console.status("[bold blue]Traitement unifié en cours..."):
-        from subprocess import run, PIPE
-        result = run(cmd, stdout=PIPE, stderr=PIPE, text=True)
+    if skip_matching:
+        cmd.append("--skip-matching")
     
-    if result.returncode != 0:
-        console.print("[bold red]Erreur lors du traitement unifié:[/bold red]")
-        console.print(result.stderr)
-        raise typer.Exit(1)
-    
-    # Afficher les résultats
-    console.print(result.stdout)
-    
-    # Générer un arborescence globale du répertoire de sortie
-    from extract.generic_json_processor import write_tree
-    write_tree(output_dir, "global_arborescence.txt")
-    
-    console.print(f"\nFichiers générés dans : [bold cyan]{output_dir}[/bold cyan]")
-    console.print(f"Arborescence globale générée dans : [bold cyan]{os.path.join(output_dir, 'global_arborescence.txt')}[/bold cyan]")
-    console.print("\n[bold green]Traitement unifié terminé avec succès ![/bold green]")
+    # Exécuter le script run_unified_analysis.py
+    try:
+        console.print("\n[bold cyan]Exécution du flux unifié...[/bold cyan]")
+        process = subprocess.run(cmd, text=True, capture_output=True)
+        
+        if process.returncode == 0:
+            console.print(process.stdout)
+            
+            # Corriger les éventuels problèmes de dossiers dupliqués
+            try:
+                # Importer la fonction de correction de chemins
+                from fix_paths import fix_duplicate_paths
+                
+                # Appliquer la correction au répertoire de sortie
+                moved_count = fix_duplicate_paths(full_output_dir)
+                if moved_count > 0:
+                    console.print(f"[yellow]⚠️ Correction de {moved_count} fichiers dans des chemins dupliqués[/yellow]")
+            except ImportError:
+                console.print("[yellow]Module fix_paths non trouvé. Pas de correction de chemins dupliqués.[/yellow]")
+            except Exception as e:
+                console.print(f"[yellow]Erreur lors de la correction des chemins: {str(e)}[/yellow]")
+            
+            print_success(f"Fichiers générés dans : {full_output_dir}")
+            console.print(f"Arborescence globale générée dans : {os.path.join(full_output_dir, 'global_arborescence.txt')}")
+            print_success("Traitement unifié terminé avec succès !")
+        else:
+            console.print(process.stdout)
+            console.print(process.stderr)
+            print_error("Le traitement a échoué. Consultez les messages d'erreur ci-dessus.")
+            
+    except Exception as e:
+        print_error(f"Erreur lors de l'exécution du flux unifié: {str(e)}")
+        return
 
 
 @app.command()
@@ -1024,12 +992,16 @@ def _run_interactive_process():
                         default=False),
         inquirer.Text('max_items',
                      message="Nombre maximum d'éléments à traiter (vide = tous)",
-                     default="")
+                     default=""),
+        inquirer.Confirm('preserve_source',
+                         message="Préserver les fichiers sources originaux ?",
+                         default=True)
     ]
     answers_advanced = inquirer.prompt(questions)
     
     use_llm = answers_advanced['use_llm']
     max_items = int(answers_advanced['max_items']) if answers_advanced['max_items'].strip() else None
+    preserve_source = answers_advanced['preserve_source']
     
     # LLM si demandé
     llm_model = None
@@ -1055,6 +1027,7 @@ def _run_interactive_process():
     console.print(f"- Fichier d'entrée : [cyan]{input_file}[/cyan]")
     console.print(f"- Fichier de sortie : [cyan]{output_file}[/cyan]")
     console.print(f"- Mapping : [cyan]{mapping_file or 'Auto-détection'}[/cyan]")
+    console.print(f"- Préservation des sources : [cyan]{'Oui' if preserve_source else 'Non'}[/cyan]")
     if use_llm:
         console.print(f"- Enrichissement LLM : [cyan]Oui ({llm_model})[/cyan]")
     if max_items:
@@ -1084,6 +1057,7 @@ def _run_interactive_process():
         interactive=False,  # Déjà en mode interactif
         max_items=max_items,
         root_key="items",
+        preserve_source=preserve_source,
         outlines=False
     )
 

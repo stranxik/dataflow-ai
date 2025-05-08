@@ -34,8 +34,8 @@ try:
     # Indiquer que nous utilisons la vraie bibliothèque
     USING_STUB = False
         
-except ImportError:
-    logging.warning("Modules Outlines non disponibles. Utilisation des stubs internes.")
+except ImportError as e:
+    logging.warning(f"Modules Outlines non disponibles. Utilisation des stubs internes. Erreur: {e}")
     # Utiliser notre version stub complète
     try:
         from extract.outlines_stub import models, generate, Template, samplers, IS_STUB
@@ -53,6 +53,30 @@ try:
 except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from extract.robust_json_parser import JsonParsingException, escape_special_chars_in_strings
+
+# Import du module de réparation JSON
+try:
+    from extract.fix_json_files import repair_json_file, escape_special_chars_in_strings, fix_unclosed_strings, fix_missing_quotes_around_property_names, fix_trailing_commas
+except ImportError:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try: 
+        from extract.fix_json_files import repair_json_file, escape_special_chars_in_strings, fix_unclosed_strings, fix_missing_quotes_around_property_names, fix_trailing_commas
+    except ImportError:
+        logger.warning("Module fix_json_files non disponible. Fonctionnalités de réparation JSON limitées.")
+        # Définir des fonctions stub si le module n'est pas disponible
+        def repair_json_file(file_path):
+            return False
+            
+        from extract.robust_json_parser import escape_special_chars_in_strings  # Fallback
+        
+        def fix_unclosed_strings(content):
+            return content
+            
+        def fix_missing_quotes_around_property_names(content):
+            return content
+            
+        def fix_trailing_commas(content):
+            return content
 
 # Chargement des variables d'environnement
 load_dotenv()
@@ -117,15 +141,14 @@ class OutlinesJsonParser:
         
         JSON à réparer:
         ```
-        {{ json_text }}
+        {content}
         ```
         
         JSON réparé:
         """
         
-        # Créer un template et le rendre avec les variables
-        template = Template.from_string(prompt_template)
-        prompt = template(json_text=content)
+        # Remplacer la variable content manuellement
+        prompt = prompt_template.replace("{content}", content)
         
         # Générer un JSON valide en utilisant Outlines
         # Utiliser le parser JSON pour contraindre le format de sortie
@@ -158,13 +181,12 @@ class OutlinesJsonParser:
         Extrayez les données structurées du texte JSON suivant selon le schéma fourni:
         
         ```
-        {{ json_text }}
+        {content}
         ```
         """
         
-        # Créer un template et le rendre avec les variables
-        template = Template.from_string(prompt_template)
-        prompt = template(json_text=content)
+        # Remplacer la variable content manuellement
+        prompt = prompt_template.replace("{content}", content)
         
         try:
             # Convertir le dictionnaire de schéma en chaîne JSON
@@ -223,20 +245,19 @@ class OutlinesJsonParser:
             }
         }
         
-        # Configuration du prompt pour NER avec Template
+        # Configuration du prompt pour NER
         ner_prompt_template = """
         Vous êtes un expert en extraction d'entités nommées (personnes et organisations). 
         Votre tâche est d'identifier toutes les personnes et organisations mentionnées dans le texte.
         
         Extrayez les noms de personnes et d'organisations du texte suivant:
         
-        {{ text }}
+        {text}
         """
         
         try:
-            # Créer un template et le rendre avec les variables
-            template = Template.from_string(ner_prompt_template)
-            prompt = template(text=text[:2000])  # Limiter à 2000 caractères
+            # Remplacer la variable text manuellement
+            prompt = ner_prompt_template.replace("{text}", text[:2000])  # Limiter à 2000 caractères
             
             # Convertir le schéma en JSON
             ner_schema_str = json.dumps(ner_schema)
@@ -248,12 +269,11 @@ class OutlinesJsonParser:
             # Ajouter les entités extraites par LLM
             entities["persons"] = ner_result.get("persons", [])
             entities["organizations"] = ner_result.get("organizations", [])
+            
+            return entities
         except Exception as e:
-            logger.warning(f"Erreur lors de l'extraction d'entités: {str(e)}")
-            entities["persons"] = []
-            entities["organizations"] = []
-        
-        return entities
+            logger.error(f"Erreur lors de l'extraction d'entités: {e}")
+            return entities
     
     def parse_json_file(self, file_path: str, llm_fallback: bool = False) -> Dict[str, Any]:
         """
@@ -277,26 +297,25 @@ class OutlinesJsonParser:
             except json.JSONDecodeError as e:
                 logger.warning(f"Erreur standard JSON: {str(e)}")
                 
-                # Tentative avec correction des erreurs courantes
-                try:
-                    # Appliquer des corrections simples
-                    corrected_content = escape_special_chars_in_strings(content)
-                    return json.loads(corrected_content)
-                except json.JSONDecodeError:
-                    # Si le fallback LLM est activé, utiliser Outlines
-                    if llm_fallback and self.model:
-                        logger.info("Tentative de réparation avec Outlines")
-                        repaired_json = self.repair_json_with_outlines(content)
-                        
-                        # Sauvegarder le JSON réparé
-                        repaired_path = f"{os.path.splitext(file_path)[0]}_repaired.json"
-                        with open(repaired_path, 'w', encoding='utf-8') as f:
-                            f.write(repaired_json)
-                            
-                        logger.info(f"JSON réparé sauvegardé dans {repaired_path}")
-                        return json.loads(repaired_json)
+                # Tentative de réparation
+                repaired_content = repair_json_content(content, use_outlines=llm_fallback)
+                
+                if repaired_content:
+                    # Sauvegarder le JSON réparé
+                    repaired_path = f"{os.path.splitext(file_path)[0]}_repaired.json"
+                    with open(repaired_path, 'w', encoding='utf-8') as f:
+                        f.write(repaired_content)
+                    
+                    logger.info(f"JSON réparé sauvegardé dans {repaired_path}")
+                    return json.loads(repaired_content)
+                else:
+                    # Si aucune méthode n'a fonctionné, essayer avec repairer_json_file
+                    if repair_json_file(file_path):
+                        # Le fichier a été réparé, le charger à nouveau
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            return json.loads(f.read())
                     else:
-                        raise
+                        raise JsonParsingException(f"Impossible de réparer le fichier JSON {file_path}")
         except Exception as e:
             logger.error(f"Erreur lors du parsing du fichier {file_path}: {str(e)}")
             raise JsonParsingException(f"Impossible de parser {file_path}: {str(e)}")
@@ -380,32 +399,115 @@ def get_outlines_status() -> Dict[str, Any]:
         
     return status
 
-if __name__ == "__main__":
-    # Test du parser avec un fichier spécifié en argument
-    import sys
+# Fonctions simples de test pour vérifier l'installation d'Outlines
+def test_outlines_installation():
+    """
+    Fonction simple pour tester si Outlines est correctement installé et configuré.
+    Affiche un diagnostic complet avec suggestions de résolution des problèmes.
+    """
+    print("=== Test d'installation d'Outlines ===")
     
-    if len(sys.argv) > 1:
-        input_file = sys.argv[1]
-        use_llm = "--llm" in sys.argv
-        
-        try:
-            result = outlines_robust_json_parser(input_file, llm_fallback=use_llm)
-            print(f"Parsing réussi! Structure racine: {type(result)}")
-            if isinstance(result, dict):
-                print(f"Clés: {list(result.keys())}")
-            elif isinstance(result, list):
-                print(f"Nombre d'éléments: {len(result)}")
-                
-            # Tester l'extraction d'entités
-            if isinstance(result, dict) and "content" in result:
-                text = result.get("content", {}).get("description", "")
-                if text:
-                    print("\nExtraction d'entités:")
-                    entities = extract_entities(text)
-                    for entity_type, items in entities.items():
-                        if items:
-                            print(f"{entity_type}: {items}")
-        except JsonParsingException as e:
-            print(f"Échec final: {e}")
+    # 1. Vérifier si le module outlines est importable
+    try:
+        import outlines
+        print(f"✅ Module Outlines importé avec succès (version: {getattr(outlines, '__version__', 'inconnue')})")
+    except ImportError as e:
+        print(f"❌ Impossible d'importer Outlines: {e}")
+        print("   - Solution: Installez Outlines avec 'pip install outlines==0.2.3'")
+        return False
+    
+    # 2. Vérifier si la clé API est configurée
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        print("✅ Clé API OpenAI trouvée dans les variables d'environnement")
     else:
-        print("Usage: python outlines_enhanced_parser.py <fichier_json> [--llm]") 
+        print("❌ Aucune clé API OpenAI trouvée")
+        print("   - Solution: Définissez la variable d'environnement OPENAI_API_KEY")
+        print("   - Ou ajoutez-la dans un fichier .env à la racine du projet")
+    
+    # 3. Vérifier si on peut initialiser un modèle simple
+    try:
+        model = outlines.models.openai("gpt-3.5-turbo", api_key=api_key)
+        print("✅ Modèle OpenAI initialisé avec succès")
+    except Exception as e:
+        print(f"❌ Erreur lors de l'initialisation du modèle OpenAI: {e}")
+        print("   - Vérifiez que votre clé API est valide")
+        print("   - Vérifiez que le modèle spécifié est disponible sur votre compte")
+        return False
+    
+    # 4. Vérifier si on peut créer un template et générer du texte simple
+    try:
+        # Dans Outlines 0.2.3, Template n'est pas un attribut direct de outlines
+        # Utilisons la méthode de création de template via la classe prompts
+        prompt = "Dis bonjour en français."
+        # Utiliser la fonction text pour générer du texte simple
+        generator = outlines.generate.text(model)
+        result = generator(prompt)
+        print(f"✅ Génération de texte simple réussie: '{result[:30]}...'")
+    except Exception as e:
+        print(f"❌ Erreur lors de la génération de texte: {e}")
+        traceback.print_exc()
+        return False
+    
+    print("\n✅ Outlines est correctement installé et fonctionnel!")
+    return True
+
+# Point d'entrée pour tester l'installation
+if __name__ == "__main__":
+    test_outlines_installation()
+
+# Ajouter une fonction de réparation locale qui utilise d'abord Outlines, puis les méthodes alternatives
+def repair_json_content(content, use_outlines=True):
+    """
+    Réparer un contenu JSON en utilisant plusieurs méthodes
+    
+    Args:
+        content: Contenu JSON à réparer
+        use_outlines: Si True, essaie d'abord d'utiliser Outlines
+        
+    Returns:
+        Contenu JSON réparé ou None si échec
+    """
+    # Vérifier si le JSON est déjà valide
+    try:
+        json_obj = json.loads(content)
+        return content  # Déjà valide
+    except json.JSONDecodeError:
+        pass
+    
+    # 1. Essayer avec Outlines si disponible et demandé
+    if use_outlines and not USING_STUB and openai_api_key:
+        try:
+            parser = OutlinesJsonParser()
+            if parser.model:
+                repaired = parser.repair_json_with_outlines(content)
+                try:
+                    # Vérifier que le résultat est valide
+                    json.loads(repaired)
+                    logger.info("JSON réparé avec succès en utilisant Outlines")
+                    return repaired
+                except json.JSONDecodeError:
+                    logger.warning("Échec de la réparation avec Outlines, essai des méthodes alternatives")
+        except Exception as e:
+            logger.warning(f"Erreur lors de l'utilisation d'Outlines: {e}")
+    
+    # 2. Essayer avec nos fonctions de réparation
+    try:
+        # Appliquer les corrections
+        fixed_content = content
+        fixed_content = escape_special_chars_in_strings(fixed_content)
+        fixed_content = fix_unclosed_strings(fixed_content)
+        fixed_content = fix_missing_quotes_around_property_names(fixed_content)
+        fixed_content = fix_trailing_commas(fixed_content)
+        
+        # Vérifier que le résultat est valide
+        try:
+            json.loads(fixed_content)
+            logger.info("JSON réparé avec succès en utilisant les méthodes alternatives")
+            return fixed_content
+        except json.JSONDecodeError as e:
+            logger.warning(f"Échec de la réparation avec les méthodes alternatives: {e}")
+    except Exception as e:
+        logger.warning(f"Erreur lors de la réparation: {e}")
+    
+    return None  # Échec de toutes les méthodes 

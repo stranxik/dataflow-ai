@@ -106,7 +106,24 @@ def find_mentions(jira_tickets, confluence_pages):
     # Pour chaque page Confluence
     for page in confluence_pages:
         # Chercher des mentions de tickets JIRA dans le titre et le contenu
-        page_text = page["title"] + " " + page["content"]["markdown"]
+        # Gérer les différentes structures possibles de données Confluence
+        title = page.get("title", "")
+        if not title and "content" in page:
+            title = page["content"].get("title", "")
+        
+        content_text = ""
+        if isinstance(page.get("content"), dict):
+            # Nouvelle structure (content est un dict avec markdown)
+            content_text = page["content"].get("markdown", "")
+            if not content_text and "description" in page["content"]:
+                content_text = page["content"].get("description", "")
+        elif isinstance(page.get("content"), str):
+            # Ancienne structure (content est directement une chaîne)
+            content_text = page.get("content", "")
+        
+        # Combiner titre et contenu pour la recherche
+        page_text = f"{title} {content_text}"
+        
         jira_ids = extract_jira_ids_from_text(page_text)
         
         # Pour chaque ID de ticket trouvé
@@ -129,15 +146,40 @@ def find_keyword_matches(jira_tickets, confluence_pages, min_similarity=0.2):
     # Préparer les mots-clés des tickets JIRA
     jira_keywords = {}
     for ticket in jira_tickets:
+        # Gérer les différentes structures possibles
+        title = ""
+        description = ""
+        
+        if "content" in ticket:
+            if isinstance(ticket["content"], dict):
+                title = ticket["content"].get("title", "")
+                description = ticket["content"].get("description", "")
+            elif isinstance(ticket["content"], str):
+                description = ticket["content"]
+        
         # Combiner le titre et la description pour obtenir plus de mots-clés
-        text = ticket["content"]["title"] + " " + ticket["content"]["description"]
+        text = f"{title} {description}"
         jira_keywords[ticket["id"]] = text_to_words(text)
     
     # Préparer les mots-clés des pages Confluence
     confluence_keywords = {}
     for page in confluence_pages:
-        # Combiner le titre et le contenu markdown
-        text = page["title"] + " " + page["content"]["markdown"]
+        # Gérer les différentes structures possibles
+        title = page.get("title", "")
+        if not title and "content" in page:
+            title = page["content"].get("title", "")
+        
+        content_text = ""
+        if "content" in page:
+            if isinstance(page["content"], dict):
+                content_text = page["content"].get("markdown", "")
+                if not content_text and "description" in page["content"]:
+                    content_text = page["content"].get("description", "")
+            elif isinstance(page["content"], str):
+                content_text = page["content"]
+        
+        # Combiner le titre et le contenu
+        text = f"{title} {content_text}"
         confluence_keywords[page["id"]] = text_to_words(text)
     
     # Calculer la similarité entre chaque paire de tickets JIRA et pages Confluence
@@ -368,17 +410,33 @@ def main():
     if args.output_dir and not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
     
-    # Charger les fichiers
-    jira_data = load_json_file(args.jira, llm_fallback=args.llm, model=args.model)
-    confluence_data = load_json_file(args.confluence, llm_fallback=args.llm, model=args.model)
+    # Utiliser notre processeur JSON générique pour charger les fichiers
+    from generic_json_processor import GenericJsonProcessor
     
-    if not jira_data or not confluence_data:
-        print("Erreur lors du chargement des fichiers.")
+    processor = GenericJsonProcessor(use_llm_fallback=args.llm, llm_model=args.model)
+    
+    # Charger les fichiers
+    try:
+        jira_data = processor.load_file(args.jira)
+        if not jira_data:
+            print(f"Erreur lors du chargement du fichier JIRA: {args.jira}")
+            return
+    except Exception as e:
+        print(f"Erreur lors du chargement du fichier JIRA: {e}")
+        return
+        
+    try:
+        confluence_data = processor.load_file(args.confluence)
+        if not confluence_data:
+            print(f"Erreur lors du chargement du fichier Confluence: {args.confluence}")
+            return
+    except Exception as e:
+        print(f"Erreur lors du chargement du fichier Confluence: {e}")
         return
     
-    # Extraire les éléments
-    jira_items = jira_data.get("items", [])
-    confluence_items = confluence_data.get("items", [])
+    # Extraire les éléments, quelle que soit la structure initiale
+    jira_items = processor.extract_items(jira_data)
+    confluence_items = processor.extract_items(confluence_data)
     
     print(f"Tickets JIRA chargés: {len(jira_items)}")
     print(f"Pages Confluence chargées: {len(confluence_items)}")
@@ -389,25 +447,45 @@ def main():
     )
     
     # Construire les chemins de sortie complets
-    output_path = os.path.join(args.output_dir, args.output)
-    updated_jira_path = os.path.join(args.output_dir, args.updated_jira)
-    updated_confluence_path = os.path.join(args.output_dir, args.updated_confluence)
+    # Éviter la duplication "results/results/" en normalisant les chemins
+    output_path = args.output
+    updated_jira_path = args.updated_jira
+    updated_confluence_path = args.updated_confluence
     
-    # Sauvegarder les résultats
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(matches, f, indent=2, ensure_ascii=False)
+    # Si les chemins ne sont pas absolus, les combiner avec le répertoire de sortie
+    if not os.path.isabs(output_path):
+        output_path = os.path.join(args.output_dir, output_path)
+    if not os.path.isabs(updated_jira_path):
+        updated_jira_path = os.path.join(args.output_dir, updated_jira_path)
+    if not os.path.isabs(updated_confluence_path):
+        updated_confluence_path = os.path.join(args.output_dir, updated_confluence_path)
     
-    with open(updated_jira_path, 'w', encoding='utf-8') as f:
-        json.dump({
-            "items": jira_with_matches,
-            "metadata": jira_data.get("metadata", {})
-        }, f, indent=2, ensure_ascii=False)
+    # Normaliser les chemins pour éviter les doublons (results/results/)
+    output_path = os.path.normpath(output_path)
+    updated_jira_path = os.path.normpath(updated_jira_path)
+    updated_confluence_path = os.path.normpath(updated_confluence_path)
     
-    with open(updated_confluence_path, 'w', encoding='utf-8') as f:
-        json.dump({
-            "items": confluence_with_matches,
-            "metadata": confluence_data.get("metadata", {})
-        }, f, indent=2, ensure_ascii=False)
+    # Créer les répertoires nécessaires
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(updated_jira_path), exist_ok=True)
+    os.makedirs(os.path.dirname(updated_confluence_path), exist_ok=True)
+    
+    # Sauvegarder les résultats en utilisant notre processeur
+    processor.save_as_json(matches, output_path)
+    
+    # Créer les structures standardisées pour les fichiers avec matches
+    jira_with_matches_data = {
+        "items": jira_with_matches,
+        "metadata": jira_data.get("metadata", {})
+    }
+    
+    confluence_with_matches_data = {
+        "items": confluence_with_matches,
+        "metadata": confluence_data.get("metadata", {})
+    }
+    
+    processor.save_as_json(jira_with_matches_data, updated_jira_path)
+    processor.save_as_json(confluence_with_matches_data, updated_confluence_path)
     
     print(f"\nMatches trouvés: {len(matches)}")
     print(f"Résultats sauvegardés dans:")
@@ -416,6 +494,7 @@ def main():
     print(f"- {updated_confluence_path}")
 
     # Générer l'arborescence du répertoire de sortie
+    from generic_json_processor import write_tree
     arborescence_file = os.path.join(args.output_dir, "matches_arborescence.txt")
     write_tree(args.output_dir, os.path.basename(arborescence_file))
     print(f"\nArborescence générée dans {arborescence_file}")

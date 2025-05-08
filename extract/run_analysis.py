@@ -16,6 +16,16 @@ import argparse
 import json
 from datetime import datetime
 
+# Ajouter l'import pour le résumé LLM
+try:
+    from llm_summary import generate_llm_summary
+except ImportError:
+    try:
+        from extract.llm_summary import generate_llm_summary 
+    except ImportError:
+        generate_llm_summary = None
+        print("⚠️ Module llm_summary non trouvé, la génération de résumés LLM est désactivée")
+
 def ensure_deps():
     """S'assurer que toutes les dépendances sont installées"""
     deps = ["ijson", "tqdm", "openai"]
@@ -162,6 +172,23 @@ def main():
                 [sys.executable, temp_file],
                 "Analyse avec OpenAI"
             )
+            
+            # Générer un résumé des enrichissements LLM si disponible
+            if generate_llm_summary is not None:
+                try:
+                    # Charger les données transformées
+                    with open(transform_output, 'r', encoding='utf-8') as f:
+                        processed_data = json.load(f)
+                    
+                    # Générer le résumé
+                    summary_file = generate_llm_summary(
+                        args.output_dir,
+                        data=processed_data,
+                        filename="jira_llm_enrichment_summary.md"
+                    )
+                    print(f"✅ Résumé de l'enrichissement LLM généré: {summary_file}")
+                except Exception as e:
+                    print(f"⚠️ Impossible de générer le résumé LLM: {e}")
     
     # Fin de l'exécution
     with open(log_file, 'a') as log:
@@ -174,6 +201,8 @@ def main():
     print(f"Données transformées pour LLM: {transform_output}")
     if args.with_openai:
         print(f"Analyse OpenAI: {os.path.join(os.getcwd(), 'jira_structure_analysis.txt')}")
+        if generate_llm_summary is not None:
+            print(f"Résumé de l'enrichissement LLM: {os.path.join(args.output_dir, 'jira_llm_enrichment_summary.md')}")
 
 if __name__ == "__main__":
     main() 

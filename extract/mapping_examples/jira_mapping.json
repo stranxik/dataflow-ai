@@ -1,38 +1,23 @@
 {
   "id": "key",
-  "title": "title",
+  "title": "summary",
   "content": {
-    "field": "description",
-    "transform": "clean_text"
-  },
-  "summary": ["summary", "title"],
-  "detailed_description": {
-    "field": "description",
-    "transform": "clean_text"
+    "description": "description",
+    "comments": "comments"
   },
   "metadata": {
     "created_by": "reporter",
     "created_at": "created",
     "updated_at": "updated",
     "status": "status",
-    "resolution": "resolution",
-    "priority": "priority"
+    "type": "issuetype.name"
   },
-  "comments_text": {
-    "field": "comments",
-    "transform": "clean_text"
+  "analysis": {
+    "keywords": "auto",
+    "entities": "auto"
   },
-  "ticket_type": "issuetype.name",
-  "project": "project.key",
-  "assignee": ["assignee.displayName", "assignee.name"],
-  "components": "components.*.name",
-  "labels": "labels",
-  "keywords": {
-    "field": "description",
-    "transform": "extract_keywords"
-  },
-  "entities": {
-    "field": "description",
-    "transform": "detect_entities"
+  "relationships": {
+    "confluence_links": [],
+    "related_issues": "issuelinks"
   }
 } 
