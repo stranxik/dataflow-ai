@@ -1,5 +1,6 @@
 # Marquer tous les fichiers JSON volumineux comme binary pour que Git ne les analyse pas
-*.json filter=lfs diff=lfs merge=lfs -text
+# Commentés pour désactiver Git LFS
+# *.json filter=lfs diff=lfs merge=lfs -text
 tests/test_data/*.json binary
 files/*.json binary
 results/*/*.json binary 

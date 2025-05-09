@@ -1,161 +1,163 @@
-# JSON Processor & CLI pour Llamendex - Extraction et analyse robuste de données structurées
+# JSON Processor & CLI for Llamendex - Robust extraction and analysis of structured data
 
 ![Version](https://img.shields.io/badge/version-1.0-blue) ![Python](https://img.shields.io/badge/Python-3.8%2B-green) ![License](https://img.shields.io/badge/license-MIT-orange)
 
-## 📑 Sommaire
+> 🌐 [Version française disponible ici](README.fr.md)
+
+## 📑 Table of Contents
 
 - [Introduction](#-introduction)
-- [Vue d'ensemble](#-vue-densemble)
-- [Guide de référence rapide](#-guide-de-référence-rapide)
-- [Fonctionnalités principales](#-fonctionnalités-principales)
+- [Overview](#-overview)
+- [Quick Reference Guide](#-quick-reference-guide)
+- [Main Features](#-main-features)
 - [Installation](#️-installation)
-- [Guide d'utilisation rapide](#-guide-dutilisation-rapide)
-- [Organisation des résultats](#-organisation-des-résultats)
-- [Résumés LLM automatiques](#-résumés-llm-automatiques)
-- [Approche flexible et générique](#-approche-flexible-et-générique)
-- [Système de fallback robuste](#-système-de-fallback-robuste)
-- [Utilitaires](#️-utilitaires)
-- [Extension du système](#-extension-du-système)
-- [Intégration avec Temporal et Llamendex](#-intégration-avec-temporal-et-llamendex)
-- [Format pour Llamendex](#-format-pour-llamendex)
-- [Sécurité](#-sécurité)
-- [Dépendances](#️-dépendances)
-- [Licence](#-licence)
+- [Quick Start Guide](#-quick-start-guide)
+- [Results Organization](#-results-organization)
+- [Automatic LLM Summaries](#-automatic-llm-summaries)
+- [Flexible and Generic Approach](#-flexible-and-generic-approach)
+- [Robust Fallback System](#-robust-fallback-system)
+- [Utilities](#️-utilities)
+- [Extending the System](#-extending-the-system)
+- [Integration with Temporal and Llamendex](#-integration-with-temporal-and-llamendex)
+- [Llamendex Format](#-llamendex-format)
+- [Security](#-security)
+- [Dependencies](#️-dependencies)
+- [License](#-license)
 
 ## 🔍 Introduction
 
-Ce projet est une solution complète pour traiter, analyser et transformer des fichiers JSON provenant de différentes sources (JIRA, Confluence, GitHub, etc.) en préparation pour l'indexation dans Llamendex ou tout autre système RAG moderne.
+This project is a complete solution for processing, analyzing, and transforming JSON files from different sources (JIRA, Confluence, GitHub, etc.) in preparation for indexing in Llamendex or any other modern RAG system.
 
-La particularité de cette solution réside dans sa capacité à **s'adapter automatiquement à n'importe quelle structure JSON** et à garantir un traitement robuste des fichiers, même en présence d'erreurs ou d'incohérences. Contrairement aux outils génériques de traitement JSON, notre solution allie:
+The uniqueness of this solution lies in its ability to **automatically adapt to any JSON structure** and ensure robust file processing, even in the presence of errors or inconsistencies. Unlike generic JSON processing tools, our solution combines:
 
-- **Détection intelligente** de la structure des données
-- **Préservation des fichiers sources** (jamais modifiés directement)
-- **Enrichissement sémantique par LLM** avec Outlines
-- **Rapports détaillés** générés automatiquement
-- **Correction automatique** des erreurs de syntaxe JSON
-- **Interface CLI interactive** et accessible
+- **Intelligent detection** of data structure
+- **Preservation of source files** (never directly modified)
+- **Semantic enrichment via LLM** with Outlines
+- **Detailed reports** automatically generated
+- **Automatic correction** of JSON syntax errors
+- **Interactive and accessible CLI interface**
 
-> 💡 **NOUVEAU!** Intégration complète des outils de sécurité et de nettoyage des données sensibles directement dans l'interface CLI et dans les processeurs JSON.
+> 💡 **NEW!** Complete integration of security tools and sensitive data cleaning directly in the CLI interface and JSON processors.
 
-### Pourquoi cette solution ?
+### Why this solution?
 
-Dans le développement de systèmes RAG (Retrieval Augmented Generation) comme Llamendex, l'ingestion de données de qualité est cruciale. Pourtant, nous faisons face à plusieurs défis concrets :
+In the development of RAG (Retrieval Augmented Generation) systems like Llamendex, quality data ingestion is crucial. Yet, we face several concrete challenges:
 
-1. **Hétérogénéité des sources** : Chaque système (JIRA, Confluence, GitHub) exporte des structures JSON différentes
-2. **Fichiers mal formés** : Les exports contiennent souvent des erreurs syntaxiques ou structurelles
-3. **Volumes importants** : Les exports peuvent atteindre plusieurs gigaoctets, dépassant les capacités de traitement standard
-4. **Perte de contexte** : L'enrichissement manuel des données est chronophage et inconsistant
-5. **Absence de correspondances** : Les liens entre tickets JIRA et pages Confluence sont souvent perdus
+1. **Heterogeneity of sources**: Each system (JIRA, Confluence, GitHub) exports different JSON structures
+2. **Malformed files**: Exports often contain syntactic or structural errors
+3. **Large volumes**: Exports can reach several gigabytes, exceeding standard processing capabilities
+4. **Loss of context**: Manual data enrichment is time-consuming and inconsistent
+5. **Absence of correspondences**: Links between JIRA tickets and Confluence pages are often lost
 
-Notre solution répond à ces défis en proposant un pipeline complet et robuste qui :
-- Détecte et répare automatiquement les problèmes de structure
-- Standardise les données dans un format optimal pour les systèmes RAG
-- Enrichit le contenu grâce à des LLM pour améliorer la recherche sémantique
-- Établit des correspondances entre différentes sources de données
-- Génère automatiquement des résumés et analyses pour faciliter l'ingestion
+Our solution addresses these challenges by proposing a complete and robust pipeline that:
+- Automatically detects and repairs structural problems
+- Standardizes data in an optimal format for RAG systems
+- Enriches content using LLMs to improve semantic search
+- Establishes correspondences between different data sources
+- Automatically generates summaries and analyses to facilitate ingestion
 
-De plus, contrairement aux outils ETL génériques ou aux solutions de traitement tabulaire comme pandas, notre solution est spécifiquement conçue pour préparer des données textuelles riches pour les systèmes de RAG, avec une attention particulière à la préservation du contexte et à l'enrichissement sémantique.
+Moreover, unlike generic ETL tools or tabular processing solutions like pandas, our solution is specifically designed to prepare rich textual data for RAG systems, with particular attention to context preservation and semantic enrichment.
 
-## 🎯 Vue d'ensemble
+## 🎯 Overview
 
-Le projet se compose de trois modules principaux :
-- **CLI** : Interface en ligne de commande interactive et puissante pour toutes les opérations
-- **Extract** : Moteur de traitement flexible pour l'analyse et la transformation des données
-- **Tools** : Utilitaires pour résoudre des problèmes spécifiques (nettoyage, validation)
+The project consists of three main modules:
+- **CLI**: Interactive and powerful command-line interface for all operations
+- **Extract**: Flexible processing engine for data analysis and transformation
+- **Tools**: Utilities to solve specific problems (cleaning, validation)
 
-<!-- DÉBUT ENCART DE RÉFÉRENCE RAPIDE -->
+<!-- START QUICK REFERENCE SECTION -->
 <div align="center">
 
-## 📋 Guide de référence rapide
+## 📋 Quick Reference Guide
 
 </div>
 
-| Commande | Description | Exemple |
+| Command | Description | Example |
 |---------|-------------|---------|
-| `interactive` | **Mode interactif** avec assistant guidé | `python -m cli.cli interactive` |
-| `process` | **Traiter** un fichier JSON | `python -m cli.cli process fichier.json --llm` |
-| `chunks` | **Découper** un fichier volumineux | `python -m cli.cli chunks gros_fichier.json --items-per-file 500` |
-| `match` | **Correspondances** JIRA-Confluence | `python -m cli.cli match jira.json confluence.json` |
-| `unified` | **Flux complet** de traitement | `python -m cli.cli unified jira1.json jira2.json --confluence conf1.json` |
-| `clean` | **Nettoyer** les données sensibles | `python -m cli.cli clean fichier.json --recursive` |
+| `interactive` | **Interactive mode** with guided assistant | `python -m cli.cli interactive` |
+| `process` | **Process** a JSON file | `python -m cli.cli process file.json --llm` |
+| `chunks` | **Split** a large file | `python -m cli.cli chunks large_file.json --items-per-file 500` |
+| `match` | **Match** JIRA-Confluence | `python -m cli.cli match jira.json confluence.json` |
+| `unified` | **Complete flow** processing | `python -m cli.cli unified jira1.json jira2.json --confluence conf1.json` |
+| `clean` | **Clean** sensitive data | `python -m cli.cli clean file.json --recursive` |
 
 <div align="center">
 
-### 🛠️ Outils indépendants
+### 🛠️ Independent Tools
 
 </div>
 
-| Outil | Description | Exemple |
+| Tool | Description | Example |
 |-------|-------------|---------|
-| `check_json.py` | **Vérifier** la validité des fichiers JSON | `python -m tools.check_json fichier.json` |
-| `clean_sensitive_data.py` | **Nettoyer** les données sensibles | `python -m tools.clean_sensitive_data fichier.json` |
-| `fix_paths.py` | **Réparer** les chemins et les fichiers | `python -m tools.fix_paths --all --source-dir=files` |
+| `check_json.py` | **Check** JSON file validity | `python -m tools.check_json file.json` |
+| `clean_sensitive_data.py` | **Clean** sensitive data | `python -m tools.clean_sensitive_data file.json` |
+| `fix_paths.py` | **Repair** paths and files | `python -m tools.fix_paths --all --source-dir=files` |
 
-<!-- FIN ENCART DE RÉFÉRENCE RAPIDE -->
+<!-- END QUICK REFERENCE SECTION -->
 
-## 🎯 Fonctionnalités principales
+## 🎯 Main Features
 
-- **Détection automatique** de type de fichier (JIRA, Confluence, GitHub)
-- **Transformation flexible** via des mappings personnalisables
-- **Mode interactif complet** avec assistant guidé pour toutes les opérations
-- **Découpage et traitement** de fichiers volumineux
-- **Extraction de métadonnées** structurées
-- **Établissement de correspondances** entre différentes sources
-- **Extraction structurée avec Outlines** pour une génération contrainte par schéma
-- **Enrichissement par LLM** (OpenAI) pour l'analyse sémantique
-- **Arborescences détaillées** du contenu de chaque fichier traité
-- **Organisation automatique** des résultats avec timestamps uniques
-- **Résumés LLM générés automatiquement** pour chaque traitement
-- **Gestion robuste des erreurs** avec différents niveaux de fallback
+- **Automatic detection** of file type (JIRA, Confluence, GitHub)
+- **Flexible transformation** via customizable mappings
+- **Complete interactive mode** with guided assistant for all operations
+- **Splitting and processing** of large files
+- **Structured metadata extraction**
+- **Establishing correspondences** between different sources
+- **Structured extraction with Outlines** for schema-constrained generation
+- **LLM enrichment** (OpenAI) for semantic analysis
+- **Detailed trees** of the content of each processed file
+- **Automatic organization** of results with unique timestamps
+- **Automatically generated LLM summaries** for each processing
+- **Robust error handling** with different fallback levels
 
 ## ⚙️ Installation
 
-1. Clonez ce dépôt et accédez au dossier
-2. Créez un fichier `.env` en copiant `.env.example`
-3. Installez les dépendances :
+1. Clone this repository and access the folder
+2. Create a `.env` file by copying `.env.example`
+3. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### ⚠️ Exigences Python pour Outlines
+### ⚠️ Python Requirements for Outlines
 
-**IMPORTANT**: Outlines 0.2.3 requiert **Python 3.12** spécifiquement. Il est fortement recommandé de créer un environnement virtuel dédié:
+**IMPORTANT**: Outlines 0.2.3 specifically requires **Python 3.12**. It is strongly recommended to create a dedicated virtual environment:
 
 ```bash
-# Créer un environnement virtuel avec Python 3.12
+# Create a virtual environment with Python 3.12
 python3.12 -m venv venv_outlines
 
-# Activer l'environnement
+# Activate the environment
 source venv_outlines/bin/activate  # Linux/Mac
 venv_outlines\Scripts\activate     # Windows
 
-# Installer les dépendances
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-Les versions plus récentes de Python (3.13+) ne sont pas compatibles avec Outlines 0.2.3, et les fonctionnalités LLM ne fonctionneront pas correctement sans cet environnement spécifique.
+More recent versions of Python (3.13+) are not compatible with Outlines 0.2.3, and LLM functionalities will not work correctly without this specific environment.
 
-### Configuration d'Outlines (optionnelle)
+### Outlines Configuration (optional)
 
-Le système utilise la bibliothèque [Outlines](https://github.com/dottxt/outlines) (v0.2.3) pour l'extraction structurée de données. Deux modes de fonctionnement sont disponibles :
+The system uses the [Outlines](https://github.com/dottxt/outlines) library (v0.2.3) for structured data extraction. Two modes of operation are available:
 
-1. **Mode complet** : Avec la bibliothèque Outlines installée et une clé API OpenAI
-2. **Mode stub** : Fonctionnement dégradé sans Outlines ou sans clé API
+1. **Full mode**: With the Outlines library installed and an OpenAI API key
+2. **Stub mode**: Degraded operation without Outlines or without an API key
 
-Le système détecte automatiquement la configuration disponible et s'adapte en conséquence. Pour vérifier votre installation :
+The system automatically detects the available configuration and adapts accordingly. To verify your installation:
 
 ```bash
 python -m tests.test_outlines_integration
 ```
 
-## 📖 Guide d'utilisation rapide
+## 📖 Quick Start Guide
 
 <div class="command-box">
 
-### 🔍 Mode interactif (recommandé)
+### 🔍 Interactive Mode (recommended)
 
-Lancez l'assistant complet qui vous guide étape par étape :
+Launch the complete assistant that guides you step by step:
 
 ```bash
 python -m cli.cli interactive
@@ -165,236 +167,236 @@ python -m cli.cli interactive
 
 <div class="command-box">
 
-### 📄 Traitement de fichiers JSON
+### 📄 Processing JSON Files
 
 ```bash
-python -m cli.cli process mon_fichier.json --output resultat.json
+python -m cli.cli process my_file.json --output result.json
 ```
 
-#### Avec enrichissement LLM et préservation des sources
+#### With LLM enrichment and source preservation
 
 ```bash
-python -m cli.cli process mon_fichier.json --llm --preserve-source
-```
-
-</div>
-
-<div class="command-box">
-
-### 🔪 Découpage de fichiers volumineux
-
-```bash
-python -m cli.cli chunks mon_gros_fichier.json --output-dir dossier_morceaux --items-per-file 500
+python -m cli.cli process my_file.json --llm --preserve-source
 ```
 
 </div>
 
 <div class="command-box">
 
-### 🔗 Correspondances entre JIRA et Confluence
+### 🔪 Splitting Large Files
 
 ```bash
-python -m cli.cli match jira_processed.json confluence_processed.json --output-dir resultats_match
+python -m cli.cli chunks my_large_file.json --output-dir chunks_folder --items-per-file 500
 ```
 
 </div>
 
 <div class="command-box">
 
-### 🚀 Flux de traitement complet
+### 🔗 Matching JIRA and Confluence
 
 ```bash
-python -m cli.cli unified jira1.json jira2.json --confluence conf1.json conf2.json --output-dir resultats_complets
+python -m cli.cli match jira_processed.json confluence_processed.json --output-dir match_results
 ```
 
 </div>
 
 <div class="command-box">
 
-### 🧹 Nettoyage des données sensibles
+### 🚀 Complete Processing Flow
 
 ```bash
-python -m cli.cli clean fichier.json --output fichier_propre.json
+python -m cli.cli unified jira1.json jira2.json --confluence conf1.json conf2.json --output-dir complete_results
 ```
 
 </div>
 
-## 📊 Organisation des résultats
+<div class="command-box">
 
-Tous les résultats sont organisés dans le dossier `results/` avec une structure claire :
+### 🧹 Cleaning Sensitive Data
+
+```bash
+python -m cli.cli clean file.json --output clean_file.json
+```
+
+</div>
+
+## 📊 Results Organization
+
+All results are organized in the `results/` folder with a clear structure:
 
 ```
 results/
-├── jira_confluence_2023-08-30-14-22-55/     # Dossier d'une exécution unified
-│   ├── jira/                               # Sous-dossier pour les fichiers JIRA
-│   ├── confluence/                         # Sous-dossier pour les fichiers Confluence
-│   ├── matches/                            # Sous-dossier pour les correspondances
-│   ├── split_jira_files/                   # Fichiers JIRA découpés
-│   ├── split_confluence_files/             # Fichiers Confluence découpés
-│   ├── llm_ready/                          # Fichiers prêts pour LLM
-│   │   ├── enriched_jira.json              # JIRA enrichi avec LLM
-│   │   ├── enriched_confluence.json        # Confluence enrichi avec LLM
-│   │   ├── jira_llm_enrichment_summary.md  # Résumé LLM pour JIRA
-│   │   └── confluence_llm_enrichment_summary.md # Résumé LLM pour Confluence
-│   ├── global_arborescence.txt             # Arborescence globale
+├── jira_confluence_2023-08-30-14-22-55/     # Folder for a unified execution
+│   ├── jira/                               # Subfolder for JIRA files
+│   ├── confluence/                         # Subfolder for Confluence files
+│   ├── matches/                            # Subfolder for matches
+│   ├── split_jira_files/                   # Split JIRA files
+│   ├── split_confluence_files/             # Split Confluence files
+│   ├── llm_ready/                          # Files ready for LLM
+│   │   ├── enriched_jira.json              # JIRA enriched with LLM
+│   │   ├── enriched_confluence.json        # Confluence enriched with LLM
+│   │   ├── jira_llm_enrichment_summary.md  # LLM summary for JIRA
+│   │   └── confluence_llm_enrichment_summary.md # LLM summary for Confluence
+│   ├── global_arborescence.txt             # Global tree structure
 │   └── ...
 ```
 
-## 🧠 Résumés LLM automatiques
+## 🧠 Automatic LLM Summaries
 
-> 📝 **Fonctionnalité avancée**: Pour chaque traitement utilisant un LLM, un rapport de résumé est automatiquement généré au format Markdown.
+> 📝 **Advanced feature**: For each processing using an LLM, a summary report is automatically generated in Markdown format.
 
-> 💡 **NOUVEAU!** Notre module `outlines_enricher.py` enrichit désormais chaque élément JSON (tickets JIRA/pages Confluence) avec des analyses LLM avancées. Pour chaque élément, il extrait le contenu textuel (titre, description, commentaires), l'envoie à l'API OpenAI (GPT-4-0125-preview), et récupère une analyse structurée contenant: un résumé concis (150 mots max), 5-10 mots-clés importants, les entités identifiées (personnes, organisations, termes techniques) et le sentiment général. Ces données sont ajoutées sous la clé `analysis` avec les sous-champs `llm_summary`, `llm_keywords`, `llm_entities` et `llm_sentiment`. Le module adapte automatiquement différentes structures JSON pour assurer une liste `items` correcte avant traitement.
+> 💡 **NEW!** Our `outlines_enricher.py` module now enriches each JSON element (JIRA tickets/Confluence pages) with advanced LLM analyses. For each element, it extracts textual content (title, description, comments), sends it to the OpenAI API (GPT-4-0125-preview), and retrieves a structured analysis containing: a concise summary (150 words max), 5-10 important keywords, identified entities (people, organizations, technical terms) and general sentiment. This data is added under the `analysis` key with the sub-fields `llm_summary`, `llm_keywords`, `llm_entities` and `llm_sentiment`. The module automatically adapts different JSON structures to ensure a correct `items` list before processing.
 
-Exemple de résumé généré:
+Example of a generated summary:
 
 <details>
-<summary>👉 Voir un exemple de résumé LLM (cliquez pour développer)</summary>
+<summary>👉 See an example of an LLM summary (click to expand)</summary>
 
 ```markdown
-# Résumé de l'enrichissement LLM
+# LLM Enrichment Summary
 
-## Informations générales
-- Date d'analyse: 2025-05-08 23:34:37
-- Nombre total d'éléments analysés: 42
-- Modèle LLM utilisé: gpt-4
+## General Information
+- Analysis date: 2025-05-08 23:34:37
+- Total number of elements analyzed: 42
+- LLM model used: gpt-4
 
-## Analyse
-### Mots-clés principaux extraits
-projet, développement, API, backend, utilisateur, interface, base de données
+## Analysis
+### Main extracted keywords
+project, development, API, backend, user, interface, database
 
-### Distribution des sentiments
+### Sentiment distribution
 {'positive': 12, 'neutral': 25, 'negative': 5}
 
-### Exemple d'enrichissement
-**Ticket**: PROJ-123 - Implémentation de l'authentification OAuth2
-**Résumé LLM**: Ce ticket concerne l'intégration du protocole OAuth2 pour sécuriser l'API...
+### Enrichment example
+**Ticket**: PROJ-123 - OAuth2 Authentication Implementation
+**LLM Summary**: This ticket concerns the integration of the OAuth2 protocol to secure the API...
 ```
 
 </details>
 
-Ces résumés permettent:
-1. Une vue d'ensemble rapide du contenu traité
-2. L'extraction des principaux thèmes et sentiments
-3. Des exemples concrets d'enrichissement LLM
-4. Une préparation optimale pour l'ingestion dans Llamendex
+These summaries allow:
+1. A quick overview of the processed content
+2. Extraction of main themes and sentiments
+3. Concrete examples of LLM enrichment
+4. Optimal preparation for ingestion into Llamendex
 
-## 🔍 Approche flexible et générique
+## 🔍 Flexible and Generic Approach
 
-L'approche adoptée permet de traiter n'importe quelle structure JSON, grâce à :
+The adopted approach allows processing any JSON structure, thanks to:
 
-1. **Détection automatique de structure** : Analyse des champs importants
-2. **Mappers personnalisables** : Adaptation à n'importe quel format
-3. **Traitement par morceaux** : Gestion efficace de fichiers volumineux
-4. **Transformation flexible** : Structure de sortie adaptable
-5. **Préservation des sources** : Travail uniquement sur des copies
+1. **Automatic structure detection**: Analysis of important fields
+2. **Customizable mappers**: Adaptation to any format
+3. **Chunk processing**: Efficient handling of large files
+4. **Flexible transformation**: Adaptable output structure
+5. **Source preservation**: Working only on copies
 
-## 💡 Système de fallback robuste
+## 💡 Robust Fallback System
 
-Notre solution est conçue pour fonctionner dans différents environnements, grâce à un système de fallback à plusieurs niveaux :
+Our solution is designed to work in different environments, thanks to a multi-level fallback system:
 
-| Niveau | Configuration | Fonctionnalités |
+| Level | Configuration | Features |
 |--------|--------------|-----------------|
-| **1** | Outlines + OpenAI | Extraction structurée complète, réparation automatique |
-| **2** | Sans OpenAI | Mode dégradé d'Outlines, certaines fonctionnalités désactivées |
-| **3** | Sans Outlines | Utilisation de stubs internes imitant l'API d'Outlines |
-| **4** | Fallback standard | Parseur JSON standard en dernier recours |
+| **1** | Outlines + OpenAI | Complete structured extraction, automatic repair |
+| **2** | Without OpenAI | Degraded Outlines mode, certain features disabled |
+| **3** | Without Outlines | Use of internal stubs mimicking the Outlines API |
+| **4** | Standard fallback | Standard JSON parser as a last resort |
 
-Cette architecture garantit que le système reste opérationnel même sans connexion internet ou clé API.
+This architecture ensures that the system remains operational even without internet connection or API key.
 
-## 🛠️ Utilitaires
+## 🛠️ Utilities
 
-Le projet inclut des outils pratiques dans le dossier `tools/` :
+The project includes practical tools in the `tools/` folder:
 
-1. **check_json.py** : Vérifier la validité des fichiers JSON
+1. **check_json.py**: Check the validity of JSON files
    ```bash
-   python -m tools.check_json chemin/vers/fichier.json
+   python -m tools.check_json path/to/file.json
    ```
 
-2. **fix_paths.py** : Corriger les problèmes de chemins et réparer les fichiers JSON
+2. **fix_paths.py**: Fix path problems and repair JSON files
    ```bash
    python -m tools.fix_paths --all --source-dir=files --target-dir=results/fixed
    ```
 
-3. **clean_sensitive_data.py** : Nettoyer les données sensibles (clés API, emails, etc.)
+3. **clean_sensitive_data.py**: Clean sensitive data (API keys, emails, etc.)
    ```bash
-   python -m tools.clean_sensitive_data fichier.json --output fichier_clean.json
+   python -m tools.clean_sensitive_data file.json --output clean_file.json
    ```
 
-### Utilisation des outils dans le CLI
+### Using Tools in the CLI
 
-Les outils sont intégrés au CLI principal et peuvent être utilisés de manière interactive :
+The tools are integrated into the main CLI and can be used interactively:
 
 ```bash
-# Lancer le nettoyage des données sensibles via le CLI
-python -m cli.cli clean fichier.json --output fichier_clean.json
+# Launch sensitive data cleaning via CLI
+python -m cli.cli clean file.json --output clean_file.json
 
-# Utiliser le mode interactif
+# Use interactive mode
 python -m cli.cli interactive
-# Puis sélectionner "Nettoyer les données sensibles (clean)"
+# Then select "Clean sensitive data (clean)"
 ```
 
-### Intégration programmatique
+### Programmatic Integration
 
-Les outils peuvent également être importés et utilisés directement dans votre code :
+The tools can also be imported and used directly in your code:
 
 ```python
-# Vérifier la validité d'un fichier JSON
+# Check the validity of a JSON file
 from tools import validate_file
-is_valid, error_msg = validate_file("mon_fichier.json")
+is_valid, error_msg = validate_file("my_file.json")
 if not is_valid:
-    print(f"Erreur dans le fichier: {error_msg}")
+    print(f"Error in file: {error_msg}")
 
-# Nettoyer les données sensibles
+# Clean sensitive data
 from tools import clean_json_file
-clean_json_file("fichier_avec_api_keys.json", "fichier_securise.json")
+clean_json_file("file_with_api_keys.json", "secure_file.json")
 
-# Corriger les chemins dupliqués
+# Fix duplicate paths
 from tools import fix_duplicate_paths
-fix_duplicate_paths("dossier_résultats")
+fix_duplicate_paths("results_folder")
 ```
 
-Le traitement principal via `GenericJsonProcessor` intègre automatiquement ces outils pour vérifier la validité des fichiers JSON et nettoyer les données sensibles avant sauvegarde.
+The main processing via `GenericJsonProcessor` automatically integrates these tools to check the validity of JSON files and clean sensitive data before saving.
 
-## 🧩 Extension du système
+## 🧩 Extending the System
 
-### Créer vos propres mappers
+### Create Your Own Mappers
 
-Pour adapter la solution à de nouvelles sources :
+To adapt the solution to new sources:
 
 ```python
 from extract.generic_json_processor import GenericJsonProcessor
 
-def mon_mapper_personnalise(item):
-    # Transformer l'item selon vos besoins
+def my_custom_mapper(item):
+    # Transform the item according to your needs
     result = {
-        "id": item.get("identifiant", ""),
+        "id": item.get("identifier", ""),
         "content": {
-            "title": item.get("nom", ""),
-            "body": item.get("contenu", "")
+            "title": item.get("name", ""),
+            "body": item.get("content", "")
         },
         "metadata": {
-            "created_at": item.get("date_creation", ""),
+            "created_at": item.get("creation_date", ""),
             "type": item.get("type", "")
         }
     }
     return result
 
-# Créer le processeur avec votre mapper
-processor = GenericJsonProcessor(custom_mapper=mon_mapper_personnalise)
-processor.process_file("mon_fichier.json", "resultat.json")
+# Create the processor with your mapper
+processor = GenericJsonProcessor(custom_mapper=my_custom_mapper)
+processor.process_file("my_file.json", "result.json")
 ```
 
-### Utiliser Outlines pour l'extraction structurée
+### Use Outlines for Structured Extraction
 
 ```python
 from extract.outlines_enhanced_parser import outlines_robust_json_parser
 from extract.outlines_extractor import extract_structured_data
 
-# Parser un fichier JSON avec Outlines
-data = outlines_robust_json_parser("mon_fichier.json", llm_fallback=True)
+# Parse a JSON file with Outlines
+data = outlines_robust_json_parser("my_file.json", llm_fallback=True)
 
-# Extraire des données structurées selon un schéma
+# Extract structured data according to a schema
 schema = {
     "type": "object",
     "properties": {
@@ -408,39 +410,39 @@ schema = {
 result = extract_structured_data(text_content, schema)
 ```
 
-## 🔄 Intégration avec Temporal et Llamendex
+## 🔄 Integration with Temporal and Llamendex
 
-Notre solution s'intègre parfaitement avec des workflows Temporal et Llamendex :
+Our solution integrates perfectly with Temporal workflows and Llamendex:
 
-| **Workflow Temporal** | **Index associé** | **Notre solution** |
+| **Temporal Workflow** | **Associated Index** | **Our Solution** |
 |------------------------|-------------------|---------------------|
-| `SyncJiraAndIndex` | `JiraIndex` | Utilise notre processeur avec mapping JIRA |
-| `SyncConfluenceAndIndex` | `ConfluenceIndex` | Utilise notre processeur avec mapping Confluence |
-| `HandleUserQueryToAgent` | (tous) | Interroge les données transformées par notre solution |
+| `SyncJiraAndIndex` | `JiraIndex` | Uses our processor with JIRA mapping |
+| `SyncConfluenceAndIndex` | `ConfluenceIndex` | Uses our processor with Confluence mapping |
+| `HandleUserQueryToAgent` | (all) | Queries data transformed by our solution |
 
-## 📝 Format pour Llamendex
+## 📝 Llamendex Format
 
-La structure de sortie est optimisée pour Llamendex, permettant une conversion directe en `NodeWithScore` :
+The output structure is optimized for Llamendex, allowing direct conversion to `NodeWithScore`:
 
 ```json
 {
   "items": [
     {
-      "id": "IDENTIFIANT",
-      "title": "TITRE",
+      "id": "IDENTIFIER",
+      "title": "TITLE",
       "content": {
-        "field1": "CONTENU1",
-        "field2": "CONTENU2"
+        "field1": "CONTENT1",
+        "field2": "CONTENT2"
       },
       "metadata": {
         "created_at": "DATE",
-        "author": "AUTEUR"
+        "author": "AUTHOR"
       },
       "analysis": {
-        "llm_summary": "Résumé concis généré par LLM",
-        "llm_keywords": ["MOT1", "MOT2"],
+        "llm_summary": "Concise summary generated by LLM",
+        "llm_keywords": ["WORD1", "WORD2"],
         "llm_entities": {
-          "people": ["PERSONNE1", "PERSONNE2"],
+          "people": ["PERSON1", "PERSON2"],
           "organizations": ["ORG1", "ORG2"]
         },
         "llm_sentiment": "positive"
@@ -452,63 +454,63 @@ La structure de sortie est optimisée pour Llamendex, permettant une conversion 
     }
   ],
   "metadata": {
-    "source_file": "fichier_source.json",
-    "processed_at": "DATE_TRAITEMENT",
+    "source_file": "source_file.json",
+    "processed_at": "PROCESSING_DATE",
     "llm_enrichment": {
       "model": "gpt-4",
-      "enrichment_date": "DATE_ENRICHISSEMENT"
+      "enrichment_date": "ENRICHMENT_DATE"
     }
   }
 }
 ```
 
-## 🔒 Sécurité
+## 🔒 Security
 
-### Bonnes pratiques de sécurité
+### Security Best Practices
 
-Ce projet inclut des mesures de protection pour éviter la fuite de données sensibles :
+This project includes protection measures to prevent sensitive data leaks:
 
-#### 🚫 Ne jamais commiter de données sensibles
-- **Clés API** (AWS, OpenAI, etc.)
-- **Informations personnelles** (emails, noms, etc.)
-- **Données de test réelles**
-- **Tokens d'authentification**
-- **Identifiants de connexion**
+#### 🚫 Never commit sensitive data
+- **API keys** (AWS, OpenAI, etc.)
+- **Personal information** (emails, names, etc.)
+- **Real test data**
+- **Authentication tokens**
+- **Login credentials**
 
-#### ✅ Manipulation des données sensibles
-1. **Variables d'environnement** : Toujours stocker les clés API dans le fichier `.env` (jamais dans le code)
-2. **Données de test** : Utiliser uniquement des données synthétiques ou anonymisées
-3. **Protection du Git** : Un hook pre-commit détecte automatiquement les fuites potentielles
+#### ✅ Handling sensitive data
+1. **Environment variables**: Always store API keys in the `.env` file (never in the code)
+2. **Test data**: Use only synthetic or anonymized data
+3. **Git protection**: A pre-commit hook automatically detects potential leaks
 
-#### 🧹 Nettoyage des données sensibles
-Le projet inclut un outil pour nettoyer les fichiers de test :
+#### 🧹 Cleaning sensitive data
+The project includes a tool to clean test files:
 
 ```bash
-# Nettoyer un fichier spécifique
+# Clean a specific file
 python -m tools.clean_sensitive_data path/to/file.json
 
-# Nettoyer un dossier
+# Clean a folder
 python -m tools.clean_sensitive_data path/to/directory --output path/to/output
 ```
 
-#### 🚨 En cas de fuite
-1. **Éliminer** la donnée sensible de l'historique Git
+#### 🚨 In case of a leak
+1. **Remove** the sensitive data from Git history
    ```bash
    git filter-branch --force --index-filter "git rm --cached --ignore-unmatch path/to/file" --prune-empty --tag-name-filter cat -- --all
    git push origin --force
    ```
-2. **Invalider** les clés ou tokens compromis
-3. **Informer** les personnes concernées
+2. **Invalidate** compromised keys or tokens
+3. **Inform** affected people
 
-Pour plus de détails, consultez le fichier [SECURITY.md](SECURITY.md).
+For more details, see the [SECURITY.md](SECURITY.md) file.
 
-## ⚠️ Dépendances
+## ⚠️ Dependencies
 
 - Python 3.8+
 - typer, rich, inquirer, python-dotenv, ijson
-- openai (optionnel, pour les fonctionnalités LLM)
-- outlines==0.2.3 (optionnel, pour l'extraction structurée)
+- openai (optional, for LLM functionalities)
+- outlines==0.2.3 (optional, for structured extraction)
 
-## 📜 Licence
+## 📜 License
 
-Ce projet est distribué sous licence MIT.
+This project is distributed under the MIT license.

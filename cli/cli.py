@@ -28,6 +28,20 @@ from openai import OpenAI
 from rich.markdown import Markdown
 from rich.rule import Rule
 
+# Importer le module de gestion des langues
+try:
+    from cli.lang_utils import t, set_language, get_current_language
+    TRANSLATIONS_LOADED = True
+except ImportError:
+    # Fallback si le module de traduction n'est pas disponible
+    def t(key, category=None, lang=None):
+        return key
+    def set_language(lang):
+        pass
+    def get_current_language():
+        return "fr"
+    TRANSLATIONS_LOADED = False
+
 # Charger les variables d'environnement
 dotenv.load_dotenv()
 
@@ -92,6 +106,12 @@ def print_header():
     )
     console.print(logo)
     console.print("[bold cyan]J S O N    P A R S E R    C L I[/bold cyan] [green]v1.0[/green] 🚀\n")
+    
+    # Afficher la langue actuelle
+    if TRANSLATIONS_LOADED:
+        current_lang = get_current_language()
+        lang_display = "Français" if current_lang == "fr" else "English"
+        console.print(f"[dim]Language/Langue: {lang_display}[/dim]\n")
 
 # --- STEPPER ---
 def print_stepper(current:int, total:int, steps:list):
@@ -115,7 +135,7 @@ def _prompt_for_file(message: str, allow_validate: bool = False) -> Optional[str
     files_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "files")
     
     while True:
-        console.print(f"\n[bold]Répertoire actuel:[/bold] {current_dir}")
+        console.print(f"\n[bold]{t('current_directory', 'messages')}[/bold] {current_dir}")
         items = os.listdir(current_dir)
         files = [f for f in items if os.path.isfile(os.path.join(current_dir, f)) and f.endswith('.json')]
         dirs = [d for d in items if os.path.isdir(os.path.join(current_dir, d))]
@@ -128,59 +148,100 @@ def _prompt_for_file(message: str, allow_validate: bool = False) -> Optional[str
         
         # Option pour remonter au dossier parent si nous ne sommes pas à la racine
         if current_dir != os.path.dirname(current_dir):
-            choices.append("⬆️  [Dossier parent]")
+            choices.append(t("parent_dir", "options"))
         
         # Mettre le dossier "files" en premier si nous sommes à la racine du projet
         if os.path.exists(files_dir) and os.path.dirname(files_dir) == current_dir:
             dirs.remove("files")
-            choices.append("📁 [Dir] files")
+            choices.append(f"{t('dir_prefix', 'options')} files")
         
         # Ajouter les autres dossiers
-        choices += [f"📁 [Dir] {d}" for d in dirs]
+        choices += [f"{t('dir_prefix', 'options')} {d}" for d in dirs]
         
         # Ajouter les fichiers JSON
-        choices += [f"📄 [Fichier] {f}" for f in files]
+        choices += [f"{t('file_prefix', 'options')} {f}" for f in files]
         
         # Si nous ne sommes pas dans le dossier "files", proposer d'y aller directement
         if os.path.exists(files_dir) and current_dir != files_dir:
-            choices.insert(1, "📂 [Aller au dossier files]")
+            choices.insert(1, t("go_to_files", "options"))
         
         # Ajouter les options de validation/annulation
         if allow_validate:
-            choices.append("✅ [Valider la sélection]")
-        choices.append("✏️  [Entrer un chemin manuellement]")
-        choices.append("❌ [Annuler]")
+            choices.append(t("validate", "options"))
+        choices.append(t("enter_manually", "options"))
+        choices.append(t("cancel", "options"))
         
+        # Poser la question
         questions = [
-            inquirer.List('selection', message=message, choices=choices)
+            inquirer.List('path',
+                         message=message,
+                         choices=choices,
+                         carousel=True)
         ]
-        answer = inquirer.prompt(questions)
         
-        if not answer:
-            return None
+        try:
+            answers = inquirer.prompt(questions)
+            if answers is None or not answers['path']:
+                return None
+                
+            choice = answers['path']
             
-        selection = answer['selection']
-        
-        if selection.startswith("⬆️"):
-            current_dir = os.path.dirname(current_dir)
-        elif selection == "📂 [Aller au dossier files]":
-            current_dir = files_dir
-        elif selection.startswith("✏️"):
-            path = typer.prompt("Entrez le chemin complet du fichier")
-            if os.path.isfile(path) and path.endswith('.json'):
-                return path
-            else:
-                console.print("[yellow]Chemin invalide ou fichier non JSON.[/yellow]")
-        elif selection.startswith("❌"):
+            # Traiter le choix
+            if choice == t("cancel", "options"):
+                console.print(f"[italic]{t('operation_cancelled', 'messages')}[/italic]")
+                return None
+                
+            elif choice == t("parent_dir", "options"):
+                current_dir = os.path.dirname(current_dir)
+                os.chdir(current_dir)
+                
+            elif choice == t("go_to_files", "options"):
+                if os.path.exists(files_dir):
+                    current_dir = files_dir
+                    os.chdir(current_dir)
+                else:
+                    console.print("[bold red]Le dossier 'files' n'existe pas.[/bold red]")
+                    
+            elif choice == t("enter_manually", "options"):
+                # Demander un chemin manuellement
+                manual_path = inquirer.prompt([
+                    inquirer.Text('path',
+                                 message=t("manual_path", "prompts"))
+                ])
+                
+                if manual_path and manual_path['path']:
+                    path = os.path.expanduser(manual_path['path'])
+                    if os.path.exists(path) and (os.path.isdir(path) or (os.path.isfile(path) and path.endswith('.json'))):
+                        if os.path.isdir(path):
+                            current_dir = path
+                            os.chdir(current_dir)
+                        else:
+                            return path
+                    else:
+                        console.print(f"[bold red]{t('invalid_path', 'messages')}[/bold red]")
+                        
+            elif choice == t("validate", "options"):
+                return current_dir
+                
+            elif choice.startswith(t("dir_prefix", "options").split(' ')[0]):
+                # Changer de dossier
+                folder = choice.split(' ', 2)[-1]
+                new_dir = os.path.join(current_dir, folder)
+                if os.path.isdir(new_dir):
+                    current_dir = new_dir
+                    os.chdir(current_dir)
+                    
+            elif choice.startswith(t("file_prefix", "options").split(' ')[0]):
+                # Sélectionner un fichier
+                file = choice.split(' ', 2)[-1]
+                file_path = os.path.join(current_dir, file)
+                if os.path.isfile(file_path) and file_path.endswith('.json'):
+                    return file_path
+                else:
+                    console.print(f"[bold red]{t('invalid_path', 'messages')}[/bold red]")
+                        
+        except KeyboardInterrupt:
             return None
-        elif selection.startswith("✅"):
-            return "__VALIDATE__"
-        elif selection.startswith("📁"):
-            dir_name = selection.split("[Dir] ",1)[1]
-            current_dir = os.path.join(current_dir, dir_name)
-        elif selection.startswith("📄"):
-            file_name = selection.split("[Fichier] ",1)[1]
-            return os.path.join(current_dir, file_name)
 
 # --- FEEDBACK/RESUME ---
 def print_success(msg:str):
@@ -690,10 +751,14 @@ def unified(
     use_llm: bool = typer.Option(True, "--llm/--no-llm", help="Utiliser un LLM pour l'enrichissement"),
     api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API pour le LLM"),
     skip_matching: bool = typer.Option(False, "--skip-matching", help="Ne pas effectuer le matching entre JIRA et Confluence"),
+    language: str = typer.Option(None, "--lang", "-l", help="Langue de l'interface (fr/en)"),
 ):
     """
     Exécute un flux complet: JIRA + Confluence + Matching
     """
+    if language:
+        set_language(language)
+        
     print_header()
     
     # Vérifier l'existence des fichiers
@@ -927,50 +992,73 @@ def chunks(
 
 
 @app.command()
-def interactive():
+def interactive(
+    language: str = typer.Option(None, "--lang", "-l", help="Langue de l'interface (fr/en)")
+):
     """
     Mode entièrement interactif qui guide l'utilisateur à travers toutes les étapes.
     
     Ce mode permet de choisir le type d'opération à effectuer et guide
     l'utilisateur à travers toutes les options de manière conviviale.
     """
+    if language:
+        set_language(language)
+        
     console.print(Panel.fit(
-        "[bold]Assistant interactif pour le traitement de données[/bold]\n\n"
-        "Cet assistant va vous guider à travers les différentes étapes de traitement.",
-        title="Mode Interactif",
+        t("interactive_content", "panels"),
+        title=t("interactive_title", "panels"),
         border_style="green"
     ))
     
     # 1. Sélection du type d'opération
     operation_choices = [
-        "Traiter un fichier JSON (process)",
-        "Découper un fichier volumineux (chunks)",
-        "Établir des correspondances JIRA-Confluence (match)",
-        "Flux complet JIRA + Confluence (unified)",
-        "Nettoyer les données sensibles (clean)",
-        "Quitter"
+        t("process", "interactive_choices"),
+        t("chunks", "interactive_choices"),
+        t("match", "interactive_choices"),
+        t("unified", "interactive_choices"),
+        t("clean", "interactive_choices"),
+        # Ajouter l'option pour changer de langue
+        f"🌐 {t('change_language', 'interactive_choices', 'fr')} / {t('change_language', 'interactive_choices', 'en')}",
+        t("quit", "interactive_choices")
     ]
     
     questions = [
         inquirer.List('operation',
-                     message="Quelle opération souhaitez-vous effectuer ?",
+                     message=t("select_operation", "messages"),
                      choices=operation_choices)
     ]
     answers = inquirer.prompt(questions)
     
-    if not answers or answers['operation'] == "Quitter":
+    if not answers:
+        return
+        
+    selected_operation = answers['operation']
+    
+    # Vérifier si l'utilisateur veut changer de langue
+    if "🌐" in selected_operation:
+        current_lang = get_current_language()
+        new_lang = "en" if current_lang == "fr" else "fr"
+        
+        console.print(f"[bold]Changing language to {new_lang}[/bold]" if new_lang == "en" else f"[bold]Changement de langue vers {new_lang}[/bold]")
+        set_language(new_lang)
+        
+        # Relancer le menu avec la nouvelle langue
+        return interactive()
+    
+    # Quitter si demandé
+    if selected_operation == t("quit", "interactive_choices"):
         return
     
     # 2. Selon l'opération choisie, poser les questions appropriées
-    if "Traiter un fichier JSON" in answers['operation']:
+    if t("process", "interactive_choices") in selected_operation:
         _run_interactive_process()
-    elif "Découper un fichier volumineux" in answers['operation']:
+    elif t("chunks", "interactive_choices") in selected_operation:
         _run_interactive_chunks()
-    elif "Établir des correspondances" in answers['operation']:
+    elif t("match", "interactive_choices") in selected_operation:
         _run_interactive_match()
-    elif "Flux complet" in answers['operation']:
+    elif t("unified", "interactive_choices") in selected_operation:
         _run_interactive_unified()
-    elif "Nettoyer les données sensibles" in answers['operation']:
+    elif t("clean", "interactive_choices") in selected_operation:
         _run_interactive_clean()
 
 
@@ -1485,17 +1573,17 @@ def clean(
 def _run_interactive_clean():
     """Interface interactive pour la commande clean."""
     # Sélection du fichier ou dossier d'entrée
-    input_path = _prompt_for_file("Sélectionnez le fichier ou dossier à nettoyer:")
+    input_path = _prompt_for_file(t("select_file_clean", "prompts"))
     if not input_path:
         return
     
     # Options
     questions = [
         inquirer.Confirm('recursive',
-                         message="Traiter récursivement les sous-dossiers?",
+                         message=t("recursive", "confirmations"),
                          default=True),
         inquirer.Text('output',
-                      message="Dossier/fichier de sortie (vide = auto-généré)",
+                      message=t("output_clean", "prompts"),
                       default="")
     ]
     answers = inquirer.prompt(questions)
@@ -1504,25 +1592,33 @@ def _run_interactive_clean():
     output = answers['output'] if answers['output'].strip() else None
     
     # Confirmation
-    console.print("\n[bold]Récapitulatif :[/bold]")
-    console.print(f"- Chemin d'entrée : [cyan]{input_path}[/cyan]")
-    console.print(f"- Chemin de sortie : [cyan]{output or 'Auto-généré'}[/cyan]")
+    console.print(f"\n[bold]{t('summary', 'messages')}[/bold]")
+    console.print(f"- {t('input_path', 'messages')} [cyan]{input_path}[/cyan]")
+    console.print(f"- {t('output_path', 'messages')} [cyan]{output or t('auto_detection', 'messages')}[/cyan]")
     if os.path.isdir(input_path):
-        console.print(f"- Récursif : [cyan]{'Oui' if recursive else 'Non'}[/cyan]")
+        console.print(f"- {t('recursive', 'messages')} [cyan]{t('yes', 'messages') if recursive else t('no', 'messages')}[/cyan]")
     
     questions = [
         inquirer.Confirm('confirm',
-                         message="Lancer le nettoyage?",
+                         message=t("launch_cleaning", "confirmations"),
                          default=True)
     ]
     confirm = inquirer.prompt(questions)
     
-    if not confirm or not confirm['confirm']:
-        console.print("[yellow]Opération annulée.[/yellow]")
-        return
-    
-    # Exécuter clean
-    clean(input_path, output, recursive)
+    if confirm and confirm['confirm']:
+        clean(input_path, output, recursive)
+
+
+# Ajouter un nouveau décorateur app.callback pour gérer l'option de langue globale
+@app.callback()
+def main(
+    language: str = typer.Option(None, "--lang", "-l", help="Langue de l'interface (fr/en)")
+):
+    """
+    JSON Processor pour Llamendex - Outil d'analyse et de transformation de fichiers JSON.
+    """
+    if language:
+        set_language(language)
 
 
 if __name__ == "__main__":
