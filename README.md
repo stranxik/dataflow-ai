@@ -118,6 +118,24 @@ Le projet se compose de trois modules principaux :
 pip install -r requirements.txt
 ```
 
+### ⚠️ Exigences Python pour Outlines
+
+**IMPORTANT**: Outlines 0.2.3 requiert **Python 3.12** spécifiquement. Il est fortement recommandé de créer un environnement virtuel dédié:
+
+```bash
+# Créer un environnement virtuel avec Python 3.12
+python3.12 -m venv venv_outlines
+
+# Activer l'environnement
+source venv_outlines/bin/activate  # Linux/Mac
+venv_outlines\Scripts\activate     # Windows
+
+# Installer les dépendances
+pip install -r requirements.txt
+```
+
+Les versions plus récentes de Python (3.13+) ne sont pas compatibles avec Outlines 0.2.3, et les fonctionnalités LLM ne fonctionneront pas correctement sans cet environnement spécifique.
+
 ### Configuration d'Outlines (optionnelle)
 
 Le système utilise la bibliothèque [Outlines](https://github.com/dottxt/outlines) (v0.2.3) pour l'extraction structurée de données. Deux modes de fonctionnement sont disponibles :
@@ -225,6 +243,8 @@ results/
 ## 🧠 Résumés LLM automatiques
 
 > 📝 **Fonctionnalité avancée**: Pour chaque traitement utilisant un LLM, un rapport de résumé est automatiquement généré au format Markdown.
+
+> 💡 **NOUVEAU!** Notre module `outlines_enricher.py` enrichit désormais chaque élément JSON (tickets JIRA/pages Confluence) avec des analyses LLM avancées. Pour chaque élément, il extrait le contenu textuel (titre, description, commentaires), l'envoie à l'API OpenAI (GPT-4-0125-preview), et récupère une analyse structurée contenant: un résumé concis (150 mots max), 5-10 mots-clés importants, les entités identifiées (personnes, organisations, termes techniques) et le sentiment général. Ces données sont ajoutées sous la clé `analysis` avec les sous-champs `llm_summary`, `llm_keywords`, `llm_entities` et `llm_sentiment`. Le module adapte automatiquement différentes structures JSON pour assurer une liste `items` correcte avant traitement.
 
 Exemple de résumé généré:
 
@@ -492,17 +512,3 @@ Pour plus de détails, consultez le fichier [SECURITY.md](SECURITY.md).
 ## 📜 Licence
 
 Ce projet est distribué sous licence MIT.
-
-<style>
-.command-box {
-  background-color: #f6f8fa;
-  border-left: 4px solid #58a6ff;
-  padding: 10px 15px;
-  margin: 20px 0;
-  border-radius: 3px;
-}
-
-.command-box h3 {
-  margin-top: 0;
-}
-</style> 

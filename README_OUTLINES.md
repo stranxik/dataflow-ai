@@ -13,12 +13,14 @@ Outlines est une bibliothèque Python qui permet de générer du texte structur�
 
 ## Installation d'Outlines 0.2.3
 
-Outlines 0.2.3 requiert Python 3.9 à 3.12 (Python 3.13 n'est pas supporté).
+⚠️ **IMPORTANT**: Outlines 0.2.3 requiert **strictement Python 3.12** (Python 3.13 n'est pas supporté).
 
 ```bash
-# Installer dans un environnement virtuel
+# Installer dans un environnement virtuel avec Python 3.12
 python3.12 -m venv venv_outlines
-source venv_outlines/bin/activate
+source venv_outlines/bin/activate  # Linux/Mac
+# OU
+venv_outlines\Scripts\activate     # Windows
 
 # Installer Outlines
 pip install outlines==0.2.3
@@ -26,6 +28,15 @@ pip install outlines==0.2.3
 # Installer les dépendances du projet
 pip install -r requirements.txt
 ```
+
+## Sources de données
+
+Les fichiers sources JSON à traiter se trouvent dans le dossier `files` à la racine du projet:
+- `CASM_jira.json`: Tickets JIRA du projet CASM
+- `CARTAN_jira.json`: Tickets JIRA du projet CARTAN
+- `hollard_confluence.json`: Pages Confluence Hollard
+
+Pour traiter ces fichiers, assurez-vous d'activer l'environnement virtuel Python 3.12 avant de lancer les commandes.
 
 ## Structure d'intégration dans notre projet
 

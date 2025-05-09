@@ -117,7 +117,7 @@ def check_outlines():
     
     return False
 
-def run_llm_enrichment(jira_file, confluence_file, output_dir, api_key, model="gpt-4"):
+def run_llm_enrichment(jira_file, confluence_file, output_dir, api_key, model="gpt-4-0125-preview"):
     """Exécute l'enrichissement par LLM des données JIRA et Confluence"""
     
     # Vérifier que les fichiers existent
@@ -131,202 +131,222 @@ def run_llm_enrichment(jira_file, confluence_file, output_dir, api_key, model="g
     if api_key:
         os.environ["OPENAI_API_KEY"] = api_key
     
-    # Vérifier si Outlines est disponible
+    # Importer le module d'enrichissement
     try:
-        import outlines
-        from outlines import models, Template
-        import outlines.generate as generate
+        from extract.outlines_enricher import enrich_data_file, check_outlines
         
-        print(f"✅ Outlines importé avec succès (version: {getattr(outlines, '__version__', 'inconnue')})")
+        # Vérifier que Outlines est disponible
+        outlines_available = check_outlines()
+        if not outlines_available:
+            print("⚠️ Outlines n'est pas disponible, l'enrichissement LLM pourrait être limité")
         
-        # Créer les chemins de sortie
-        enriched_jira_file = os.path.join(output_dir, "enriched_jira.json")
-        enriched_confluence_file = os.path.join(output_dir, "enriched_confluence.json")
+        # Définir les chemins de sortie
+        jira_output = os.path.join(output_dir, "enriched_jira.json")
+        confluence_output = os.path.join(output_dir, "enriched_confluence.json")
         
-        # Charger les données
-        try:
-            with open(jira_file, 'r', encoding='utf-8') as f:
-                jira_data = json.load(f)
-            with open(confluence_file, 'r', encoding='utf-8') as f:
-                confluence_data = json.load(f)
-            
-            print(f"✅ Données chargées: {len(jira_data.get('items', []))} tickets JIRA, {len(confluence_data.get('items', []))} pages Confluence")
-            
-            # Initialiser le modèle
-            api_key = os.environ.get("OPENAI_API_KEY")
-            if not api_key:
-                print("❌ Clé API OpenAI non définie")
-                return False
-            
-            # Initialiser le modèle OpenAI
-            model_instance = models.openai(model, api_key=api_key)
-            print(f"✅ Modèle {model} initialisé")
-            
-            # Définir le schéma pour l'enrichissement
-            enrichment_schema = {
-                "type": "object",
-                "properties": {
-                    "summary": {
-                        "type": "string",
-                        "description": "Un résumé concis du contenu"
-                    },
-                    "keywords": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Mots-clés importants extraits du contenu"
-                    },
-                    "entities": {
-                        "type": "object",
-                        "properties": {
-                            "people": {
-                                "type": "array",
-                                "items": {"type": "string"}
-                            },
-                            "organizations": {
-                                "type": "array",
-                                "items": {"type": "string"}
-                            },
-                            "locations": {
-                                "type": "array",
-                                "items": {"type": "string"}
-                            },
-                            "technical_terms": {
-                                "type": "array",
-                                "items": {"type": "string"}
-                            }
-                        }
-                    },
-                    "sentiment": {
-                        "type": "string",
-                        "enum": ["positive", "neutral", "negative"]
-                    }
-                }
-            }
-            
-            # Convertir le schéma en JSON
-            schema_str = json.dumps(enrichment_schema)
-            
-            # Créer un template pour l'analyse
-            template_str = """
-            Vous êtes un expert en analyse de documents techniques.
-            Analysez le texte suivant et extrayez les informations pertinentes :
-            
-            {{ content }}
-            """
-            template = Template.from_string(template_str)
-            
-            # Créer le générateur JSON
-            generator = generate.json(model_instance, schema_str)
-            
-            # Fonction d'enrichissement pour un élément
-            def enrich_item(item):
-                # Obtenir le contenu principal
-                content = ""
-                
-                # Pour JIRA, combiner le titre et la description
-                if "title" in item:
-                    content += item.get("title", "") + "\n\n"
-                
-                # Extraire le contenu textuel selon le type d'élément
-                if "content" in item:
-                    if isinstance(item["content"], dict):
-                        # Format structuré
-                        for key, value in item["content"].items():
-                            if isinstance(value, str) and len(value) > 0:
-                                content += f"{value}\n\n"
-                    elif isinstance(item["content"], str):
-                        # Format texte simple
-                        content += item["content"]
-                
-                # Limiter la taille du contenu pour éviter les problèmes d'API
-                if len(content) > 8000:
-                    content = content[:8000] + "..."
-                
-                if not content.strip():
-                    return item  # Rien à enrichir
-                
-                try:
-                    # Générer le prompt et effectuer l'analyse
-                    prompt = template(content=content)
-                    result = generator(prompt)
-                    
-                    # Ajouter les résultats de l'enrichissement
-                    if "analysis" not in item:
-                        item["analysis"] = {}
-                    
-                    item["analysis"].update({
-                        "llm_summary": result.get("summary", ""),
-                        "llm_keywords": result.get("keywords", []),
-                        "llm_entities": result.get("entities", {}),
-                        "llm_sentiment": result.get("sentiment", "neutral")
-                    })
-                    
-                    return item
-                except Exception as e:
-                    print(f"⚠️ Erreur lors de l'enrichissement d'un élément: {e}")
-                    return item
-            
-            # Enrichir un échantillon de données JIRA et Confluence
-            enriched_jira_items = []
-            
-            # Limiter le nombre d'éléments pour économiser des crédits API
-            sample_limit = 5
-            
-            # Traiter les tickets JIRA
-            for i, item in enumerate(jira_data.get("items", [])[:sample_limit]):
-                print(f"Enrichissement du ticket JIRA {i+1}/{min(sample_limit, len(jira_data.get('items', [])))}")
-                enriched_jira_items.append(enrich_item(item))
-            
-            # Enrichir les pages Confluence
-            enriched_confluence_items = []
-            for i, item in enumerate(confluence_data.get("items", [])[:sample_limit]):
-                print(f"Enrichissement de la page Confluence {i+1}/{min(sample_limit, len(confluence_data.get('items', [])))}")
-                enriched_confluence_items.append(enrich_item(item))
-            
-            # Mettre à jour les données
-            jira_data["items"] = jira_data.get("items", [])[sample_limit:] + enriched_jira_items
-            confluence_data["items"] = confluence_data.get("items", [])[sample_limit:] + enriched_confluence_items
-            
-            # Ajouter des métadonnées sur l'enrichissement
-            if "metadata" not in jira_data:
-                jira_data["metadata"] = {}
-            if "metadata" not in confluence_data:
-                confluence_data["metadata"] = {}
-                
-            enrichment_metadata = {
-                "enrichment_date": datetime.now().isoformat(),
-                "model": model,
-                "enriched_items_count": len(enriched_jira_items)
-            }
-            
-            jira_data["metadata"]["llm_enrichment"] = enrichment_metadata
-            confluence_data["metadata"]["llm_enrichment"] = enrichment_metadata
-            
-            # Sauvegarder les résultats
-            with open(enriched_jira_file, 'w', encoding='utf-8') as f:
-                json.dump(jira_data, f, indent=2, ensure_ascii=False)
-            with open(enriched_confluence_file, 'w', encoding='utf-8') as f:
-                json.dump(confluence_data, f, indent=2, ensure_ascii=False)
-            
-            # Générer un fichier de résumé des enrichissements LLM
-            summary_file = generate_llm_summary(output_dir, jira_data, confluence_data)
-            
-            print(f"✅ Enrichissement LLM terminé avec succès:")
-            print(f"- Fichier JIRA enrichi: {enriched_jira_file}")
-            print(f"- Fichier Confluence enrichi: {enriched_confluence_file}")
-            print(f"- Résumé de l'enrichissement: {summary_file}")
-            return True
-            
-        except json.JSONDecodeError as e:
-            print(f"❌ Erreur de décodage JSON: {e}")
-            return False
-        except Exception as e:
-            print(f"❌ Erreur lors de l'enrichissement: {e}")
-            traceback.print_exc()
-            return False
-    
+        # Enrichir les fichiers JIRA et Confluence
+        print(f"🔄 Enrichissement JIRA avec le modèle {model}...")
+        jira_success = enrich_data_file(jira_file, jira_output, model)
+        
+        print(f"🔄 Enrichissement Confluence avec le modèle {model}...")
+        confluence_success = enrich_data_file(confluence_file, confluence_output, model)
+        
+        # Créer les fichiers de résumé
+        if jira_success:
+            create_jira_summary(jira_output, os.path.join(output_dir, "jira_llm_enrichment_summary.md"))
+        
+        if confluence_success:
+            create_confluence_summary(confluence_output, os.path.join(output_dir, "llm_enrichment_summary.md"))
+        
+        return jira_success and confluence_success
+        
     except ImportError:
-        print("❌ Module Outlines non disponible. Impossible de réaliser l'enrichissement LLM.")
+        print("❌ Module d'enrichissement non disponible")
+        return False
+    except Exception as e:
+        print(f"❌ Erreur lors de l'enrichissement LLM: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def create_jira_summary(jira_file, output_file):
+    """
+    Crée un résumé des enrichissements JIRA au format Markdown
+    
+    Args:
+        jira_file: Chemin vers le fichier JIRA enrichi
+        output_file: Chemin vers le fichier de sortie
+    """
+    try:
+        with open(jira_file, 'r', encoding='utf-8') as f:
+            jira_data = json.load(f)
+        
+        if "items" not in jira_data or not jira_data["items"]:
+            print("⚠️ Aucun ticket JIRA trouvé pour générer le résumé")
+            return False
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write("# Résumé de l'enrichissement LLM des tickets JIRA\n\n")
+            
+            # Ajouter les métadonnées
+            if "metadata" in jira_data and "llm_enrichment" in jira_data["metadata"]:
+                enrichment = jira_data["metadata"]["llm_enrichment"]
+                f.write(f"- **Modèle utilisé**: {enrichment.get('model', 'Non spécifié')}\n")
+                f.write(f"- **Date d'enrichissement**: {enrichment.get('enrichment_date', 'Non spécifiée')}\n")
+                f.write(f"- **Nombre de tickets enrichis**: {enrichment.get('enriched_items_count', 0)}\n\n")
+            
+            # Créer une table des matières
+            f.write("## Table des matières\n\n")
+            for i, item in enumerate(jira_data["items"]):
+                title = item.get("title", f"Ticket {i+1}")
+                key = item.get("key", i+1)
+                f.write(f"- [{title} ({key})](#ticket-{i+1})\n")
+            f.write("\n")
+            
+            # Ajouter les résumés de chaque ticket
+            for i, item in enumerate(jira_data["items"]):
+                title = item.get("title", f"Ticket {i+1}")
+                key = item.get("key", i+1)
+                f.write(f"## Ticket {i+1}: {title} ({key})\n\n")
+                
+                if "analysis" in item and "llm_summary" in item["analysis"]:
+                    f.write(f"### Résumé\n\n{item['analysis']['llm_summary']}\n\n")
+                    
+                    if "llm_keywords" in item["analysis"]:
+                        keywords = item["analysis"]["llm_keywords"]
+                        if keywords:
+                            f.write(f"### Mots-clés\n\n")
+                            for keyword in keywords:
+                                f.write(f"- {keyword}\n")
+                            f.write("\n")
+                    
+                    if "llm_entities" in item["analysis"] and item["analysis"]["llm_entities"]:
+                        entities = item["analysis"]["llm_entities"]
+                        f.write(f"### Entités\n\n")
+                        
+                        if "people" in entities and entities["people"]:
+                            f.write("#### Personnes\n\n")
+                            for person in entities["people"]:
+                                f.write(f"- {person}\n")
+                            f.write("\n")
+                        
+                        if "organizations" in entities and entities["organizations"]:
+                            f.write("#### Organisations\n\n")
+                            for org in entities["organizations"]:
+                                f.write(f"- {org}\n")
+                            f.write("\n")
+                        
+                        if "technical_terms" in entities and entities["technical_terms"]:
+                            f.write("#### Termes techniques\n\n")
+                            for term in entities["technical_terms"]:
+                                f.write(f"- {term}\n")
+                            f.write("\n")
+                    
+                    if "llm_sentiment" in item["analysis"]:
+                        sentiment = item["analysis"]["llm_sentiment"]
+                        f.write(f"### Sentiment\n\n{sentiment}\n\n")
+                else:
+                    f.write("*Aucune analyse LLM disponible pour ce ticket.*\n\n")
+                
+                f.write("---\n\n")
+        
+        print(f"✅ Résumé JIRA généré dans {output_file}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erreur lors de la génération du résumé JIRA: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def create_confluence_summary(confluence_file, output_file):
+    """
+    Crée un résumé des enrichissements Confluence au format Markdown
+    
+    Args:
+        confluence_file: Chemin vers le fichier Confluence enrichi
+        output_file: Chemin vers le fichier de sortie
+    """
+    try:
+        with open(confluence_file, 'r', encoding='utf-8') as f:
+            confluence_data = json.load(f)
+        
+        if "items" not in confluence_data or not confluence_data["items"]:
+            print("⚠️ Aucune page Confluence trouvée pour générer le résumé")
+            return False
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write("# Résumé de l'enrichissement LLM des pages Confluence\n\n")
+            
+            # Ajouter les métadonnées
+            if "metadata" in confluence_data and "llm_enrichment" in confluence_data["metadata"]:
+                enrichment = confluence_data["metadata"]["llm_enrichment"]
+                f.write(f"- **Modèle utilisé**: {enrichment.get('model', 'Non spécifié')}\n")
+                f.write(f"- **Date d'enrichissement**: {enrichment.get('enrichment_date', 'Non spécifiée')}\n")
+                f.write(f"- **Nombre de pages enrichies**: {enrichment.get('enriched_items_count', 0)}\n\n")
+            
+            # Créer une table des matières
+            f.write("## Table des matières\n\n")
+            for i, item in enumerate(confluence_data["items"]):
+                title = item.get("title", f"Page {i+1}")
+                id = item.get("id", i+1)
+                f.write(f"- [{title}](#page-{i+1})\n")
+            f.write("\n")
+            
+            # Ajouter les résumés de chaque page
+            for i, item in enumerate(confluence_data["items"]):
+                title = item.get("title", f"Page {i+1}")
+                id = item.get("id", i+1)
+                f.write(f"## Page {i+1}: {title}\n\n")
+                
+                if "analysis" in item and "llm_summary" in item["analysis"]:
+                    f.write(f"### Résumé\n\n{item['analysis']['llm_summary']}\n\n")
+                    
+                    if "llm_keywords" in item["analysis"]:
+                        keywords = item["analysis"]["llm_keywords"]
+                        if keywords:
+                            f.write(f"### Mots-clés\n\n")
+                            for keyword in keywords:
+                                f.write(f"- {keyword}\n")
+                            f.write("\n")
+                    
+                    if "llm_entities" in item["analysis"] and item["analysis"]["llm_entities"]:
+                        entities = item["analysis"]["llm_entities"]
+                        f.write(f"### Entités\n\n")
+                        
+                        if "people" in entities and entities["people"]:
+                            f.write("#### Personnes\n\n")
+                            for person in entities["people"]:
+                                f.write(f"- {person}\n")
+                            f.write("\n")
+                        
+                        if "organizations" in entities and entities["organizations"]:
+                            f.write("#### Organisations\n\n")
+                            for org in entities["organizations"]:
+                                f.write(f"- {org}\n")
+                            f.write("\n")
+                        
+                        if "technical_terms" in entities and entities["technical_terms"]:
+                            f.write("#### Termes techniques\n\n")
+                            for term in entities["technical_terms"]:
+                                f.write(f"- {term}\n")
+                            f.write("\n")
+                    
+                    if "llm_sentiment" in item["analysis"]:
+                        sentiment = item["analysis"]["llm_sentiment"]
+                        f.write(f"### Sentiment\n\n{sentiment}\n\n")
+                else:
+                    f.write("*Aucune analyse LLM disponible pour cette page.*\n\n")
+                
+                f.write("---\n\n")
+        
+        print(f"✅ Résumé Confluence généré dans {output_file}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erreur lors de la génération du résumé Confluence: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def main():
