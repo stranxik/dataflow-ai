@@ -183,25 +183,17 @@ def save_results(transformed_data, output_file):
         print(f"Données transformées sauvegardées dans {output_file}")
     except Exception as e:
         print(f"Erreur lors de la sauvegarde des résultats: {e}")
-    """Sauvegarde les données transformées dans un fichier JSON"""
-    try:
-        # S'assurer que le dossier de destination existe
-        output_dir = os.path.dirname(output_file)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-            
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(transformed_data, f, indent=2, ensure_ascii=False)
-        print(f"Données transformées sauvegardées dans {output_file}")
-    except Exception as e:
-        print(f"Erreur lors de la sauvegarde des résultats: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Transforme des exports JIRA en format optimisé pour LLM")
-    parser.add_argument("--files", nargs="+", default=["CARTAN (1).json", "CASM.json"], 
-                       help="Fichiers JSON JIRA à traiter")
+    parser.add_argument("--files", nargs="+", default=[],
+                       help="Fichiers JSON JIRA à traiter (ancien format)")
+    parser.add_argument("--input", 
+                       help="Fichier JSON d'entrée à traiter (nouveau format)")
     parser.add_argument("--output", default="llm_ready_tickets.json", 
                        help="Fichier de sortie")
+    parser.add_argument("--type", default="jira", choices=["jira", "confluence"],
+                       help="Type de fichier à traiter (jira ou confluence)")
     parser.add_argument("--max", type=int, default=None, 
                        help="Nombre maximum de tickets à traiter par fichier")
     parser.add_argument("--generate-arborescence", action="store_true",
@@ -229,12 +221,30 @@ def main():
     all_tickets = []
     processed_files = []
     
-    for file_path in args.files:
+    # Utiliser --input s'il est fourni (nouveau format)
+    if args.input:
+        files_to_process = [args.input]
+    # Sinon utiliser --files (ancien format)
+    elif args.files:
+        files_to_process = args.files
+    else:
+        print("Erreur: Aucun fichier spécifié. Utilisez --input ou --files.")
+        sys.exit(1)
+    
+    for file_path in files_to_process:
         if not os.path.exists(file_path):
             print(f"Erreur: Le fichier {file_path} n'existe pas.")
             continue
         
-        tickets = process_jira_file(file_path, args.max)
+        # Traiter différemment selon le type de fichier
+        if args.type == "confluence":
+            # TODO: Ajouter le traitement des fichiers Confluence
+            print(f"Traitement du fichier Confluence {file_path}...")
+            # Pour l'instant, nous utilisons la même fonction
+            tickets = process_jira_file(file_path, args.max)
+        else:
+            tickets = process_jira_file(file_path, args.max)
+        
         all_tickets.extend(tickets)
         processed_files.append(file_path)
     

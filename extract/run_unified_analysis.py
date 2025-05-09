@@ -469,8 +469,12 @@ def main():
     # Configuration de la langue
     if args.language and TRANSLATIONS_LOADED:
         from cli.lang_utils import set_language
-        set_language(args.language)
-        print(f"🌐 Langue configurée: {args.language}")
+        
+        # S'assurer que language est une chaîne de caractères
+        language_str = str(args.language) if args.language else None
+        if language_str:
+            set_language(language_str)
+            print(f"🌐 Langue configurée: {language_str}")
     
     # Résolution des chemins des fichiers d'entrée
     jira_files = [resolve_input_path(f) for f in args.jira_files]
@@ -487,6 +491,19 @@ def main():
         api_key = os.environ.get("OPENAI_API_KEY")
     if use_openai and api_key:
         check_outlines()
+    
+    # Récupérer les valeurs par défaut et s'assurer qu'elles sont du bon type
+    try:
+        min_match_score = float(str(args.min_match_score)) if args.min_match_score is not None else float(os.environ.get("MIN_MATCH_SCORE", "0.2"))
+    except (ValueError, TypeError):
+        min_match_score = 0.2
+        print(f"⚠️ Valeur invalide pour min_match_score, utilisation de la valeur par défaut: {min_match_score}")
+    
+    try:
+        max_items = int(str(args.max_items)) if args.max_items is not None else None
+    except (ValueError, TypeError):
+        max_items = None
+        print(f"⚠️ Valeur invalide pour max_items, aucune limite ne sera appliquée")
     
     # Création des répertoires
     jira_dir = os.path.join(output_dir, "jira")
@@ -522,14 +539,14 @@ def main():
             
             # 2. Découper le fichier si nécessaire
             jira_to_process = jira_file
-            if args.max_items:
-                print(f"\n== Découpage du fichier JIRA ({args.max_items} éléments par fichier) ==")
+            if max_items:
+                print(f"\n== Découpage du fichier JIRA ({max_items} éléments par fichier) ==")
                 run_step([
                     sys.executable, os.path.join(SCRIPTS_DIR, "process_by_chunks.py"),
                     "split",
                     "--input", jira_file,
                     "--output-dir", jira_splits_dir,
-                    "--items-per-file", str(args.max_items)
+                    "--items-per-file", str(max_items)
                 ], "Découpage du fichier JIRA en morceaux")
                 
                 # Utiliser le premier fichier découpé
@@ -548,7 +565,7 @@ def main():
             run_step(cmd, "Transformation des données JIRA")
             
             # 4. Générer une arborescence du fichier
-            file_structure = write_file_structure(jira_output, jira_arbo_file, max_items=10, max_depth=4)
+            file_structure = write_file_structure(jira_output, jira_arbo_file, max_nodes=10, max_depth=4)
             
             jira_processed_files.append(jira_output)
             
@@ -571,14 +588,14 @@ def main():
             
             # 2. Découper le fichier si nécessaire
             confluence_to_process = confluence_file
-            if args.max_items:
-                print(f"\n== Découpage du fichier Confluence ({args.max_items} éléments par fichier) ==")
+            if max_items:
+                print(f"\n== Découpage du fichier Confluence ({max_items} éléments par fichier) ==")
                 run_step([
                     sys.executable, os.path.join(SCRIPTS_DIR, "process_by_chunks.py"),
                     "split",
                     "--input", confluence_file,
                     "--output-dir", confluence_splits_dir,
-                    "--items-per-file", str(args.max_items)
+                    "--items-per-file", str(max_items)
                 ], "Découpage du fichier Confluence en morceaux")
                 
                 # Utiliser le premier fichier découpé
@@ -598,7 +615,7 @@ def main():
             run_step(cmd, "Transformation des données Confluence")
             
             # 4. Générer une arborescence du fichier
-            file_structure = write_file_structure(confluence_output, confluence_arbo_file, max_items=10, max_depth=4)
+            file_structure = write_file_structure(confluence_output, confluence_arbo_file, max_nodes=10, max_depth=4)
             
             confluence_processed_files.append(confluence_output)
             
@@ -622,7 +639,7 @@ def main():
                     "--output", matches_output,
                     "--updated-jira", jira_file,
                     "--updated-confluence", confluence_file,
-                    "--min-score", str(args.min_match_score)
+                    "--min-score", str(min_match_score)
                 ]
                 
                 run_step(cmd, f"Matching {jira_base} avec {confluence_base}")
@@ -650,33 +667,38 @@ def main():
             print("\n== Enrichissement des données avec LLM ==")
             
             # Importer le modèle d'enrichissement
-            import sys
-            sys.path.append(SCRIPTS_DIR)
-            from outlines_enricher import enrich_data_file
-            
-            if os.path.exists(jira_llm_file):
-                try:
-                    print(f"🔄 Enrichissement JIRA...")
-                    jira_enriched = enrich_data_file(jira_llm_file, jira_llm_file)
-                    if jira_enriched:
-                        print(f"✅ Enrichissement JIRA réussi")
-                    else:
-                        print(f"⚠️ Enrichissement JIRA incomplet")
-                except Exception as e:
-                    print(f"❌ Erreur lors de l'enrichissement JIRA: {e}")
-                    traceback.print_exc()
-            
-            if os.path.exists(confluence_llm_file):
-                try:
-                    print(f"🔄 Enrichissement Confluence...")
-                    confluence_enriched = enrich_data_file(confluence_llm_file, confluence_llm_file)
-                    if confluence_enriched:
-                        print(f"✅ Enrichissement Confluence réussi")
-                    else:
-                        print(f"⚠️ Enrichissement Confluence incomplet")
-                except Exception as e:
-                    print(f"❌ Erreur lors de l'enrichissement Confluence: {e}")
-                    traceback.print_exc()
+            try:
+                # Ajouter le répertoire des scripts au chemin de recherche si nécessaire
+                if SCRIPTS_DIR not in sys.path:
+                    sys.path.append(SCRIPTS_DIR)
+                from outlines_enricher import enrich_data_file
+                
+                if os.path.exists(jira_llm_file):
+                    try:
+                        print(f"🔄 Enrichissement JIRA...")
+                        jira_enriched = enrich_data_file(jira_llm_file, jira_llm_file)
+                        if jira_enriched:
+                            print(f"✅ Enrichissement JIRA réussi")
+                        else:
+                            print(f"⚠️ Enrichissement JIRA incomplet")
+                    except Exception as e:
+                        print(f"❌ Erreur lors de l'enrichissement JIRA: {e}")
+                        traceback.print_exc()
+                
+                if os.path.exists(confluence_llm_file):
+                    try:
+                        print(f"🔄 Enrichissement Confluence...")
+                        confluence_enriched = enrich_data_file(confluence_llm_file, confluence_llm_file)
+                        if confluence_enriched:
+                            print(f"✅ Enrichissement Confluence réussi")
+                        else:
+                            print(f"⚠️ Enrichissement Confluence incomplet")
+                    except Exception as e:
+                        print(f"❌ Erreur lors de l'enrichissement Confluence: {e}")
+                        traceback.print_exc()
+            except Exception as e:
+                print(f"❌ Erreur lors de l'initialisation de l'enrichissement LLM: {e}")
+                traceback.print_exc()
         
         # Générer les résumés LLM
         if generate_llm_summary:
