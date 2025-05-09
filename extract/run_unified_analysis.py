@@ -508,11 +508,13 @@ def main():
     # Création des répertoires
     jira_dir = os.path.join(output_dir, "jira")
     jira_structure_file = os.path.join(output_dir, "jira_structure.json")
-    jira_arbo_file = os.path.join(output_dir, "jira_arborescence.txt")
+    jira_arbo_filename = "jira_arborescence.txt"
+    jira_arbo_file = os.path.join(output_dir, jira_arbo_filename)
     
     confluence_dir = os.path.join(output_dir, "confluence")
     confluence_structure_file = os.path.join(output_dir, "confluence_structure.json")
-    confluence_arbo_file = os.path.join(output_dir, "confluence_arborescence.txt")
+    confluence_arbo_filename = "confluence_arborescence.txt"
+    confluence_arbo_file = os.path.join(output_dir, confluence_arbo_filename)
     
     matches_dir = os.path.join(output_dir, "matches")
     
@@ -565,7 +567,7 @@ def main():
             run_step(cmd, "Transformation des données JIRA")
             
             # 4. Générer une arborescence du fichier
-            file_structure = write_file_structure(jira_output, jira_arbo_file, max_nodes=10, max_depth=4)
+            file_structure = write_file_structure(jira_output, output_dir, jira_arbo_filename, max_nodes=10, max_depth=4)
             
             jira_processed_files.append(jira_output)
             
@@ -615,7 +617,7 @@ def main():
             run_step(cmd, "Transformation des données Confluence")
             
             # 4. Générer une arborescence du fichier
-            file_structure = write_file_structure(confluence_output, confluence_arbo_file, max_nodes=10, max_depth=4)
+            file_structure = write_file_structure(confluence_output, output_dir, confluence_arbo_filename, max_nodes=10, max_depth=4)
             
             confluence_processed_files.append(confluence_output)
             

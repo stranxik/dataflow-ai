@@ -442,7 +442,7 @@ def write_tree(directory, output_filename="arborescence.txt"):
     
     return True
 
-def write_file_structure(file_path, output_dir, output_filename=None):
+def write_file_structure(file_path, output_dir, output_filename=None, max_nodes=None, max_depth=None):
     """
     Analyser et générer un rapport sur la structure d'un fichier JSON
     
@@ -450,6 +450,8 @@ def write_file_structure(file_path, output_dir, output_filename=None):
         file_path: Chemin du fichier à analyser
         output_dir: Répertoire pour le fichier de sortie
         output_filename: Nom du fichier de sortie (optionnel)
+        max_nodes: Nombre maximum de nœuds à afficher par niveau (optionnel)
+        max_depth: Profondeur maximale d'exploration (optionnel)
     
     Returns:
         Chemin du fichier de sortie
@@ -494,16 +496,27 @@ def write_file_structure(file_path, output_dir, output_filename=None):
             f.write("\nArborescence du contenu:\n")
             f.write("-" * 23 + "\n")
             
+            # Respecter les limites max_nodes et max_depth si spécifiées
+            current_depth = 0
+            max_depth = max_depth if max_depth is not None else float('inf')
+            max_nodes = max_nodes if max_nodes is not None else float('inf')
+            
             # Pour un dictionnaire, afficher les clés de premier niveau
             if isinstance(data, dict):
-                for key, value in data.items():
+                for i, (key, value) in enumerate(data.items()):
+                    if i >= max_nodes:
+                        f.write(f"- ... ({len(data) - max_nodes} autres clés non affichées)\n")
+                        break
+                        
                     if isinstance(value, dict):
                         f.write(f"- {key}: Object avec {len(value)} clés\n")
-                        # Afficher quelques clés du niveau suivant
-                        for subkey in list(value.keys())[:5]:
-                            f.write(f"  - {subkey}: {type(value[subkey]).__name__}\n")
-                        if len(value) > 5:
-                            f.write(f"  - ... ({len(value) - 5} autres clés)\n")
+                        # Afficher quelques clés du niveau suivant si la profondeur le permet
+                        if current_depth + 1 < max_depth:
+                            subkeys_to_show = min(max_nodes, len(value)) if max_nodes else 5
+                            for j, subkey in enumerate(list(value.keys())[:subkeys_to_show]):
+                                f.write(f"  - {subkey}: {type(value[subkey]).__name__}\n")
+                            if len(value) > subkeys_to_show:
+                                f.write(f"  - ... ({len(value) - subkeys_to_show} autres clés)\n")
                     
                     elif isinstance(value, list):
                         f.write(f"- {key}: Array avec {len(value)} éléments\n")
@@ -522,9 +535,10 @@ def write_file_structure(file_path, output_dir, output_filename=None):
                     # Afficher les clés du premier élément si c'est un dict
                     if isinstance(data[0], dict):
                         keys = list(data[0].keys())
-                        f.write(f"- Clés du premier élément: {', '.join(keys[:10])}")
-                        if len(keys) > 10:
-                            f.write(f" ... ({len(keys) - 10} autres)\n")
+                        keys_to_show = min(max_nodes, len(keys)) if max_nodes else 10
+                        f.write(f"- Clés du premier élément: {', '.join(keys[:keys_to_show])}")
+                        if len(keys) > keys_to_show:
+                            f.write(f" ... ({len(keys) - keys_to_show} autres)\n")
                         else:
                             f.write("\n")
             

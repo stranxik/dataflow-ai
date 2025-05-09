@@ -264,71 +264,104 @@ def find_date_proximity_matches(jira_tickets, confluence_pages, date_threshold_d
     return matches
 
 def combine_matches(all_matches, min_score=0.2):
-    """Combiner et filtrer tous les matches pour obtenir les meilleurs pour chaque ticket JIRA"""
-    # Regrouper les matches par ticket JIRA
-    jira_matches = defaultdict(list)
-    for match in all_matches:
-        jira_matches[match["jira_id"]].append(match)
+    """
+    Combiner et filtrer tous les matches pour obtenir les meilleurs
     
-    # Pour chaque ticket JIRA, sélectionner les meilleurs matches
-    best_matches = {}
-    for jira_id, matches in jira_matches.items():
-        # Trier par score de match (du plus élevé au plus bas)
-        matches.sort(key=lambda x: x["match_score"], reverse=True)
+    Args:
+        all_matches: Liste de toutes les correspondances trouvées
+        min_score: Score minimum pour conserver une correspondance
         
-        # Filtrer les matches avec un score suffisant
-        good_matches = [m for m in matches if m["match_score"] >= min_score]
+    Returns:
+        Liste des meilleures correspondances triées par score
+    """
+    # Regrouper les matches par paire (jira_id, confluence_id)
+    pair_matches = {}
+    for match in all_matches:
+        pair_key = (match["jira_id"], match["confluence_id"])
         
-        # Limiter à 5 best matches maximum par ticket
-        best_matches[jira_id] = good_matches[:5]
+        # Si c'est le premier match pour cette paire ou si le score est meilleur
+        if pair_key not in pair_matches or match["match_score"] > pair_matches[pair_key]["match_score"]:
+            pair_matches[pair_key] = match
+    
+    # Récupérer les meilleurs matches et filtrer par score
+    best_matches = [match for match in pair_matches.values() if match["match_score"] >= min_score]
+    
+    # Trier par score (du plus élevé au plus bas)
+    best_matches.sort(key=lambda x: x["match_score"], reverse=True)
     
     return best_matches
 
 def update_with_matches(jira_data, confluence_data, best_matches):
-    """Mettre à jour les données JIRA et Confluence avec les matches trouvés"""
-    # Créer des dictionnaires pour un accès rapide
-    jira_dict = {ticket["id"]: ticket for ticket in jira_data["tickets"]}
-    confluence_dict = {page["id"]: page for page in confluence_data["pages"]}
+    """
+    Mettre à jour les données JIRA et Confluence avec les correspondances trouvées
     
-    # Mettre à jour les tickets JIRA avec les liens vers Confluence
-    for jira_id, matches in best_matches.items():
+    Args:
+        jira_data: Données JIRA
+        confluence_data: Données Confluence
+        best_matches: Liste des correspondances
+        
+    Returns:
+        Tuple (données JIRA mises à jour, données Confluence mises à jour)
+    """
+    # Extraire les éléments
+    jira_items = jira_data.get("items", [])
+    if not jira_items and "tickets" in jira_data:
+        jira_items = jira_data["tickets"]
+    
+    confluence_items = confluence_data.get("items", [])
+    if not confluence_items and "pages" in confluence_data:
+        confluence_items = confluence_data["pages"]
+    
+    # Créer des dictionnaires pour accéder facilement aux éléments par ID
+    jira_dict = {ticket["id"]: ticket for ticket in jira_items}
+    confluence_dict = {page["id"]: page for page in confluence_items}
+    
+    # Pour chaque correspondance, mettre à jour les éléments
+    for match in best_matches:
+        jira_id = match["jira_id"]
+        conf_id = match["confluence_id"]
+        
+        # Mettre à jour le ticket JIRA avec les infos de correspondance
         if jira_id in jira_dict:
-            # Créer une liste de liens Confluence
-            conf_links = []
-            for match in matches:
-                conf_id = match["confluence_id"]
-                if conf_id in confluence_dict:
-                    conf_page = confluence_dict[conf_id]
-                    conf_links.append({
-                        "id": conf_id,
-                        "title": conf_page["title"],
-                        "match_type": match["match_type"],
-                        "match_score": match["match_score"]
-                    })
+            if "confluence_matches" not in jira_dict[jira_id]:
+                jira_dict[jira_id]["confluence_matches"] = []
             
-            # Mettre à jour le ticket JIRA
-            jira_dict[jira_id]["confluence_links"] = conf_links
-    
-    # Mettre à jour les pages Confluence avec les liens vers les tickets JIRA
-    # Inverser la structure des matches pour trouver tous les tickets liés à une page
-    page_to_tickets = defaultdict(list)
-    for jira_id, matches in best_matches.items():
-        for match in matches:
-            conf_id = match["confluence_id"]
-            if jira_id in jira_dict:
-                page_to_tickets[conf_id].append({
-                    "id": jira_id,
-                    "title": jira_dict[jira_id]["content"]["title"],
-                    "match_type": match["match_type"],
-                    "match_score": match["match_score"]
-                })
-    
-    # Mettre à jour chaque page Confluence
-    for conf_id, ticket_links in page_to_tickets.items():
+            jira_dict[jira_id]["confluence_matches"].append({
+                "confluence_id": conf_id,
+                "match_score": match["match_score"],
+                "match_type": match["match_type"]
+            })
+        
+        # Mettre à jour la page Confluence avec les infos de correspondance
         if conf_id in confluence_dict:
-            confluence_dict[conf_id]["relationships"]["jira_tickets"] = ticket_links
+            if "jira_matches" not in confluence_dict[conf_id]:
+                confluence_dict[conf_id]["jira_matches"] = []
+            
+            confluence_dict[conf_id]["jira_matches"].append({
+                "jira_id": jira_id,
+                "match_score": match["match_score"],
+                "match_type": match["match_type"]
+            })
     
-    return jira_data, confluence_data
+    # Reconstruire les données JIRA et Confluence avec les éléments mis à jour
+    jira_updated = {
+        "items": list(jira_dict.values()),
+        "metadata": jira_data.get("metadata", {})
+    }
+    
+    confluence_updated = {
+        "items": list(confluence_dict.values()),
+        "metadata": confluence_data.get("metadata", {})
+    }
+    
+    # Ajouter des métadonnées supplémentaires
+    jira_updated["metadata"]["updated_with_matches"] = True
+    jira_updated["metadata"]["match_date"] = datetime.now().isoformat()
+    
+    confluence_updated["metadata"]["updated_with_matches"] = True
+    confluence_updated["metadata"]["match_date"] = datetime.now().isoformat()
+    
+    return jira_updated, confluence_updated
 
 def detect_entities_in_text(text):
     """Détecter des entités dans un texte (IDs, emails, URLs)"""
@@ -360,7 +393,7 @@ def find_matches(jira_items, confluence_items, min_score=0.2):
         min_score: Score minimum pour considérer une correspondance
         
     Returns:
-        Tuple (best_matches, jira_with_matches, confluence_with_matches)
+        Liste des meilleures correspondances
     """
     all_matches = []
     
@@ -379,125 +412,111 @@ def find_matches(jira_items, confluence_items, min_score=0.2):
     # 4. Combiner tous les matches et conserver les meilleurs
     best_matches = combine_matches(all_matches, min_score)
     
-    # 5. Mettre à jour les données JIRA et Confluence avec les matches
-    jira_data = {"tickets": jira_items}
-    confluence_data = {"pages": confluence_items}
-    updated_jira, updated_confluence = update_with_matches(jira_data, confluence_data, best_matches)
-    
-    # Extraire les listes mises à jour
-    jira_with_matches = updated_jira["tickets"]
-    confluence_with_matches = updated_confluence["pages"]
-    
-    return best_matches, jira_with_matches, confluence_with_matches
+    return best_matches
 
 def main():
-    parser = argparse.ArgumentParser(description="Match JIRA tickets with Confluence pages")
-    parser.add_argument("--jira", required=True, help="Path to processed JIRA JSON file")
-    parser.add_argument("--confluence", required=True, help="Path to processed Confluence JSON file")
-    parser.add_argument("--output", default="matches.json", help="Output file for matches")
-    parser.add_argument("--updated-jira", default="jira_with_matches.json", help="Output file for JIRA with matches")
-    parser.add_argument("--updated-confluence", default="confluence_with_matches.json", 
-                       help="Output file for Confluence with matches")
-    parser.add_argument("--min-score", type=float, default=0.2, help="Score minimum pour une correspondance")
-    parser.add_argument("--output-dir", "-o", default="results", help="Output directory")
-    parser.add_argument("--llm", action="store_true", help="Activer le fallback LLM pour la correction des fichiers JSON mal formés")
-    parser.add_argument("--api-key", default=None, help="Clé API OpenAI pour l'assistance LLM")
-    parser.add_argument("--model", default=None, help="Modèle LLM à utiliser (ex: gpt-4.1, o3)")
+    """
+    Point d'entrée principal du script
+    """
+    parser = argparse.ArgumentParser(description='Trouver les correspondances entre tickets JIRA et pages Confluence')
+    parser.add_argument('--jira', required=True, help='Fichier JSON contenant les tickets JIRA')
+    parser.add_argument('--confluence', required=True, help='Fichier JSON contenant les pages Confluence')
+    parser.add_argument('--output', required=True, help='Fichier JSON de sortie pour les correspondances')
+    parser.add_argument('--min-score', type=float, default=0.2, help='Score minimum pour les correspondances (0-1)')
+    parser.add_argument('--updated-jira', help='Fichier JSON de sortie pour les tickets JIRA mis à jour')
+    parser.add_argument('--updated-confluence', help='Fichier JSON de sortie pour les pages Confluence mises à jour')
+    parser.add_argument('--use-llm', action='store_true', help='Utiliser un LLM pour améliorer les correspondances')
+    parser.add_argument('--tree-output', default='matches_arborescence.txt', help='Nom du fichier d\'arborescence')
     
     args = parser.parse_args()
     
-    # Créer le dossier de sortie s'il n'existe pas
-    if args.output_dir and not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
+    # Chemins de sortie par défaut si non spécifiés
+    if not args.updated_jira:
+        jira_base = os.path.splitext(os.path.basename(args.jira))[0]
+        args.updated_jira = f"{jira_base}_with_matches.json"
     
-    # Utiliser notre processeur JSON générique pour charger les fichiers
-    from generic_json_processor import GenericJsonProcessor
+    if not args.updated_confluence:
+        confluence_base = os.path.splitext(os.path.basename(args.confluence))[0]
+        args.updated_confluence = f"{confluence_base}_with_matches.json"
     
-    processor = GenericJsonProcessor(use_llm_fallback=args.llm, llm_model=args.model)
+    # S'assurer que les répertoires de sortie existent
+    output_dir = os.path.dirname(args.output)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
     
-    # Charger les fichiers
-    try:
-        jira_data = processor.load_file(args.jira)
-        if not jira_data:
-            print(f"Erreur lors du chargement du fichier JIRA: {args.jira}")
-            return
-    except Exception as e:
-        print(f"Erreur lors du chargement du fichier JIRA: {e}")
-        return
-        
-    try:
-        confluence_data = processor.load_file(args.confluence)
-        if not confluence_data:
-            print(f"Erreur lors du chargement du fichier Confluence: {args.confluence}")
-            return
-    except Exception as e:
-        print(f"Erreur lors du chargement du fichier Confluence: {e}")
-        return
+    # Charger les fichiers JIRA et Confluence
+    jira_data = load_json_file(args.jira)
+    if not jira_data:
+        print(f"Impossible de charger les données JIRA depuis {args.jira}")
+        return False
     
-    # Extraire les éléments, quelle que soit la structure initiale
-    jira_items = processor.extract_items(jira_data)
-    confluence_items = processor.extract_items(confluence_data)
+    confluence_data = load_json_file(args.confluence)
+    if not confluence_data:
+        print(f"Impossible de charger les données Confluence depuis {args.confluence}")
+        return False
+    
+    # Extraire les listes d'éléments
+    jira_items = jira_data.get("items", [])
+    if not jira_items and "tickets" in jira_data:
+        jira_items = jira_data["tickets"]
+    
+    confluence_items = confluence_data.get("items", [])
+    if not confluence_items and "pages" in confluence_data:
+        confluence_items = confluence_data["pages"]
     
     print(f"Tickets JIRA chargés: {len(jira_items)}")
     print(f"Pages Confluence chargées: {len(confluence_items)}")
     
     # Trouver les correspondances
-    matches, jira_with_matches, confluence_with_matches = find_matches(
-        jira_items, confluence_items, min_score=args.min_score
-    )
+    best_matches = find_matches(jira_items, confluence_items, min_score=args.min_score)
     
-    # Construire les chemins de sortie complets
-    # Éviter la duplication "results/results/" en normalisant les chemins
-    output_path = args.output
-    updated_jira_path = args.updated_jira
-    updated_confluence_path = args.updated_confluence
-    
-    # Si les chemins ne sont pas absolus, les combiner avec le répertoire de sortie
-    if not os.path.isabs(output_path):
-        output_path = os.path.join(args.output_dir, output_path)
-    if not os.path.isabs(updated_jira_path):
-        updated_jira_path = os.path.join(args.output_dir, updated_jira_path)
-    if not os.path.isabs(updated_confluence_path):
-        updated_confluence_path = os.path.join(args.output_dir, updated_confluence_path)
-    
-    # Normaliser les chemins pour éviter les doublons (results/results/)
-    output_path = os.path.normpath(output_path)
-    updated_jira_path = os.path.normpath(updated_jira_path)
-    updated_confluence_path = os.path.normpath(updated_confluence_path)
-    
-    # Créer les répertoires nécessaires
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    os.makedirs(os.path.dirname(updated_jira_path), exist_ok=True)
-    os.makedirs(os.path.dirname(updated_confluence_path), exist_ok=True)
-    
-    # Sauvegarder les résultats en utilisant notre processeur
-    processor.save_as_json(matches, output_path)
-    
-    # Créer les structures standardisées pour les fichiers avec matches
-    jira_with_matches_data = {
-        "items": jira_with_matches,
-        "metadata": jira_data.get("metadata", {})
+    # Préparer les résultats
+    matches_result = {
+        "metadata": {
+            "jira_source": os.path.basename(args.jira),
+            "confluence_source": os.path.basename(args.confluence),
+            "match_date": datetime.now().isoformat(),
+            "min_score": args.min_score
+        },
+        "matches": best_matches
     }
     
-    confluence_with_matches_data = {
-        "items": confluence_with_matches,
-        "metadata": confluence_data.get("metadata", {})
-    }
+    # Enregistrer les correspondances
+    save_json_file(matches_result, args.output)
     
-    processor.save_as_json(jira_with_matches_data, updated_jira_path)
-    processor.save_as_json(confluence_with_matches_data, updated_confluence_path)
+    # Mettre à jour les données JIRA et Confluence avec les correspondances
+    if best_matches:
+        jira_updated, confluence_updated = update_with_matches(jira_data, confluence_data, best_matches)
+        
+        # Enregistrer les données mises à jour
+        if args.updated_jira:
+            updated_jira_output = args.updated_jira
+            save_json_file(jira_updated, updated_jira_output)
+        
+        if args.updated_confluence:
+            updated_confluence_output = args.updated_confluence
+            save_json_file(confluence_updated, updated_confluence_output)
     
-    print(f"\nMatches trouvés: {len(matches)}")
+    # Générer une arborescence pour visualiser les résultats
+    try:
+        # Déterminer le répertoire de sortie
+        if output_dir:
+            tree_file = os.path.join(output_dir, args.tree_output)
+        else:
+            tree_file = args.tree_output
+        
+        write_tree(os.path.dirname(args.output) or '.', os.path.basename(tree_file))
+    except Exception as e:
+        print(f"Erreur lors de la génération de l'arborescence: {e}")
+    
+    print(f"\nMatches trouvés: {len(best_matches)}")
     print(f"Résultats sauvegardés dans:")
-    print(f"- {output_path}")
-    print(f"- {updated_jira_path}")
-    print(f"- {updated_confluence_path}")
-
-    # Générer l'arborescence du répertoire de sortie
-    from generic_json_processor import write_tree
-    arborescence_file = os.path.join(args.output_dir, "matches_arborescence.txt")
-    write_tree(args.output_dir, os.path.basename(arborescence_file))
-    print(f"\nArborescence générée dans {arborescence_file}")
+    print(f"- {args.output}")
+    print(f"- {args.updated_jira}")
+    print(f"- {args.updated_confluence}")
+    print(f"\nArborescence générée dans {tree_file}" if 'tree_file' in locals() else "")
+    
+    return True
 
 if __name__ == "__main__":
     main() 
