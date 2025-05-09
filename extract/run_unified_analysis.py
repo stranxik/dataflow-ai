@@ -90,9 +90,15 @@ def combine_json_files(input_files, output_file):
                         if "metadata" in combined_data:
                             combined_data["metadata"]["source_files"].append(os.path.basename(file_path))
                         
-                        # Ajouter les items
+                        # Ajouter les items (traiter aussi les tickets)
                         if "items" in data and isinstance(data["items"], list):
                             combined_data["items"].extend(data["items"])
+                        elif "tickets" in data and isinstance(data["tickets"], list):
+                            # Traiter le cas où les données sont dans "tickets" au lieu de "items"
+                            combined_data["items"].extend(data["tickets"])
+                            # Ajouter l'information sur le nombre de tickets dans les métadonnées
+                            if "metadata" in combined_data and "total_tickets" not in combined_data["metadata"]:
+                                combined_data["metadata"]["total_tickets"] = len(data["tickets"])
                 except Exception as e:
                     print(f"⚠️ Erreur lors de la lecture du fichier {file_path}: {e}")
         

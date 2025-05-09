@@ -770,9 +770,11 @@ def unified(
     output_dir_str = str(output_dir) if output_dir else "output_unified"
     
     # Préparer le chemin complet du répertoire de sortie
+    # Utiliser le dossier results comme base, à moins que le chemin soit absolu
     if os.path.isabs(output_dir_str):
         full_output_dir = output_dir_str
     else:
+        # Rétablir le comportement original: placer les résultats dans results/output_dir
         full_output_dir = os.path.join("results", output_dir_str)
     
     # Créer le répertoire de sortie s'il n'existe pas
@@ -1765,9 +1767,11 @@ def unified(
     output_dir_str = str(output_dir) if output_dir else "output_unified"
     
     # Préparer le chemin complet du répertoire de sortie
+    # Utiliser le dossier results comme base, à moins que le chemin soit absolu
     if os.path.isabs(output_dir_str):
         full_output_dir = output_dir_str
     else:
+        # Rétablir le comportement original: placer les résultats dans results/output_dir
         full_output_dir = os.path.join("results", output_dir_str)
     
     # Créer le répertoire de sortie s'il n'existe pas

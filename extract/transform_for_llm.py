@@ -180,7 +180,12 @@ def save_results(transformed_data, output_file):
             
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(transformed_data, f, indent=2, ensure_ascii=False)
-        print(f"Données transformées sauvegardées dans {output_file}")
+        
+        # Afficher le chemin de sortie sans le préfixe './' pour plus de clarté
+        display_path = output_file
+        if display_path.startswith('./'):
+            display_path = display_path[2:]
+        print(f"Données transformées sauvegardées dans {display_path}")
     except Exception as e:
         print(f"Erreur lors de la sauvegarde des résultats: {e}")
 
@@ -198,7 +203,7 @@ def main():
                        help="Nombre maximum de tickets à traiter par fichier")
     parser.add_argument("--generate-arborescence", action="store_true",
                        help="Générer un fichier d'arborescence pour chaque fichier traité")
-    parser.add_argument("--output-dir", default="results",
+    parser.add_argument("--output-dir", default=".",
                        help="Dossier de sortie pour tous les fichiers générés")
     
     args = parser.parse_args()
@@ -208,15 +213,14 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Vérifier si le chemin de sortie est absolu ou relatif
+    # Vérifier si le chemin de sortie est absolu, relatif au dossier de sortie, ou relatif au dossier courant
     if os.path.isabs(args.output):
+        # Si le chemin est absolu, l'utiliser tel quel
         output_file = args.output
     else:
-        # Si le chemin est relatif mais contient déjà 'results/', ne pas ajouter le préfixe
-        if args.output.startswith(f"{output_dir}/"):
-            output_file = args.output
-        else:
-            output_file = os.path.join(output_dir, args.output)
+        # Si le chemin est relatif, l'interpréter par rapport au dossier de sortie spécifié
+        # Sans utiliser os.path.abspath() qui ajouterait le chemin courant au début
+        output_file = os.path.join(output_dir, args.output)
     
     all_tickets = []
     processed_files = []
@@ -262,7 +266,12 @@ def main():
     save_results(final_structure, output_file)
     
     print(f"\nTraitement terminé. {len(all_tickets)} tickets transformés.")
-    print(f"Fichier de sortie: {output_file}")
+    
+    # Afficher le chemin de sortie sans le préfixe './'
+    display_path = output_file
+    if display_path.startswith('./'):
+        display_path = display_path[2:]
+    print(f"Fichier de sortie: {display_path}")
     
     # Générer les arborescences des fichiers si demandé
     if args.generate_arborescence:
