@@ -19,11 +19,101 @@ from datetime import datetime
 import glob
 import shutil
 import traceback
+import time
+from pathlib import Path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from generic_json_processor import write_tree, write_file_structure
 from llm_summary import generate_llm_summary
 
 SCRIPTS_DIR = os.path.dirname(__file__)
+
+# Ajouter le répertoire parent au chemin de recherche
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+# Importer le module lang_utils si disponible
+try:
+    from cli.lang_utils import t, get_current_language
+    TRANSLATIONS_LOADED = True
+except ImportError:
+    # Fallback si le module de traduction n'est pas disponible
+    def t(key, category=None, lang=None):
+        return key
+    def get_current_language():
+        return "fr"
+    TRANSLATIONS_LOADED = False
+
+# Importer le module de compression si disponible
+try:
+    from extract.compress_utils import compress_json, compress_results_directory
+    COMPRESSION_AVAILABLE = True
+except ImportError:
+    COMPRESSION_AVAILABLE = False
+    print("⚠️ Module de compression non disponible. Installez les packages requis:")
+    print("   pip install zstandard orjson")
+
+def combine_json_files(input_files, output_file):
+    """
+    Combine plusieurs fichiers JSON en un seul.
+    
+    Args:
+        input_files (list): Liste des chemins des fichiers JSON à combiner
+        output_file (str): Chemin du fichier de sortie combiné
+    
+    Returns:
+        bool: True si la combinaison a réussi, False sinon
+    """
+    try:
+        combined_data = {"items": []}
+        
+        # Extraire les métadonnées du premier fichier
+        if input_files and os.path.exists(input_files[0]):
+            with open(input_files[0], 'r', encoding='utf-8') as f:
+                first_file = json.load(f)
+                if "metadata" in first_file:
+                    combined_data["metadata"] = first_file["metadata"].copy()
+                    # Mettre à jour les métadonnées
+                    combined_data["metadata"]["source_files"] = []
+                    combined_data["metadata"]["processed_at"] = datetime.now().isoformat()
+                    combined_data["metadata"]["combined"] = True
+        
+        # Parcourir tous les fichiers et combiner leurs items
+        for file_path in input_files:
+            if os.path.exists(file_path):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        
+                        # Ajouter le fichier source aux métadonnées
+                        if "metadata" in combined_data:
+                            combined_data["metadata"]["source_files"].append(os.path.basename(file_path))
+                        
+                        # Ajouter les items
+                        if "items" in data and isinstance(data["items"], list):
+                            combined_data["items"].extend(data["items"])
+                except Exception as e:
+                    print(f"⚠️ Erreur lors de la lecture du fichier {file_path}: {e}")
+        
+        # Ajouter des statistiques aux métadonnées
+        if "metadata" in combined_data:
+            combined_data["metadata"]["stats"] = {
+                "total_items": len(combined_data["items"]),
+                "combined_files": len(input_files)
+            }
+        
+        # Écrire le fichier combiné
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(combined_data, f, ensure_ascii=False, indent=2)
+        
+        print(f"✅ Combinaison réussie: {len(combined_data['items'])} éléments de {len(input_files)} fichiers")
+        return True
+    
+    except Exception as e:
+        print(f"❌ Erreur lors de la combinaison des fichiers: {e}")
+        traceback.print_exc()
+        return False
 
 def ensure_deps():
     """S'assurer que toutes les dépendances sont installées"""
@@ -361,470 +451,296 @@ def main():
     parser.add_argument('--min-match-score', type=float, default=0.5, help='Score minimum pour les correspondances entre JIRA et Confluence')
     parser.add_argument('--skip-matching', action='store_true', help='Ne pas effectuer le matching entre JIRA et Confluence')
     
-    # Arguments relatifs au traitement avancé
-    parser.add_argument('--max-items', type=int, default=None, help='Nombre maximum d\'éléments à traiter par fichier')
-    parser.add_argument('--with-openai', action='store_true', help='Utiliser l\'API OpenAI pour l\'enrichissement')
-    parser.add_argument('--api-key', default=None, help='Clé API OpenAI (si différente de la variable d\'environnement)')
+    # Arguments relatifs au traitement
+    parser.add_argument('--api-key', help='Clé API OpenAI')
+    parser.add_argument('--with-openai', action='store_true', default=True, help='Utiliser OpenAI pour enrichir les données')
+    parser.add_argument('--no-openai', action='store_true', help='Ne pas utiliser OpenAI')
+    parser.add_argument('--max-items', type=int, help='Nombre maximum d\'éléments à traiter par fichier')
+    parser.add_argument('--language', help='Langue à utiliser (fr/en)')
     
-    # Ajout de l'argument pour la langue
-    parser.add_argument('--language', choices=['fr', 'en'], default=None, help='Langue à utiliser pour les résumés et messages')
+    # Arguments relatifs à la compression
+    if COMPRESSION_AVAILABLE:
+        parser.add_argument('--compress', action='store_true', help='Compresser les fichiers de sortie avec zstd et orjson')
+        parser.add_argument('--compress-level', type=int, default=19, help='Niveau de compression zstd (1-22)')
+        parser.add_argument('--keep-originals', action='store_true', default=True, help='Conserver les fichiers JSON originaux en plus des compressés')
     
     args = parser.parse_args()
     
-    # Configurer la langue si spécifiée
-    if args.language:
-        try:
-            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from cli.lang_utils import set_language
-            set_language(args.language)
-            print(f"🌐 Langue configurée: {args.language}")
-        except ImportError:
-            print("⚠️ Module de traduction non disponible, utilisation de la langue par défaut")
+    # Configuration de la langue
+    if args.language and TRANSLATIONS_LOADED:
+        from cli.lang_utils import set_language
+        set_language(args.language)
+        print(f"🌐 Langue configurée: {args.language}")
     
-    # Définir les répertoires
+    # Résolution des chemins des fichiers d'entrée
+    jira_files = [resolve_input_path(f) for f in args.jira_files]
+    confluence_files = [resolve_input_path(f) for f in args.confluence_files] if args.confluence_files else []
+    
+    # Création du répertoire de sortie
     output_dir = args.output_dir
-    create_output_dir(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
     
-    # Créer les sous-répertoires
+    # Configuration de l'API OpenAI
+    use_openai = args.with_openai and not args.no_openai
+    api_key = args.api_key
+    if use_openai and not api_key:
+        api_key = os.environ.get("OPENAI_API_KEY")
+    if use_openai and api_key:
+        check_outlines()
+    
+    # Création des répertoires
     jira_dir = os.path.join(output_dir, "jira")
+    jira_structure_file = os.path.join(output_dir, "jira_structure.json")
+    jira_arbo_file = os.path.join(output_dir, "jira_arborescence.txt")
+    
     confluence_dir = os.path.join(output_dir, "confluence")
+    confluence_structure_file = os.path.join(output_dir, "confluence_structure.json")
+    confluence_arbo_file = os.path.join(output_dir, "confluence_arborescence.txt")
+    
     matches_dir = os.path.join(output_dir, "matches")
-    split_jira_dir = os.path.join(output_dir, "split_jira_files")
-    split_confluence_dir = os.path.join(output_dir, "split_confluence_files")
-    llm_ready_dir = os.path.join(output_dir, "llm_ready")
     
-    # Créer tous les sous-répertoires
-    for directory in [jira_dir, confluence_dir, matches_dir, split_jira_dir, split_confluence_dir, llm_ready_dir]:
-        create_output_dir(directory)
+    jira_splits_dir = os.path.join(output_dir, "split_jira_files")
+    confluence_splits_dir = os.path.join(output_dir, "split_confluence_files")
     
-    # Créer aussi les sous-répertoires pour les fichiers LLM ready
-    llm_jira_dir = os.path.dirname(os.path.join(llm_ready_dir, "llm_ready_jira.json"))
-    llm_confluence_dir = os.path.dirname(os.path.join(llm_ready_dir, "llm_ready_confluence.json"))
-    create_output_dir(llm_jira_dir)
-    create_output_dir(llm_confluence_dir)
+    llm_dir = os.path.join(output_dir, "llm_ready")
     
-    # Résoudre les chemins des fichiers d'entrée
-    jira_files_abs = [resolve_input_path(f) for f in args.jira_files]
-    confluence_files_abs = [resolve_input_path(f) for f in args.confluence_files]
+    for d in [jira_dir, confluence_dir, matches_dir, jira_splits_dir, confluence_splits_dir, llm_dir]:
+        os.makedirs(d, exist_ok=True)
     
-    # Journal d'exécution
-    log_file = os.path.join(output_dir, "execution_log.txt")
-    with open(log_file, 'w') as log:
-        log.write(f"Exécution démarrée le {datetime.now().isoformat()}\n")
-        log.write(f"Fichiers JIRA à analyser: {', '.join(jira_files_abs)}\n")
-        log.write(f"Fichiers Confluence à analyser: {', '.join(confluence_files_abs)}\n")
-        log.write(f"Structure des répertoires:\n")
-        log.write(f"  - Principal: {output_dir}\n")
-        log.write(f"  - JIRA: {jira_dir}\n")
-        log.write(f"  - Confluence: {confluence_dir}\n")
-        log.write(f"  - Correspondances: {matches_dir}\n")
-        log.write(f"  - Fichiers JIRA divisés: {split_jira_dir}\n")
-        log.write(f"  - Fichiers Confluence divisés: {split_confluence_dir}\n")
-        log.write(f"  - Fichiers prêts pour LLM: {llm_ready_dir}\n")
-    
-    #######################################
-    # PARTIE 1: TRAITEMENT DES FICHIERS JIRA
-    #######################################
-    
-    # 1.1 Extraction de la structure basique
-    jira_structure_output = os.path.join(jira_dir, "jira_structure.json")
-    run_step(
-        [sys.executable, os.path.join(SCRIPTS_DIR, "extract_jira_structure.py")] + jira_files_abs + [
-            "--output", jira_structure_output
-        ],
-        "Extraction de la structure de base des fichiers JIRA"
-    )
-    
-    # Déplacer les fichiers d'arborescence générés au mauvais endroit
-    for file in glob.glob(os.path.join("results", "*_structure.txt")):
-        basename = os.path.basename(file)
-        new_path = os.path.join(jira_dir, basename)
-        shutil.move(file, new_path)
-        print(f"Déplacé {file} vers {new_path}")
-    
-    for file in glob.glob(os.path.join("results", "*_arborescence.txt")):
-        basename = os.path.basename(file)
-        new_path = os.path.join(jira_dir, basename)
-        shutil.move(file, new_path)
-        print(f"Déplacé {file} vers {new_path}")
-    
-    # Déplacer le fichier jira_structure.json s'il a été créé au mauvais endroit
-    if os.path.exists(os.path.join("results", "jira_structure.json")) and not os.path.exists(jira_structure_output):
-        shutil.move(os.path.join("results", "jira_structure.json"), jira_structure_output)
-        print(f"Déplacé results/jira_structure.json vers {jira_structure_output}")
-    
-    # 1.2 Si les fichiers sont volumineux, les diviser en morceaux
-    for file in jira_files_abs:
-        # Vérifier si le fichier est volumineux (> 10 Mo)
-        if os.path.exists(file) and os.path.getsize(file) > 10 * 1024 * 1024:
-            print(f"\nLe fichier {file} est volumineux, division en morceaux...")
-            file_base_name = os.path.splitext(os.path.basename(file))[0]
-            file_split_dir = os.path.join(split_jira_dir, f"{file_base_name}_jira")
-            create_output_dir(file_split_dir)
-            
-            run_step(
-                [sys.executable, os.path.join(SCRIPTS_DIR, "process_by_chunks.py"), "split",
-                 "--input", file,
-                 "--output-dir", file_split_dir,
-                 "--items-per-file", "500"],
-                f"Division du fichier {file} en morceaux"
-            )
-            
-            # Générer l'arborescence du répertoire de morceaux
-            arborescence_file = os.path.join(file_split_dir, f"{file_base_name}_arborescence.txt")
-            write_tree(file_split_dir, os.path.basename(arborescence_file))
-            print(f"Arborescence générée dans {arborescence_file}")
-    
-    # Initialiser les variables pour les fichiers de matching
-    matches_output = None
-    updated_jira_output = None
-    updated_confluence_output = None
-    
-    # Passer le matching si demandé
-    if args.skip_matching:
-        print("\nSkipping de la phase de matching JIRA-Confluence.")
-    else:
-        # 1.3 Transformation pour LLM
-        jira_transform_output = os.path.join(llm_ready_dir, "llm_ready_jira.json")
-        
-        # Si les fichiers sont trop volumineux, utiliser seulement un échantillon
-        jira_files_to_transform = []
-        for file in jira_files_abs:
-            if os.path.exists(file):
-                if os.path.getsize(file) > 50 * 1024 * 1024:  # > 50 Mo
-                    # Utiliser le premier morceau du fichier divisé
-                    file_base_name = os.path.splitext(os.path.basename(file))[0]
-                    file_split_dir = os.path.join(split_jira_dir, f"{file_base_name}_jira")
-                    if os.path.exists(file_split_dir):
-                        parts = [f for f in os.listdir(file_split_dir) if f.endswith('.json')]
-                        if parts:
-                            jira_files_to_transform.append(os.path.join(file_split_dir, parts[0]))
-                            print(f"Fichier {file} trop volumineux, utilisation de {parts[0]}")
-                else:
-                    jira_files_to_transform.append(file)
-        
-        if jira_files_to_transform:
-            transform_jira_cmd = [
-                sys.executable, os.path.join(SCRIPTS_DIR, "transform_for_llm.py"),
-                "--files"
-            ] + jira_files_to_transform + [
-                "--output", jira_transform_output
-            ]
-            
-            # Ajouter les options supplémentaires
-            if args.max_items:
-                transform_jira_cmd.extend(["--max", str(args.max_items)])
-            
-            transform_jira_cmd.append("--generate-arborescence")
-            
-            run_step(
-                transform_jira_cmd,
-                "Transformation des données JIRA pour LLM"
-            )
-            
-            # Déplacer les fichiers d'arborescence générés au mauvais endroit pour LLM Ready
-            for file in glob.glob(os.path.join("results", "llm_ready_arborescence.txt")):
-                new_path = os.path.join(llm_ready_dir, os.path.basename(file))
-                shutil.move(file, new_path)
-                print(f"Déplacé {file} vers {new_path}")
-            
-            # Déplacer les fichiers d'arborescence des fichiers sources
-            for file in glob.glob(os.path.join("results", "*_jira_arborescence.txt")):
-                new_path = os.path.join(jira_dir, os.path.basename(file))
-                shutil.move(file, new_path)
-                print(f"Déplacé {file} vers {new_path}")
-            
-            # Déplacer le fichier JSON transformé s'il a été créé au mauvais endroit
-            if os.path.exists(os.path.join("results", "llm_ready_jira.json")) and not os.path.exists(jira_transform_output):
-                shutil.move(os.path.join("results", "llm_ready_jira.json"), jira_transform_output)
-                print(f"Déplacé results/llm_ready_jira.json vers {jira_transform_output}")
-        else:
-            print("\nAucun fichier JIRA valide à transformer.")
-    
-    #######################################
-    # PARTIE 2: TRAITEMENT DES FICHIERS CONFLUENCE
-    #######################################
-    
-    # 2.1 Extraction de la structure basique
-    confluence_structure_output = os.path.join(confluence_dir, "confluence_structure.json")
-    run_step(
-        [sys.executable, os.path.join(SCRIPTS_DIR, "extract_confluence_structure.py")] + confluence_files_abs + [
-            "--output", confluence_structure_output
-        ],
-        "Extraction de la structure de base des fichiers Confluence"
-    )
-    
-    # Déplacer les fichiers d'arborescence générés au mauvais endroit
-    for file in glob.glob(os.path.join("results", "*_confluence_structure.txt")):
-        basename = os.path.basename(file)
-        new_path = os.path.join(confluence_dir, basename)
-        shutil.move(file, new_path)
-        print(f"Déplacé {file} vers {new_path}")
-    
-    for file in glob.glob(os.path.join("results", "*_confluence_arborescence.txt")):
-        basename = os.path.basename(file)
-        new_path = os.path.join(confluence_dir, basename)
-        shutil.move(file, new_path)
-        print(f"Déplacé {file} vers {new_path}")
-    
-    # Déplacer le fichier confluence_structure.json s'il a été créé au mauvais endroit
-    if os.path.exists(os.path.join("results", "confluence_structure.json")) and not os.path.exists(confluence_structure_output):
-        shutil.move(os.path.join("results", "confluence_structure.json"), confluence_structure_output)
-        print(f"Déplacé results/confluence_structure.json vers {confluence_structure_output}")
-    
-    # 2.2 Si les fichiers sont volumineux, les diviser en morceaux
-    for file in confluence_files_abs:
-        # Vérifier si le fichier est volumineux (> 10 Mo)
-        if os.path.exists(file) and os.path.getsize(file) > 10 * 1024 * 1024:
-            print(f"\nLe fichier {file} est volumineux, division en morceaux...")
-            file_base_name = os.path.splitext(os.path.basename(file))[0]
-            file_split_dir = os.path.join(split_confluence_dir, f"{file_base_name}_confluence")
-            create_output_dir(file_split_dir)
-            
-            run_step(
-                [sys.executable, os.path.join(SCRIPTS_DIR, "process_by_chunks.py"), "split",
-                 "--input", file,
-                 "--output-dir", file_split_dir,
-                 "--items-per-file", "500"],
-                f"Division du fichier {file} en morceaux"
-            )
-            
-            # Générer l'arborescence du répertoire de morceaux
-            arborescence_file = os.path.join(file_split_dir, f"{file_base_name}_arborescence.txt")
-            write_tree(file_split_dir, os.path.basename(arborescence_file))
-            print(f"Arborescence générée dans {arborescence_file}")
-    
-    # 2.3 Transformation pour LLM
-    confluence_transform_output = os.path.join(llm_ready_dir, "llm_ready_confluence.json")
-    
-    # Si les fichiers sont trop volumineux, utiliser seulement un échantillon
-    confluence_files_to_transform = []
-    for file in confluence_files_abs:
-        if os.path.exists(file):
-            if os.path.getsize(file) > 50 * 1024 * 1024:  # > 50 Mo
-                # Utiliser le premier morceau du fichier divisé
-                file_base_name = os.path.splitext(os.path.basename(file))[0]
-                file_split_dir = os.path.join(split_confluence_dir, f"{file_base_name}_confluence")
-                if os.path.exists(file_split_dir):
-                    parts = [f for f in os.listdir(file_split_dir) if f.endswith('.json')]
-                    if parts:
-                        confluence_files_to_transform.append(os.path.join(file_split_dir, parts[0]))
-                        print(f"Fichier {file} trop volumineux, utilisation de {parts[0]}")
-            else:
-                confluence_files_to_transform.append(file)
-    
-    if confluence_files_to_transform:
-        transform_confluence_cmd = [
-            sys.executable, os.path.join(SCRIPTS_DIR, "transform_for_llm.py"),
-            "--files"
-        ] + confluence_files_to_transform + [
-            "--output", confluence_transform_output
-        ]
-        
-        # Ajouter les options supplémentaires
-        if args.max_items:
-            transform_confluence_cmd.extend(["--max", str(args.max_items)])
-        
-        transform_confluence_cmd.append("--generate-arborescence")
-        
-        run_step(
-            transform_confluence_cmd,
-            "Transformation des données Confluence pour LLM"
-        )
-        
-        # Déplacer les fichiers d'arborescence générés au mauvais endroit pour LLM Ready
-        for file in glob.glob(os.path.join("results", "llm_ready_arborescence.txt")):
-            new_path = os.path.join(llm_ready_dir, os.path.basename(file))
-            shutil.move(file, new_path)
-            print(f"Déplacé {file} vers {new_path}")
-        
-        # Déplacer les fichiers d'arborescence des fichiers sources
-        for file in glob.glob(os.path.join("results", "*_confluence_arborescence.txt")):
-            new_path = os.path.join(confluence_dir, os.path.basename(file))
-            shutil.move(file, new_path)
-            print(f"Déplacé {file} vers {new_path}")
-            
-        # Déplacer le fichier JSON transformé s'il a été créé au mauvais endroit
-        if os.path.exists(os.path.join("results", "llm_ready_confluence.json")) and not os.path.exists(confluence_transform_output):
-            shutil.move(os.path.join("results", "llm_ready_confluence.json"), confluence_transform_output)
-            print(f"Déplacé results/llm_ready_confluence.json vers {confluence_transform_output}")
-    else:
-        print("\nAucun fichier Confluence valide à transformer.")
-    
-    #######################################
-    # PARTIE 3: MATCHING JIRA-CONFLUENCE
-    #######################################
-    
-    # Passer le matching si demandé
-    if args.skip_matching:
-        print("\nSkipping de la phase de matching JIRA-Confluence.")
-    else:
-        # Vérifier que les fichiers nécessaires existent
-        if not os.path.exists(jira_transform_output):
-            print(f"[ERREUR] Fichier JIRA transformé non trouvé: {jira_transform_output}")
-        elif not os.path.exists(confluence_transform_output):
-            print(f"[ERREUR] Fichier Confluence transformé non trouvé: {confluence_transform_output}")
-        else:
-            # Exécuter le matching
-            matches_output = os.path.join(matches_dir, "jira_confluence_matches.json")
-            updated_jira_output = os.path.join(matches_dir, "jira_with_matches.json")
-            updated_confluence_output = os.path.join(matches_dir, "confluence_with_matches.json")
-            
-            match_cmd = [
-                sys.executable, os.path.join(SCRIPTS_DIR, "match_jira_confluence.py"),
-                "--jira", jira_transform_output,
-                "--confluence", confluence_transform_output,
-                "--output", matches_output,
-                "--updated-jira", updated_jira_output,
-                "--updated-confluence", updated_confluence_output,
-                "--min-score", str(args.min_match_score)
-            ]
-            
-            run_step(
-                match_cmd,
-                "Matching entre tickets JIRA et pages Confluence"
-            )
-            
-            # Générer l'arborescence du résultat de matching
-            matches_arborescence = os.path.join(matches_dir, "matches_arborescence.txt")
-            write_tree(matches_dir, os.path.basename(matches_arborescence))
-            print(f"Arborescence des correspondances générée dans {matches_arborescence}")
-    
-    #######################################
-    # PARTIE 4: ANALYSE AVEC OPENAI (optionnel)
-    #######################################
-    
-    if args.with_openai:
-        # Vérifier que la clé API est disponible
-        api_key = args.api_key or os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            print("\n[ERREUR] Aucune clé API OpenAI trouvée. L'analyse OpenAI ne sera pas effectuée.")
-        else:
-            print("\nAnalyse des données avec OpenAI...")
-            
-            # Vérifier si on a les fichiers nécessaires
-            if os.path.exists(jira_transform_output) and os.path.exists(confluence_transform_output):
-                llm_enrichment = run_llm_enrichment(
-                    jira_transform_output,
-                    confluence_transform_output,
-                    llm_ready_dir,
-                    api_key,
-                    model=args.model
-                )
-                
-                if llm_enrichment:
-                    print("✅ Enrichissement LLM effectué avec succès.")
-                else:
-                    print("⚠️ L'enrichissement LLM a rencontré des problèmes.")
-            else:
-                print("[ERREUR] Fichiers transformés non trouvés pour l'enrichissement LLM.")
-                print(f"Fichier JIRA: {jira_transform_output} (existe: {os.path.exists(jira_transform_output)})")
-                print(f"Fichier Confluence: {confluence_transform_output} (existe: {os.path.exists(confluence_transform_output)})")
-    else:
-        print("\nL'analyse OpenAI n'a pas été activée. Utilisez --with-openai pour l'activer.")
-    
-    # Fin de l'exécution
-    with open(log_file, 'a') as log:
-        log.write(f"Exécution terminée le {datetime.now().isoformat()}\n")
-    
-    # Générer un résumé LLM même si l'enrichissement n'a pas pu être effectué
-    if generate_llm_summary is not None:
+    # Traitement des fichiers JIRA
+    jira_processed_files = []
+    for jira_file in jira_files:
         try:
-            # Récupérer la langue si disponible
-            current_language = None
-            try:
-                # Tenter d'importer le module lang_utils pour obtenir la langue actuelle
-                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                from cli.lang_utils import get_current_language
-                current_language = get_current_language()
-                print(f"🌐 Génération des résumés LLM en langue: {current_language}")
-            except ImportError:
-                print("⚠️ Module de traduction non disponible, utilisation de la langue par défaut")
+            jira_output = os.path.join(jira_dir, f"{os.path.splitext(os.path.basename(jira_file))[0]}_processed.json")
             
-            # Générer le résumé pour JIRA
-            if os.path.exists(jira_transform_output):
+            # 1. Extraire la structure
+            run_step([
+                sys.executable, os.path.join(SCRIPTS_DIR, "extract_jira_structure.py"),
+                jira_file,
+                "--output", jira_structure_file
+            ], "Extraction de la structure JIRA")
+            
+            # 2. Découper le fichier si nécessaire
+            jira_to_process = jira_file
+            if args.max_items:
+                print(f"\n== Découpage du fichier JIRA ({args.max_items} éléments par fichier) ==")
+                run_step([
+                    sys.executable, os.path.join(SCRIPTS_DIR, "process_by_chunks.py"),
+                    "split",
+                    "--input", jira_file,
+                    "--output-dir", jira_splits_dir,
+                    "--items-per-file", str(args.max_items)
+                ], "Découpage du fichier JIRA en morceaux")
+                
+                # Utiliser le premier fichier découpé
+                split_files = glob.glob(os.path.join(jira_splits_dir, "*.json"))
+                if split_files:
+                    jira_to_process = split_files[0]
+                    print(f"Utilisation du fichier découpé: {jira_to_process}")
+            
+            # 3. Transformer les données
+            cmd = [
+                sys.executable, os.path.join(SCRIPTS_DIR, "transform_for_llm.py"),
+                "--input", jira_to_process,
+                "--output", jira_output
+            ]
+            
+            run_step(cmd, "Transformation des données JIRA")
+            
+            # 4. Générer une arborescence du fichier
+            file_structure = write_file_structure(jira_output, jira_arbo_file, max_items=10, max_depth=4)
+            
+            jira_processed_files.append(jira_output)
+            
+        except Exception as e:
+            print(f"❌ Erreur lors du traitement du fichier JIRA {jira_file}: {e}")
+            traceback.print_exc()
+    
+    # Traitement des fichiers Confluence
+    confluence_processed_files = []
+    for confluence_file in confluence_files:
+        try:
+            confluence_output = os.path.join(confluence_dir, f"{os.path.splitext(os.path.basename(confluence_file))[0]}_processed.json")
+            
+            # 1. Extraire la structure
+            run_step([
+                sys.executable, os.path.join(SCRIPTS_DIR, "extract_confluence_structure.py"),
+                confluence_file,
+                "--output", confluence_structure_file
+            ], "Extraction de la structure Confluence")
+            
+            # 2. Découper le fichier si nécessaire
+            confluence_to_process = confluence_file
+            if args.max_items:
+                print(f"\n== Découpage du fichier Confluence ({args.max_items} éléments par fichier) ==")
+                run_step([
+                    sys.executable, os.path.join(SCRIPTS_DIR, "process_by_chunks.py"),
+                    "split",
+                    "--input", confluence_file,
+                    "--output-dir", confluence_splits_dir,
+                    "--items-per-file", str(args.max_items)
+                ], "Découpage du fichier Confluence en morceaux")
+                
+                # Utiliser le premier fichier découpé
+                split_files = glob.glob(os.path.join(confluence_splits_dir, "*.json"))
+                if split_files:
+                    confluence_to_process = split_files[0]
+                    print(f"Utilisation du fichier découpé: {confluence_to_process}")
+            
+            # 3. Transformer les données
+            cmd = [
+                sys.executable, os.path.join(SCRIPTS_DIR, "transform_for_llm.py"),
+                "--input", confluence_to_process,
+                "--output", confluence_output,
+                "--type", "confluence"
+            ]
+            
+            run_step(cmd, "Transformation des données Confluence")
+            
+            # 4. Générer une arborescence du fichier
+            file_structure = write_file_structure(confluence_output, confluence_arbo_file, max_items=10, max_depth=4)
+            
+            confluence_processed_files.append(confluence_output)
+            
+        except Exception as e:
+            print(f"❌ Erreur lors du traitement du fichier Confluence {confluence_file}: {e}")
+            traceback.print_exc()
+    
+    # Matching JIRA et Confluence
+    if jira_processed_files and confluence_processed_files and not args.skip_matching:
+        print("\n== Matching JIRA et Confluence ==")
+        for jira_file in jira_processed_files:
+            for confluence_file in confluence_processed_files:
+                jira_base = os.path.splitext(os.path.basename(jira_file))[0]
+                confluence_base = os.path.splitext(os.path.basename(confluence_file))[0]
+                matches_output = os.path.join(matches_dir, f"{jira_base}_{confluence_base}_matches.json")
+                
+                cmd = [
+                    sys.executable, os.path.join(SCRIPTS_DIR, "match_jira_confluence.py"),
+                    "--jira", jira_file,
+                    "--confluence", confluence_file,
+                    "--output", matches_output,
+                    "--updated-jira", jira_file,
+                    "--updated-confluence", confluence_file,
+                    "--min-score", str(args.min_match_score)
+                ]
+                
+                run_step(cmd, f"Matching {jira_base} avec {confluence_base}")
+    
+    # Préparation pour LLM
+    if jira_processed_files or confluence_processed_files:
+        print("\n== Préparation des données pour LLM ==")
+        
+        # Créer les fichiers combinés pour LLM
+        jira_llm_file = os.path.join(llm_dir, "enriched_jira.json")
+        confluence_llm_file = os.path.join(llm_dir, "enriched_confluence.json")
+        
+        # Combiner tous les fichiers JIRA
+        if jira_processed_files:
+            combine_json_files(jira_processed_files, jira_llm_file)
+            print(f"✅ Fichier JIRA combiné pour LLM: {jira_llm_file}")
+        
+        # Combiner tous les fichiers Confluence
+        if confluence_processed_files:
+            combine_json_files(confluence_processed_files, confluence_llm_file)
+            print(f"✅ Fichier Confluence combiné pour LLM: {confluence_llm_file}")
+        
+        # Enrichissement LLM si demandé
+        if use_openai and api_key:
+            print("\n== Enrichissement des données avec LLM ==")
+            
+            # Importer le modèle d'enrichissement
+            import sys
+            sys.path.append(SCRIPTS_DIR)
+            from outlines_enricher import enrich_data_file
+            
+            if os.path.exists(jira_llm_file):
                 try:
-                    with open(jira_transform_output, 'r', encoding='utf-8') as f:
+                    print(f"🔄 Enrichissement JIRA...")
+                    jira_enriched = enrich_data_file(jira_llm_file, jira_llm_file)
+                    if jira_enriched:
+                        print(f"✅ Enrichissement JIRA réussi")
+                    else:
+                        print(f"⚠️ Enrichissement JIRA incomplet")
+                except Exception as e:
+                    print(f"❌ Erreur lors de l'enrichissement JIRA: {e}")
+                    traceback.print_exc()
+            
+            if os.path.exists(confluence_llm_file):
+                try:
+                    print(f"🔄 Enrichissement Confluence...")
+                    confluence_enriched = enrich_data_file(confluence_llm_file, confluence_llm_file)
+                    if confluence_enriched:
+                        print(f"✅ Enrichissement Confluence réussi")
+                    else:
+                        print(f"⚠️ Enrichissement Confluence incomplet")
+                except Exception as e:
+                    print(f"❌ Erreur lors de l'enrichissement Confluence: {e}")
+                    traceback.print_exc()
+        
+        # Générer les résumés LLM
+        if generate_llm_summary:
+            try:
+                # Récupérer la langue si disponible
+                current_language = None
+                if TRANSLATIONS_LOADED:
+                    current_language = get_current_language()
+                    print(f"🌐 Génération des résumés LLM en langue: {current_language}")
+                
+                # Générer des résumés pour JIRA et Confluence
+                if os.path.exists(jira_llm_file):
+                    with open(jira_llm_file, 'r', encoding='utf-8') as f:
                         jira_data = json.load(f)
                     
                     jira_summary_file = generate_llm_summary(
-                        llm_ready_dir,
-                        data=jira_data,
+                        output_dir=llm_dir,
+                        jira_data=jira_data,
                         filename="jira_llm_enrichment_summary.md",
                         language=current_language
                     )
-                    print(f"✅ Résumé de l'enrichissement LLM pour JIRA généré: {jira_summary_file}")
-                except Exception as e:
-                    print(f"⚠️ Impossible de générer le résumé LLM pour JIRA: {e}")
-            
-            # Générer le résumé pour Confluence si disponible
-            if os.path.exists(confluence_transform_output):
-                try:
-                    with open(confluence_transform_output, 'r', encoding='utf-8') as f:
+                    print(f"📝 Résumé JIRA généré: {jira_summary_file}")
+                
+                if os.path.exists(confluence_llm_file):
+                    with open(confluence_llm_file, 'r', encoding='utf-8') as f:
                         confluence_data = json.load(f)
                     
                     confluence_summary_file = generate_llm_summary(
-                        llm_ready_dir,
-                        data=confluence_data,
+                        output_dir=llm_dir,
+                        confluence_data=confluence_data,
                         filename="confluence_llm_enrichment_summary.md",
                         language=current_language
                     )
-                    print(f"✅ Résumé de l'enrichissement LLM pour Confluence généré: {confluence_summary_file}")
-                except Exception as e:
-                    print(f"⚠️ Impossible de générer le résumé LLM pour Confluence: {e}")
+                    print(f"📝 Résumé Confluence généré: {confluence_summary_file}")
+            except Exception as e:
+                print(f"⚠️ Erreur lors de la génération des résumés LLM: {e}")
+                traceback.print_exc()
+    
+    # Compression des fichiers si demandée
+    if COMPRESSION_AVAILABLE and hasattr(args, 'compress') and args.compress:
+        print(f"\n🗜️ {t('compressing_files', 'compression')} {output_dir}...")
+        try:
+            count, compression_report = compress_results_directory(
+                output_dir, 
+                compression_level=args.compress_level,
+                keep_originals=args.keep_originals,
+                generate_report=True
+            )
+            current_lang = get_current_language()
+            report_path = os.path.join(output_dir, f"compression_report_{current_lang}.txt")
+            print(f"✅ {count} {t('files_compressed_success', 'compression')}")
+            print(f"   {t('report_available', 'compression')}: {report_path}")
         except Exception as e:
-            print(f"⚠️ Erreur lors de la génération des résumés LLM: {e}")
+            print(f"⚠️ Erreur lors de la compression: {e}")
+            traceback.print_exc()
     
-    print("\n== Récapitulatif ==")
-    print(f"Fichiers JIRA analysés: {', '.join(args.jira_files)}")
-    print(f"Fichiers Confluence analysés: {', '.join(args.confluence_files)}")
-    print(f"Répertoire de sortie: {output_dir}")
-    
-    if os.path.exists(jira_transform_output):
-        print(f"Données JIRA transformées: {jira_transform_output}")
-    
-    if os.path.exists(confluence_transform_output):
-        print(f"Données Confluence transformées: {confluence_transform_output}")
-    
-    if (
-        not args.skip_matching
-        and updated_jira_output is not None
-        and updated_confluence_output is not None
-        and matches_output is not None
-        and os.path.exists(updated_jira_output)
-        and os.path.exists(updated_confluence_output)
-    ):
-        print(f"Correspondances JIRA-Confluence: {matches_output}")
-        print(f"Tickets JIRA avec correspondances: {updated_jira_output}")
-        print(f"Pages Confluence avec correspondances: {updated_confluence_output}")
-
-    # Générer l'arborescence globale du dossier de sortie
-    global_arborescence = os.path.join(output_dir, "global_arborescence.txt")
-    write_tree(output_dir, os.path.basename(global_arborescence))
-    print(f"\nArborescence globale du dossier de sortie générée dans {global_arborescence}")
-    
-    # Générer des arborescences détaillées pour chaque fichier source
-    print("\nGénération des arborescences des fichiers source:")
-    
-    # Arborescences pour les fichiers JIRA
-    for file in jira_files_abs:
-        if os.path.exists(file):
-            file_base_name = os.path.splitext(os.path.basename(file))[0]
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            arborescence_file = f"{file_base_name}_arborescence_{timestamp}.txt"
-            write_file_structure(file, output_dir, arborescence_file)
-            print(f"- Structure du fichier JIRA '{file}' générée dans {os.path.join(output_dir, arborescence_file)}")
-    
-    # Arborescences pour les fichiers Confluence
-    for file in confluence_files_abs:
-        if os.path.exists(file):
-            file_base_name = os.path.splitext(os.path.basename(file))[0]
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            arborescence_file = f"{file_base_name}_arborescence_{timestamp}.txt"
-            write_file_structure(file, output_dir, arborescence_file)
-            print(f"- Structure du fichier Confluence '{file}' générée dans {os.path.join(output_dir, arborescence_file)}")
-    
-    print("\nTraitement terminé avec succès!")
+    print(f"\n✨ Analyse unifiée terminée avec succès!")
+    print(f"📁 Tous les résultats sont dans: {output_dir}")
+    if jira_processed_files:
+        print(f"📄 Fichiers JIRA traités: {', '.join(os.path.basename(f) for f in jira_processed_files)}")
+    if confluence_processed_files:
+        print(f"📄 Fichiers Confluence traités: {', '.join(os.path.basename(f) for f in confluence_processed_files)}")
+    if COMPRESSION_AVAILABLE and hasattr(args, 'compress') and args.compress:
+        print(f"🗜️ Fichiers compressés avec zstd et orjson pour optimiser le stockage")
 
 if __name__ == "__main__":
     main() 

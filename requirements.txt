@@ -5,3 +5,5 @@ python-dotenv>=1.1.0
 ijson>=3.4.0
 openai>=1.77.0
 outlines==0.2.3
+zstandard>=0.23.0
+orjson>=3.10.18

@@ -24,7 +24,12 @@
       "items_per_file": "Nombre d'éléments par fichier",
       "max_items": "Nombre maximum d'éléments à traiter (vide = tous)",
       "min_score": "Score minimum pour les correspondances (0.0-1.0)",
-      "output_clean": "Dossier/fichier de sortie (vide = auto-généré)"
+      "output_clean": "Dossier/fichier de sortie (vide = auto-généré)",
+      "select_file_process": "Sélectionnez le fichier JSON à traiter:",
+      "select_file_chunks": "Sélectionnez le fichier JSON volumineux à découper:",
+      "select_dir_compress": "Sélectionnez le répertoire ou fichier JSON à compresser:",
+      "select_jira_file": "Sélectionnez le fichier JIRA traité:",
+      "select_confluence_file": "Sélectionnez le fichier Confluence traité:"
     },
     "confirmations": {
       "use_llm": "Voulez-vous enrichir avec LLM (OpenAI) ?",
@@ -36,7 +41,8 @@
       "launch_processing": "Lancer le traitement ?",
       "launch_matching": "Lancer le matching ?",
       "launch_unified": "Lancer le traitement unifié ?",
-      "launch_cleaning": "Lancer le nettoyage?"
+      "launch_cleaning": "Lancer le nettoyage?",
+      "launch_compression": "Lancer la compression et l'optimisation?"
     },
     "options": {
       "no_mapping": "Sans mapping (détection automatique)",
@@ -55,6 +61,7 @@
       "match": "Établir des correspondances JIRA-Confluence (match)",
       "unified": "Flux complet JIRA + Confluence (unified)",
       "clean": "Nettoyer les données sensibles (clean)",
+      "compress": "Compresser et optimiser des fichiers JSON",
       "change_language": "Changer la langue",
       "quit": "Quitter"
     },
@@ -134,6 +141,22 @@
       "llamendex_usage_title": "Utilisation pour Llamendex",
       "llamendex_usage_text": "Les données enrichies par LLM sont prêtes pour ingestion dans Llamendex avec:\n1. Des résumés concis du contenu\n2. Des mots-clés thématiques\n3. Des entités extraites (personnes, organisations)\n4. Une analyse de sentiment\n\nCes enrichissements améliorent considérablement la qualité des résultats de recherche\net permettent des fonctionnalités avancées comme le filtrage par sentiment ou \nla recherche par entités.",
       "llm_summary_generated": "Résumé de l'enrichissement LLM généré dans"
+    },
+    "compression": {
+      "invalid_json_file": "Fichier JSON invalide",
+      "skipped": "ignoré",
+      "error_processing": "Erreur lors du traitement de",
+      "compress_minify_desc": "Compresser et minifier des fichiers JSON avec zstd et orjson",
+      "directory_help": "Répertoire de résultats à compresser",
+      "compression_level_help": "Niveau de compression (1-22)",
+      "keep_originals_help": "Conserver les fichiers JSON originaux en plus des compressés",
+      "language_help": "Langue pour le rapport (fr/en)",
+      "compressing_files": "Compression des fichiers JSON dans",
+      "files_compressed_success": "fichiers compressés avec succès",
+      "report_available": "Rapport disponible dans",
+      "compared_to_standard": "par rapport aux fichiers JSON standards",
+      "compression_level_prompt": "Choisissez un niveau de compression",
+      "keep_originals_prompt": "Conserver les fichiers JSON originaux?"
     }
   },
   "en": {
@@ -161,7 +184,12 @@
       "items_per_file": "Number of items per file",
       "max_items": "Maximum number of items to process (empty = all)",
       "min_score": "Minimum score for matches (0.0-1.0)",
-      "output_clean": "Output directory/file (empty = auto-generated)"
+      "output_clean": "Output directory/file (empty = auto-generated)",
+      "select_file_process": "Select the JSON file to process:",
+      "select_file_chunks": "Select the large JSON file to split:",
+      "select_dir_compress": "Select the directory or JSON file to compress:",
+      "select_jira_file": "Select the processed JIRA file:",
+      "select_confluence_file": "Select the processed Confluence file:"
     },
     "confirmations": {
       "use_llm": "Do you want to enrich with LLM (OpenAI)?",
@@ -173,7 +201,8 @@
       "launch_processing": "Start processing?",
       "launch_matching": "Start matching?",
       "launch_unified": "Start unified processing?",
-      "launch_cleaning": "Start cleaning?"
+      "launch_cleaning": "Start cleaning?",
+      "launch_compression": "Start compression and optimization?"
     },
     "options": {
       "no_mapping": "No mapping (automatic detection)",
@@ -192,6 +221,7 @@
       "match": "Establish JIRA-Confluence matches (match)",
       "unified": "Complete JIRA + Confluence flow (unified)",
       "clean": "Clean sensitive data (clean)",
+      "compress": "Compress and optimize JSON files",
       "change_language": "Change language",
       "quit": "Quit"
     },
@@ -271,6 +301,22 @@
       "llamendex_usage_title": "Usage for Llamendex",
       "llamendex_usage_text": "LLM-enriched data is ready for ingestion into Llamendex with:\n1. Concise content summaries\n2. Thematic keywords\n3. Extracted entities (people, organizations)\n4. Sentiment analysis\n\nThese enrichments significantly improve the quality of search results\nand enable advanced features such as sentiment filtering or\nentity-based searching.",
       "llm_summary_generated": "LLM enrichment summary generated in"
+    },
+    "compression": {
+      "invalid_json_file": "Invalid JSON file",
+      "skipped": "skipped",
+      "error_processing": "Error processing",
+      "compress_minify_desc": "Compress and minify JSON files with zstd and orjson",
+      "directory_help": "Results directory to compress",
+      "compression_level_help": "Compression level (1-22)",
+      "keep_originals_help": "Keep original JSON files in addition to compressed ones",
+      "language_help": "Language for the report (fr/en)",
+      "compressing_files": "Compressing JSON files in",
+      "files_compressed_success": "files compressed successfully",
+      "report_available": "Report available at",
+      "compared_to_standard": "compared to standard JSON files",
+      "compression_level_prompt": "Choose a compression level",
+      "keep_originals_prompt": "Keep original JSON files?"
     }
   }
 } 

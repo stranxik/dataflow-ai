@@ -78,6 +78,7 @@ Le projet se compose de trois modules principaux :
 | `match` | **Correspondances** JIRA-Confluence | `python -m cli.cli match jira.json confluence.json` |
 | `unified` | **Flux complet** de traitement | `python -m cli.cli unified jira1.json jira2.json --confluence conf1.json` |
 | `clean` | **Nettoyer** les données sensibles | `python -m cli.cli clean fichier.json --recursive` |
+| `compress` | **Compresser & optimiser** des fichiers JSON | `python -m cli.cli compress repertoire --level 19` |
 
 <div align="center">
 
@@ -219,6 +220,22 @@ python -m cli.cli clean fichier.json --output fichier_propre.json
 
 </div>
 
+<div class="command-box">
+
+### 📦 Compression et optimisation des fichiers JSON
+
+```bash
+# Compresser un répertoire spécifique de fichiers JSON
+python -m cli.cli compress results/mes_donnees --level 19 --keep-originals
+
+# Compression avec le traitement unifié
+python -m cli.cli unified jira1.json --output-dir dossier_resultats --compress
+```
+
+Le système de compression utilise orjson et zstd pour obtenir des économies d'espace considérables (jusqu'à 90%) tout en préservant l'intégrité des données.
+
+</div>
+
 ## 📊 Organisation des résultats
 
 Tous les résultats sont organisés dans le dossier `results/` avec une structure claire :
@@ -233,9 +250,12 @@ results/
 │   ├── split_confluence_files/             # Fichiers Confluence découpés
 │   ├── llm_ready/                          # Fichiers prêts pour LLM
 │   │   ├── enriched_jira.json              # JIRA enrichi avec LLM
+│   │   ├── enriched_jira.json.zst          # Version compressée (si activée)
 │   │   ├── enriched_confluence.json        # Confluence enrichi avec LLM
+│   │   ├── enriched_confluence.json.zst    # Version compressée (si activée)
 │   │   ├── jira_llm_enrichment_summary.md  # Résumé LLM pour JIRA
 │   │   └── confluence_llm_enrichment_summary.md # Résumé LLM pour Confluence
+│   ├── compression_report_fr.txt           # Statistiques de compression (si activée)
 │   ├── global_arborescence.txt             # Arborescence globale
 │   └── ...
 ```
@@ -321,6 +341,11 @@ Le projet inclut des outils pratiques dans le dossier `tools/` :
    python -m tools.clean_sensitive_data fichier.json --output fichier_clean.json
    ```
 
+4. **compress_utils.py** : Compresser et optimiser les fichiers JSON avec zstd et orjson
+   ```bash
+   python -m extract.compress_utils --directory results/mes_donnees --level 19
+   ```
+
 ### Utilisation des outils dans le CLI
 
 Les outils sont intégrés au CLI principal et peuvent être utilisés de manière interactive :
@@ -329,9 +354,12 @@ Les outils sont intégrés au CLI principal et peuvent être utilisés de maniè
 # Lancer le nettoyage des données sensibles via le CLI
 python -m cli.cli clean fichier.json --output fichier_clean.json
 
+# Compresser des fichiers JSON via le CLI
+python -m cli.cli compress results/mes_donnees --level 19
+
 # Utiliser le mode interactif
 python -m cli.cli interactive
-# Puis sélectionner "Nettoyer les données sensibles (clean)"
+# Puis sélectionner "Nettoyer les données sensibles (clean)" ou "Compresser et optimiser des fichiers JSON"
 ```
 
 ### Intégration programmatique
@@ -508,6 +536,7 @@ Pour plus de détails, consultez le fichier [SECURITY.md](SECURITY.md).
 - typer, rich, inquirer, python-dotenv, ijson
 - openai (optionnel, pour les fonctionnalités LLM)
 - outlines==0.2.3 (optionnel, pour l'extraction structurée)
+- zstandard, orjson (optionnel, pour la compression et l'optimisation JSON)
 
 ## 📜 Licence
 

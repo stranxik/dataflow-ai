@@ -609,6 +609,9 @@ def match(
     llm_assist: bool = typer.Option(False, "--llm-assist", help="Utiliser un LLM pour améliorer les correspondances"),
     api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API pour le LLM (ou variable d'environnement OPENAI_API_KEY)"),
     llm_model: str = typer.Option(None, "--model", help="Modèle LLM à utiliser"),
+    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
 ):
     """
     Établit des correspondances entre tickets JIRA et pages Confluence.
@@ -752,6 +755,9 @@ def unified(
     api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API pour le LLM"),
     skip_matching: bool = typer.Option(False, "--skip-matching", help="Ne pas effectuer le matching entre JIRA et Confluence"),
     language: str = typer.Option(None, "--lang", "-l", help="Langue de l'interface (fr/en)"),
+    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
 ):
     """
     Exécute un flux complet: JIRA + Confluence + Matching
@@ -773,19 +779,22 @@ def unified(
             return
     
     # Générer un nom de répertoire avec timestamp s'il n'est pas spécifié
+    timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    
+    # Utiliser le dossier results comme base
+    base_results_dir = "results"
+    
     if not output_dir:
-        output_dir = f"jira_confluence_{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+        output_dir = f"jira_confluence_{timestamp}"
     
     # Préparer le chemin complet
-    timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     
     # S'assurer que le chemin n'est pas dupliqué
     if output_dir.startswith("results/"):
         full_output_dir = output_dir
     else:
-        results_dir = "results"
-        ensure_dir(results_dir)
-        full_output_dir = os.path.join(results_dir, output_dir)
+        ensure_dir(base_results_dir)
+        full_output_dir = os.path.join(base_results_dir, output_dir)
     
     # Créer la structure de répertoires
     dirs = {
@@ -835,6 +844,8 @@ def unified(
         cmd.append("--with-openai")
         if api_key:
             cmd.extend(["--api-key", api_key])
+    else:
+        cmd.append("--no-openai")
     
     if skip_matching:
         cmd.append("--skip-matching")
@@ -842,6 +853,13 @@ def unified(
     # Ajouter l'option de langue si spécifiée
     if language:
         cmd.extend(["--language", language])
+    
+    # Ajouter les options de compression si demandées
+    if compress:
+        cmd.append("--compress")
+        cmd.extend(["--compress-level", str(compress_level)])
+        if not keep_originals:
+            cmd.append("--no-originals")
     
     # Exécuter le script run_unified_analysis.py
     try:
@@ -867,6 +885,14 @@ def unified(
             
             print_success(f"Fichiers générés dans : {full_output_dir}")
             console.print(f"Arborescence globale générée dans : {os.path.join(full_output_dir, 'global_arborescence.txt')}")
+            
+            # Afficher des informations sur la compression si applicable
+            if compress:
+                current_lang = get_current_language()
+                report_path = os.path.join(full_output_dir, f"compression_report_{current_lang}.txt")
+                if os.path.exists(report_path):
+                    console.print(f"[bold cyan]Rapport de compression généré dans : [/bold cyan]{report_path}")
+            
             print_success("Traitement unifié terminé avec succès !")
         else:
             console.print(process.stdout)
@@ -886,6 +912,9 @@ def chunks(
     process_after: bool = typer.Option(False, "--process", "-p", help="Traiter chaque morceau après découpage"),
     mapping_file: Optional[str] = typer.Option(None, "--mapping", "-m", help="Fichier de mapping à utiliser pour le traitement"),
     use_llm: bool = typer.Option(False, "--llm", help="Utiliser un LLM pour l'enrichissement lors du traitement"),
+    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
 ):
     """
     Découpe un fichier JSON volumineux en morceaux plus petits et optionnellement les traite.
@@ -1021,6 +1050,7 @@ def interactive(
         t("match", "interactive_choices"),
         t("unified", "interactive_choices"),
         t("clean", "interactive_choices"),
+        t("compress", "interactive_choices"),
         # Ajouter l'option pour changer de langue
         f"🌐 {t('change_language', 'interactive_choices', 'fr')} / {t('change_language', 'interactive_choices', 'en')}",
         t("quit", "interactive_choices")
@@ -1064,6 +1094,8 @@ def interactive(
         _run_interactive_unified()
     elif t("clean", "interactive_choices") in selected_operation:
         _run_interactive_clean()
+    elif t("compress", "interactive_choices") in selected_operation:
+        _run_interactive_compress()
 
 
 def _run_interactive_process():
@@ -1199,12 +1231,33 @@ def _run_interactive_chunks():
                      default="500"),
         inquirer.Confirm('process_after',
                         message="Traiter les morceaux après découpage ?",
+                        default=False),
+        inquirer.Confirm('compress',
+                        message="Activer la compression des fichiers JSON ?",
                         default=False)
     ]
     answers = inquirer.prompt(questions)
     
     items_per_file = int(answers['items_per_file'])
     process_after = answers['process_after']
+    compress = answers['compress']
+    
+    # Options de compression si activée
+    compress_level = 19  # Valeur par défaut
+    keep_originals = True  # Valeur par défaut
+    if compress:
+        compression_questions = [
+            inquirer.List('compress_level',
+                          message=t("compression_level_prompt", "compression"),
+                          choices=["15 (fast)", "19 (balanced)", "22 (max)"],
+                          default="19 (balanced)"),
+            inquirer.Confirm('keep_originals',
+                             message=t("keep_originals_prompt", "compression"),
+                             default=True)
+        ]
+        compression_answers = inquirer.prompt(compression_questions)
+        compress_level = int(compression_answers['compress_level'].split(" ")[0])
+        keep_originals = compression_answers['keep_originals']
     
     # Options de traitement si demandé
     mapping_file = None
@@ -1238,6 +1291,10 @@ def _run_interactive_chunks():
         console.print(f"- Traitement après découpage : [cyan]Oui[/cyan]")
         console.print(f"- Mapping : [cyan]{mapping_file or 'Auto-détection'}[/cyan]")
         console.print(f"- Enrichissement LLM : [cyan]{'Oui' if use_llm else 'Non'}[/cyan]")
+    if compress:
+        console.print(f"- Compression JSON : [cyan]Oui (niveau {compress_level}, conserver originaux: {t('yes', 'messages') if keep_originals else t('no', 'messages')})[/cyan]")
+    else:
+        console.print(f"- Compression JSON : [cyan]Non[/cyan]")
     
     questions = [
         inquirer.Confirm('confirm',
@@ -1257,190 +1314,10 @@ def _run_interactive_chunks():
         items_per_file=items_per_file,
         process_after=process_after,
         mapping_file=mapping_file,
-        use_llm=use_llm
-    )
-
-
-def _run_interactive_match():
-    """Interface interactive pour la commande match."""
-    # Sélection des fichiers
-    console.print("[bold]Sélection des fichiers JIRA et Confluence[/bold]")
-    
-    jira_file = _prompt_for_file("Sélectionnez le fichier JIRA traité:")
-    if not jira_file:
-        return
-    
-    confluence_file = _prompt_for_file("Sélectionnez le fichier Confluence traité:")
-    if not confluence_file:
-        return
-    
-    # Répertoire de sortie
-    default_output_dir = os.environ.get("MATCH_OUTPUT_DIR", "output_matches")
-    output_dir = typer.prompt("Répertoire de sortie", default=default_output_dir)
-    
-    # Options de matching
-    questions = [
-        inquirer.Text('min_score',
-                     message="Score minimum pour les correspondances (0.0-1.0)",
-                     default="0.2"),
-        inquirer.Confirm('llm_assist',
-                        message="Utiliser un LLM pour améliorer les correspondances ?",
-                        default=False)
-    ]
-    answers = inquirer.prompt(questions)
-    
-    min_score = float(answers['min_score'])
-    llm_assist = answers['llm_assist']
-    
-    # Options LLM si demandées
-    llm_model = None
-    api_key = None
-    if llm_assist:
-        # Clé API
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            api_key = typer.prompt("Entrez votre clé API OpenAI", hide_input=True)
-        
-        # Modèle
-        questions = [
-            inquirer.List('llm_model',
-                         message="Choisissez un modèle LLM",
-                         choices=LLM_MODELS,
-                         default="gpt-4.1")
-        ]
-        llm_answers = inquirer.prompt(questions)
-        llm_model = llm_answers['llm_model']
-    
-    # Confirmation finale
-    console.print("\n[bold]Récapitulatif :[/bold]")
-    console.print(f"- Fichier JIRA : [cyan]{jira_file}[/cyan]")
-    console.print(f"- Fichier Confluence : [cyan]{confluence_file}[/cyan]")
-    console.print(f"- Répertoire de sortie : [cyan]{output_dir}[/cyan]")
-    console.print(f"- Score minimum : [cyan]{min_score}[/cyan]")
-    if llm_assist:
-        console.print(f"- Assistance LLM : [cyan]Oui ({llm_model})[/cyan]")
-    
-    questions = [
-        inquirer.Confirm('confirm',
-                        message="Lancer le matching ?",
-                        default=True)
-    ]
-    confirm = inquirer.prompt(questions)
-    
-    if not confirm or not confirm['confirm']:
-        console.print("[yellow]Opération annulée.[/yellow]")
-        return
-    
-    # Exécuter match avec les paramètres définis
-    match(
-        jira_file=jira_file,
-        confluence_file=confluence_file,
-        output_dir=output_dir,
-        min_score=min_score,
-        llm_assist=llm_assist,
-        api_key=api_key,
-        llm_model=llm_model
-    )
-
-
-def _run_interactive_unified():
-    """Interface interactive pour la commande unified."""
-    console.print("[bold]Flux complet: JIRA + Confluence + Matching[/bold]")
-    
-    # Sélection des fichiers JIRA (multiples)
-    jira_files = []
-    while True:
-        jira_file = _prompt_for_file(f"Sélectionnez un fichier JIRA ({len(jira_files)} sélectionnés, [Valider la sélection] pour terminer):", allow_validate=True)
-        if not jira_file or jira_file == "__VALIDATE__":
-            break
-        jira_files.append(jira_file)
-        console.print(f"Fichier ajouté : [cyan]{jira_file}[/cyan]")
-    
-    if not jira_files:
-        console.print("[yellow]Aucun fichier JIRA sélectionné. Opération annulée.[/yellow]")
-        return
-    
-    # Sélection des fichiers Confluence (facultatif)
-    confluence_files = []
-    questions = [
-        inquirer.Confirm('add_confluence', message="Ajouter des fichiers Confluence ?", default=True)
-    ]
-    add_conf = inquirer.prompt(questions)
-    if add_conf and add_conf['add_confluence']:
-        while True:
-            confluence_file = _prompt_for_file(f"Sélectionnez un fichier Confluence ({len(confluence_files)} sélectionnés, [Valider la sélection] pour terminer):", allow_validate=True)
-            if not confluence_file or confluence_file == "__VALIDATE__":
-                break
-            confluence_files.append(confluence_file)
-            console.print(f"Fichier ajouté : [cyan]{confluence_file}[/cyan]")
-    
-    # Répertoire de sortie
-    default_output_dir = os.environ.get("UNIFIED_OUTPUT_DIR", "output_unified")
-    output_dir = typer.prompt("Répertoire de sortie", default=default_output_dir)
-    
-    # Options avancées
-    questions = [
-        inquirer.Text('min_match_score',
-                     message="Score minimum pour les correspondances (0.0-1.0)",
-                     default="0.2"),
-        inquirer.Text('max_items',
-                     message="Nombre maximum d'éléments à traiter par fichier (vide = tous)",
-                     default=""),
-        inquirer.Confirm('use_llm',
-                        message="Utiliser un LLM pour l'enrichissement ?",
-                        default=False),
-        inquirer.Confirm('skip_matching',
-                        message="Ignorer le matching entre JIRA et Confluence ?",
-                        default=False)
-    ]
-    answers = inquirer.prompt(questions)
-    
-    min_match_score = float(answers['min_match_score'])
-    max_items = int(answers['max_items']) if answers['max_items'].strip() else None
-    use_llm = answers['use_llm']
-    skip_matching = answers['skip_matching']
-    
-    # Options LLM si demandées
-    api_key = None
-    if use_llm:
-        # Clé API
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            api_key = typer.prompt("Entrez votre clé API OpenAI", hide_input=True)
-    
-    # Confirmation finale
-    console.print("\n[bold]Récapitulatif :[/bold]")
-    console.print(f"- Fichiers JIRA : [cyan]{', '.join(jira_files)}[/cyan]")
-    if confluence_files:
-        console.print(f"- Fichiers Confluence : [cyan]{', '.join(confluence_files)}[/cyan]")
-    console.print(f"- Répertoire de sortie : [cyan]{output_dir}[/cyan]")
-    console.print(f"- Score minimum : [cyan]{min_match_score}[/cyan]")
-    if max_items:
-        console.print(f"- Limite d'éléments : [cyan]{max_items}[/cyan]")
-    console.print(f"- Enrichissement LLM : [cyan]{'Oui' if use_llm else 'Non'}[/cyan]")
-    console.print(f"- Ignorer matching : [cyan]{'Oui' if skip_matching else 'Non'}[/cyan]")
-    
-    questions = [
-        inquirer.Confirm('confirm',
-                        message="Lancer le traitement unifié ?",
-                        default=True)
-    ]
-    confirm = inquirer.prompt(questions)
-    
-    if not confirm or not confirm['confirm']:
-        console.print("[yellow]Opération annulée.[/yellow]")
-        return
-    
-    # Exécuter unified avec les paramètres définis
-    unified(
-        jira_files=jira_files,
-        confluence_files=confluence_files,
-        output_dir=output_dir,
-        min_match_score=min_match_score,
-        max_items=max_items,
         use_llm=use_llm,
-        api_key=api_key,
-        skip_matching=skip_matching
+        compress=compress,
+        compress_level=compress_level if compress else None,
+        keep_originals=keep_originals if compress else None
     )
 
 
@@ -1613,6 +1490,1328 @@ def _run_interactive_clean():
         clean(input_path, output, recursive)
 
 
+@app.command()
+def compress(
+    directory: str = typer.Argument(..., help="Répertoire ou fichier JSON à compresser/optimiser"),
+    compress_level: int = typer.Option(19, "--level", "-l", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux"),
+    language: str = typer.Option(None, "--lang", help="Langue pour le rapport (fr/en)"),
+):
+    """
+    Compresse et optimise des fichiers JSON avec zstd et orjson.
+    Réduit considérablement la taille des fichiers et améliore les performances de lecture/écriture.
+    """
+    console = Console()
+    
+    # Vérifier que le chemin existe
+    if not os.path.exists(directory):
+        console.print(f"[bold red]Le chemin {directory} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    
+    # Définir la langue si spécifiée
+    if language and TRANSLATIONS_LOADED:
+        set_language(language)
+    
+    # Importer le module de compression
+    try:
+        from extract.compress_utils import compress_results_directory
+    except ImportError:
+        console.print("[bold red]Module de compression non disponible. Installation des dépendances...[/bold red]")
+        subprocess.run([sys.executable, "-m", "pip", "install", "zstandard", "orjson"], check=True)
+        try:
+            from extract.compress_utils import compress_results_directory
+        except ImportError:
+            console.print("[bold red]Impossible d'importer le module de compression.[/bold red]")
+            raise typer.Exit(1)
+    
+    # Afficher les infos
+    console.print(Panel.fit(
+        f"[bold]{t('compress_minify_desc', 'compression')}[/bold]\n\n"
+        f"{t('directory_help', 'compression')} : [cyan]{directory}[/cyan]\n"
+        f"{t('compression_level_help', 'compression')} : [cyan]{compress_level}[/cyan]\n"
+        f"{t('keep_originals_help', 'compression')} : [cyan]{t('yes', 'messages') if keep_originals else t('no', 'messages')}[/cyan]",
+        title=t("compression", "interactive_choices"),
+        border_style="blue"
+    ))
+    
+    # Compresser les fichiers
+    with console.status(f"[bold blue]{t('compressing_files', 'compression')} {directory}..."):
+        try:
+            count, report = compress_results_directory(
+                directory, 
+                compression_level=compress_level,
+                keep_originals=keep_originals,
+                generate_report=True
+            )
+        except Exception as e:
+            console.print(f"[bold red]Erreur lors de la compression: {e}[/bold red]")
+            import traceback
+            console.print(traceback.format_exc())
+            raise typer.Exit(1)
+    
+    # Afficher les résultats
+    current_lang = get_current_language()
+    report_path = os.path.join(directory, f"compression_report_{current_lang}.txt")
+    
+    console.print(f"[bold green]✅ {count} {t('files_compressed_success', 'compression')}![/bold green]")
+    console.print(f"[bold]{t('report_available', 'compression')}:[/bold] {report_path}")
+    
+    # Si le rapport existe, afficher un résumé
+    if os.path.exists(report_path):
+        with open(report_path, 'r', encoding='utf-8') as f:
+            report_content = f.read()
+            
+            # Extraire juste le résumé global
+            summary_section = ""
+            in_summary = False
+            for line in report_content.split('\n'):
+                if line.startswith("## Global Summary") or line.startswith("## Résumé Global"):
+                    in_summary = True
+                    summary_section += line + "\n"
+                elif in_summary and line.startswith("##"):
+                    in_summary = False
+                elif in_summary:
+                    summary_section += line + "\n"
+            
+            # Afficher le résumé
+            console.print("\n[bold cyan]Résumé de compression:[/bold cyan]")
+            console.print(Markdown(summary_section))
+
+
+def _run_interactive_compress():
+    """Interface interactive pour la commande compress."""
+    # Sélection du répertoire ou fichier à compresser
+    directory = _prompt_for_file(t("select_dir_compress", "prompts"))
+    if not directory:
+        return
+    
+    # Options de compression
+    questions = [
+        inquirer.List('compress_level',
+                      message=t("compression_level_prompt", "compression"),
+                      choices=["15 (fast)", "19 (balanced)", "22 (max)"],
+                      default="19 (balanced)"),
+        inquirer.Confirm('keep_originals',
+                         message=t("keep_originals_prompt", "compression"),
+                         default=True)
+    ]
+    answers = inquirer.prompt(questions)
+    
+    # Extraire le niveau de compression
+    compress_level = int(answers['compress_level'].split(" ")[0])
+    keep_originals = answers['keep_originals']
+    
+    # Confirmation
+    console.print(f"\n[bold]{t('summary', 'messages')}[/bold]")
+    console.print(f"- {t('directory_help', 'compression')} : [cyan]{directory}[/cyan]")
+    console.print(f"- {t('compression_level_help', 'compression')} : [cyan]{compress_level}[/cyan]")
+    console.print(f"- {t('keep_originals_help', 'compression')} : [cyan]{t('yes', 'messages') if keep_originals else t('no', 'messages')}[/cyan]")
+    
+    questions = [
+        inquirer.Confirm('confirm',
+                         message=t("launch_compression", "confirmations"),
+                         default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    
+    if confirm and confirm['confirm']:
+        # Exécuter la compression
+        compress(directory, compress_level, keep_originals)
+
+
+@app.command()
+def match(
+    jira_file: str = typer.Argument(..., help="Fichier JSON de tickets JIRA traités"),
+    confluence_file: str = typer.Argument(..., help="Fichier JSON de pages Confluence traitées"),
+    output_dir: str = typer.Option(None, "--output-dir", "-o", help="Répertoire de sortie"),
+    min_score: float = typer.Option(None, "--min-score", "-s", help="Score minimum pour les correspondances"),
+    llm_assist: bool = typer.Option(False, "--llm-assist", help="Utiliser un LLM pour améliorer les correspondances"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API pour le LLM (ou variable d'environnement OPENAI_API_KEY)"),
+    llm_model: str = typer.Option(None, "--model", help="Modèle LLM à utiliser"),
+    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
+):
+    """
+    Établit des correspondances entre tickets JIRA et pages Confluence.
+    """
+    # Générer un timestamp pour le nom du dossier
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    
+    # Utiliser le dossier results comme base
+    base_results_dir = "results"
+    ensure_dir(base_results_dir)
+    
+    # Si output_dir est spécifié, l'utiliser comme nom de dossier avec le timestamp
+    if output_dir:
+        output_dir = os.path.join(base_results_dir, f"{output_dir}_{timestamp}")
+    else:
+        # Créer un nom à partir des noms de fichiers
+        jira_name = os.path.splitext(os.path.basename(jira_file))[0]
+        confluence_name = os.path.splitext(os.path.basename(confluence_file))[0]
+        output_dir = os.path.join(base_results_dir, f"matches_{jira_name}_{confluence_name}_{timestamp}")
+    
+    # Valeur par défaut pour min_score
+    min_score = min_score or float(os.environ.get("MIN_MATCH_SCORE", "0.2"))
+    
+    # Vérifier que les fichiers existent
+    if not os.path.exists(jira_file):
+        console.print(f"[bold red]Le fichier JIRA {jira_file} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    
+    if not os.path.exists(confluence_file):
+        console.print(f"[bold red]Le fichier Confluence {confluence_file} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    
+    # Créer le répertoire de sortie
+    ensure_dir(output_dir)
+    
+    # Définir les chemins de sortie
+    matches_file = os.path.join(output_dir, "jira_confluence_matches.json")
+    jira_with_matches_file = os.path.join(output_dir, "jira_with_matches.json")
+    confluence_with_matches_file = os.path.join(output_dir, "confluence_with_matches.json")
+    
+    # Afficher les infos
+    console.print(Panel.fit(
+        f"[bold]Matching JIRA ↔ Confluence[/bold]\n\n"
+        f"JIRA : [cyan]{jira_file}[/cyan]\n"
+        f"Confluence : [cyan]{confluence_file}[/cyan]\n"
+        f"Score minimum : [cyan]{min_score}[/cyan]",
+        title="Matching",
+        border_style="blue"
+    ))
+    
+    # Construire le chemin vers le script match_jira_confluence.py
+    match_script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                             "extract", "match_jira_confluence.py")
+    
+    # Exécuter le script de matching
+    cmd = [
+        sys.executable, match_script,
+        "--jira", jira_file,
+        "--confluence", confluence_file,
+        "--output", matches_file,
+        "--updated-jira", jira_with_matches_file,
+        "--updated-confluence", confluence_with_matches_file,
+        "--min-score", str(min_score)
+    ]
+    
+    with console.status("[bold blue]Matching en cours..."):
+        from subprocess import run, PIPE
+        result = run(cmd, stdout=PIPE, stderr=PIPE, text=True)
+    
+    if result.returncode != 0:
+        console.print("[bold red]Erreur lors du matching:[/bold red]")
+        console.print(result.stderr)
+        raise typer.Exit(1)
+    
+    # Afficher les résultats
+    console.print(result.stdout)
+    
+    # LLM pour améliorer les correspondances si demandé
+    if llm_assist:
+        # Utiliser les valeurs par défaut si non spécifiées
+        if not api_key:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            
+        if not llm_model:
+            llm_model = os.environ.get("DEFAULT_LLM_MODEL", "gpt-4.1")
+            
+        if not api_key:
+            console.print("[bold yellow]Pas de clé API OpenAI trouvée. L'assistance LLM ne sera pas effectuée.[/bold yellow]")
+            llm_assist = False
+        
+        if llm_assist:
+            console.print("[bold]Amélioration des correspondances avec LLM...[/bold]")
+            
+            # TODO: Implémenter l'amélioration des correspondances avec LLM
+            # Cela pourrait inclure:
+            # 1. Analyse des correspondances de faible score pour confirmer/infirmer
+            # 2. Recherche de correspondances supplémentaires basées sur la sémantique
+            # 3. Suggestion de nouveaux liens qui n'ont pas été détectés automatiquement
+            
+            console.print("[bold yellow]Assistance LLM pour les correspondances non implémentée.[/bold yellow]")
+    
+    # Afficher un résumé
+    try:
+        with open(matches_file, 'r', encoding='utf-8') as f:
+            matches = json.load(f)
+        
+        table = Table(title="Résumé des correspondances")
+        table.add_column("Métrique", style="cyan")
+        table.add_column("Valeur", style="green")
+        
+        # Nombre de tickets avec correspondances
+        total_tickets = len(matches)
+        table.add_row("Tickets avec correspondances", str(total_tickets))
+        
+        # Nombre total de correspondances
+        total_matches = sum(len(matches[ticket_id]) for ticket_id in matches)
+        table.add_row("Correspondances totales", str(total_matches))
+        
+        # Moyenne de correspondances par ticket
+        avg_matches = total_matches / total_tickets if total_tickets > 0 else 0
+        table.add_row("Moyenne par ticket", f"{avg_matches:.2f}")
+        
+        console.print(table)
+        
+        console.print(f"\nFichiers générés dans : [bold cyan]{output_dir}[/bold cyan]")
+        console.print("\n[bold green]Matching terminé avec succès ![/bold green]")
+        
+    except Exception as e:
+        console.print(f"[bold red]Erreur lors de l'affichage du résumé: {e}[/bold red]")
+
+
+@app.command()
+def unified(
+    jira_files: List[str] = typer.Argument(..., help="Fichiers JSON JIRA à traiter"),
+    confluence_files: List[str] = typer.Option([], "--confluence", "-c", help="Fichiers JSON Confluence à traiter"),
+    output_dir: str = typer.Option(None, "--output-dir", "-o", help="Répertoire de sortie"),
+    min_match_score: float = typer.Option(None, "--min-score", "-s", help="Score minimum pour les correspondances"),
+    max_items: Optional[int] = typer.Option(None, "--max", help="Nombre maximum d'éléments à traiter par fichier"),
+    use_llm: bool = typer.Option(True, "--llm/--no-llm", help="Utiliser un LLM pour l'enrichissement"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API pour le LLM"),
+    skip_matching: bool = typer.Option(False, "--skip-matching", help="Ne pas effectuer le matching entre JIRA et Confluence"),
+    language: str = typer.Option(None, "--lang", "-l", help="Langue de l'interface (fr/en)"),
+    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
+):
+    """
+    Exécute un flux complet: JIRA + Confluence + Matching
+    """
+    if language:
+        set_language(language)
+        
+    print_header()
+    
+    # Vérifier l'existence des fichiers
+    for file in jira_files:
+        if not os.path.exists(file):
+            print_error(f"Fichier JIRA introuvable: {file}")
+            return
+    
+    for file in confluence_files:
+        if not os.path.exists(file):
+            print_error(f"Fichier Confluence introuvable: {file}")
+            return
+    
+    # Générer un nom de répertoire avec timestamp s'il n'est pas spécifié
+    timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    
+    # Utiliser le dossier results comme base
+    base_results_dir = "results"
+    
+    if not output_dir:
+        output_dir = f"jira_confluence_{timestamp}"
+    
+    # Préparer le chemin complet
+    
+    # S'assurer que le chemin n'est pas dupliqué
+    if output_dir.startswith("results/"):
+        full_output_dir = output_dir
+    else:
+        ensure_dir(base_results_dir)
+        full_output_dir = os.path.join(base_results_dir, output_dir)
+    
+    # Créer la structure de répertoires
+    dirs = {
+        "jira": os.path.join(full_output_dir, "jira"),
+        "confluence": os.path.join(full_output_dir, "confluence"),
+        "matches": os.path.join(full_output_dir, "matches"),
+        "split_jira": os.path.join(full_output_dir, "split_jira_files"),
+        "split_confluence": os.path.join(full_output_dir, "split_confluence_files"),
+        "llm_ready": os.path.join(full_output_dir, "llm_ready")
+    }
+    
+    # Créer tous les répertoires
+    for dir_name, dir_path in dirs.items():
+        ensure_dir(dir_path)
+    
+    # Récupérer les valeurs par défaut des variables d'environnement si nécessaire
+    min_score = min_match_score or float(os.environ.get("MIN_MATCH_SCORE", "0.2"))
+    
+    console.print(Panel(
+        f"[bold]Traitement unifié JIRA + Confluence[/bold]\n\n"
+        f"Fichiers JIRA : {', '.join(jira_files)}\n"
+        f"Fichiers Confluence : {', '.join(confluence_files)}\n"
+        f"Répertoire de sortie : {full_output_dir}",
+        title="Traitement Unifié",
+        expand=False
+    ))
+    
+    # Options pour run_unified_analysis.py
+    cmd = [
+        sys.executable,
+        os.path.join(parent_dir, "extract", "run_unified_analysis.py"),
+        "--jira-files"
+    ] + jira_files
+    
+    if confluence_files:
+        cmd.extend(["--confluence-files"] + confluence_files)
+    
+    cmd.extend([
+        "--output-dir", full_output_dir,
+        "--min-match-score", str(min_score)
+    ])
+    
+    if max_items:
+        cmd.extend(["--max-items", str(max_items)])
+    
+    if use_llm:
+        cmd.append("--with-openai")
+        if api_key:
+            cmd.extend(["--api-key", api_key])
+    else:
+        cmd.append("--no-openai")
+    
+    if skip_matching:
+        cmd.append("--skip-matching")
+    
+    # Ajouter l'option de langue si spécifiée
+    if language:
+        cmd.extend(["--language", language])
+    
+    # Ajouter les options de compression si demandées
+    if compress:
+        cmd.append("--compress")
+        cmd.extend(["--compress-level", str(compress_level)])
+        if not keep_originals:
+            cmd.append("--no-originals")
+    
+    # Exécuter le script run_unified_analysis.py
+    try:
+        console.print("\n[bold cyan]Exécution du flux unifié...[/bold cyan]")
+        process = subprocess.run(cmd, text=True, capture_output=True)
+        
+        if process.returncode == 0:
+            console.print(process.stdout)
+            
+            # Corriger les éventuels problèmes de dossiers dupliqués
+            try:
+                # Importer le module tools
+                from tools import fix_duplicate_paths
+                
+                # Appliquer la correction au répertoire de sortie
+                moved_count = fix_duplicate_paths(full_output_dir)
+                if moved_count > 0:
+                    console.print(f"[yellow]⚠️ Correction de {moved_count} fichiers dans des chemins dupliqués[/yellow]")
+            except ImportError:
+                console.print("[yellow]Module tools non trouvé. Pas de correction de chemins dupliqués.[/yellow]")
+            except Exception as e:
+                console.print(f"[yellow]Erreur lors de la correction des chemins: {str(e)}[/yellow]")
+            
+            print_success(f"Fichiers générés dans : {full_output_dir}")
+            console.print(f"Arborescence globale générée dans : {os.path.join(full_output_dir, 'global_arborescence.txt')}")
+            
+            # Afficher des informations sur la compression si applicable
+            if compress:
+                current_lang = get_current_language()
+                report_path = os.path.join(full_output_dir, f"compression_report_{current_lang}.txt")
+                if os.path.exists(report_path):
+                    console.print(f"[bold cyan]Rapport de compression généré dans : [/bold cyan]{report_path}")
+            
+            print_success("Traitement unifié terminé avec succès !")
+        else:
+            console.print(process.stdout)
+            console.print(process.stderr)
+            print_error("Le traitement a échoué. Consultez les messages d'erreur ci-dessus.")
+            
+    except Exception as e:
+        print_error(f"Erreur lors de l'exécution du flux unifié: {str(e)}")
+        return
+
+
+@app.command()
+def chunks(
+    input_file: str = typer.Argument(..., help="Fichier JSON volumineux à découper"),
+    output_dir: str = typer.Option(None, "--output-dir", "-o", help="Répertoire de sortie pour les morceaux"),
+    items_per_file: int = typer.Option(500, "--items-per-file", "-n", help="Nombre d'éléments par fichier"),
+    process_after: bool = typer.Option(False, "--process", "-p", help="Traiter chaque morceau après découpage"),
+    mapping_file: Optional[str] = typer.Option(None, "--mapping", "-m", help="Fichier de mapping à utiliser pour le traitement"),
+    use_llm: bool = typer.Option(False, "--llm", help="Utiliser un LLM pour l'enrichissement lors du traitement"),
+    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
+):
+    """
+    Découpe un fichier JSON volumineux en morceaux plus petits et optionnellement les traite.
+    
+    Utilise process_by_chunks.py pour gérer efficacement les gros fichiers JSON.
+    """
+    # Valider les arguments
+    if not os.path.exists(input_file):
+        console.print(f"[bold red]Le fichier {input_file} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    
+    # Générer un timestamp pour le nom du dossier
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    
+    # Utiliser le dossier results comme base
+    base_results_dir = "results"
+    ensure_dir(base_results_dir)
+    
+    # Si output_dir est spécifié, l'utiliser comme nom de dossier avec le timestamp
+    if output_dir:
+        output_dir = os.path.join(base_results_dir, f"{output_dir}_{timestamp}")
+    else:
+        # Utiliser le nom du fichier d'entrée comme nom de base pour le dossier de sortie
+        file_base_name = os.path.splitext(os.path.basename(input_file))[0]
+        output_dir = os.path.join(base_results_dir, f"chunks_{file_base_name}_{timestamp}")
+    
+    ensure_dir(output_dir)
+    
+    # Construire le chemin vers le script process_by_chunks.py
+    chunks_script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                              "extract", "process_by_chunks.py")
+    
+    console.print(Panel.fit(
+        "[bold]Découpage de fichier JSON volumineux[/bold]\n\n"
+        f"Fichier d'entrée : [cyan]{input_file}[/cyan]\n"
+        f"Répertoire de sortie : [cyan]{output_dir}[/cyan]\n"
+        f"Éléments par fichier : [cyan]{items_per_file}[/cyan]",
+        title="Découpage en morceaux",
+        border_style="blue"
+    ))
+    
+    # Commande pour découper le fichier
+    cmd = [
+        sys.executable, chunks_script,
+        "split",
+        "--input", input_file,
+        "--output-dir", output_dir,
+        "--items-per-file", str(items_per_file)
+    ]
+    
+    # Exécuter la commande
+    with console.status("[bold blue]Découpage en cours..."):
+        from subprocess import run, PIPE
+        result = run(cmd, stdout=PIPE, stderr=PIPE, text=True)
+    
+    if result.returncode != 0:
+        console.print("[bold red]Erreur lors du découpage:[/bold red]")
+        console.print(result.stderr)
+        raise typer.Exit(1)
+    
+    console.print("[bold green]Découpage terminé avec succès ![/bold green]")
+    
+    # Afficher les fichiers générés
+    chunk_files = glob.glob(os.path.join(output_dir, "*.json"))
+    console.print(f"[bold]Nombre de morceaux créés:[/bold] {len(chunk_files)}")
+    
+    # Traiter chaque morceau si demandé
+    if process_after and chunk_files:
+        console.print("\n[bold]Traitement des morceaux...[/bold]")
+        
+        # Créer le répertoire pour les fichiers traités
+        processed_dir = os.path.join(output_dir, "processed")
+        ensure_dir(processed_dir)
+        
+        # Traiter chaque fichier
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(),
+            TextColumn("[bold]{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+        ) as progress:
+            task = progress.add_task("[cyan]Traitement des morceaux...", total=len(chunk_files))
+            
+            for chunk_file in chunk_files:
+                chunk_name = os.path.basename(chunk_file)
+                output_file = os.path.join(processed_dir, f"{os.path.splitext(chunk_name)[0]}_processed.json")
+                
+                # Construire la commande process
+                process_args = {
+                    "input_file": chunk_file,
+                    "output_file": output_file,
+                    "mapping_file": mapping_file,
+                    "use_llm": use_llm
+                }
+                
+                # Exécuter process() sur le morceau
+                try:
+                    process(**process_args)
+                    progress.update(task, advance=1)
+                except Exception as e:
+                    console.print(f"[yellow]Erreur lors du traitement de {chunk_name}: {e}[/yellow]")
+                    progress.update(task, advance=1)
+        
+        console.print(f"\n[bold green]Traitement des morceaux terminé ![/bold green]")
+        console.print(f"Fichiers traités disponibles dans : [bold cyan]{processed_dir}[/bold cyan]")
+
+
+@app.command()
+def interactive(
+    language: str = typer.Option(None, "--lang", "-l", help="Langue de l'interface (fr/en)")
+):
+    """
+    Mode entièrement interactif qui guide l'utilisateur à travers toutes les étapes.
+    
+    Ce mode permet de choisir le type d'opération à effectuer et guide
+    l'utilisateur à travers toutes les options de manière conviviale.
+    """
+    if language:
+        set_language(language)
+        
+    console.print(Panel.fit(
+        t("interactive_content", "panels"),
+        title=t("interactive_title", "panels"),
+        border_style="green"
+    ))
+    
+    # 1. Sélection du type d'opération
+    operation_choices = [
+        t("process", "interactive_choices"),
+        t("chunks", "interactive_choices"),
+        t("match", "interactive_choices"),
+        t("unified", "interactive_choices"),
+        t("clean", "interactive_choices"),
+        t("compress", "interactive_choices"),
+        # Ajouter l'option pour changer de langue
+        f"🌐 {t('change_language', 'interactive_choices', 'fr')} / {t('change_language', 'interactive_choices', 'en')}",
+        t("quit", "interactive_choices")
+    ]
+    
+    questions = [
+        inquirer.List('operation',
+                     message=t("select_operation", "messages"),
+                     choices=operation_choices)
+    ]
+    answers = inquirer.prompt(questions)
+    
+    if not answers:
+        return
+        
+    selected_operation = answers['operation']
+    
+    # Vérifier si l'utilisateur veut changer de langue
+    if "🌐" in selected_operation:
+        current_lang = get_current_language()
+        new_lang = "en" if current_lang == "fr" else "fr"
+        
+        console.print(f"[bold]Changing language to {new_lang}[/bold]" if new_lang == "en" else f"[bold]Changement de langue vers {new_lang}[/bold]")
+        set_language(new_lang)
+        
+        # Relancer le menu avec la nouvelle langue explicitement spécifiée
+        return interactive(language=new_lang)
+    
+    # Quitter si demandé
+    if selected_operation == t("quit", "interactive_choices"):
+        return
+    
+    # 2. Selon l'opération choisie, poser les questions appropriées
+    if t("process", "interactive_choices") in selected_operation:
+        _run_interactive_process()
+    elif t("chunks", "interactive_choices") in selected_operation:
+        _run_interactive_chunks()
+    elif t("match", "interactive_choices") in selected_operation:
+        _run_interactive_match()
+    elif t("unified", "interactive_choices") in selected_operation:
+        _run_interactive_unified()
+    elif t("clean", "interactive_choices") in selected_operation:
+        _run_interactive_clean()
+    elif t("compress", "interactive_choices") in selected_operation:
+        _run_interactive_compress()
+
+
+def _run_interactive_process():
+    """Interface interactive pour la commande process."""
+    # Sélection du fichier d'entrée
+    input_file = _prompt_for_file("Sélectionnez le fichier JSON à traiter:")
+    if not input_file:
+        return
+    
+    # Détection automatique du type
+    file_type = detect_file_type(input_file)
+    if file_type:
+        console.print(f"Type détecté : [bold green]{file_type['type']}[/bold green]")
+    
+    # Demander le fichier de sortie
+    default_output = f"{os.path.splitext(input_file)[0]}_processed.json"
+    output_file = typer.prompt("Fichier de sortie", default=default_output)
+    
+    # Chercher les mappings disponibles
+    mapping_choices = find_mapping_files()
+    mapping_choices.insert(0, "Sans mapping (détection automatique)")
+    mapping_choices.append("Créer un mapping personnalisé")
+    
+    # Sélection du mapping
+    questions = [
+        inquirer.List('mapping_choice',
+                     message="Choisissez un mapping pour le traitement",
+                     choices=mapping_choices,
+                     default="Sans mapping (détection automatique)" if not file_type else f"{file_type['type']}_mapping.json" if f"{file_type['type']}_mapping.json" in mapping_choices else "Sans mapping (détection automatique)")
+    ]
+    answers = inquirer.prompt(questions)
+    
+    mapping_file = None
+    if answers["mapping_choice"] == "Sans mapping (détection automatique)":
+        mapping_file = None
+    elif answers["mapping_choice"] == "Créer un mapping personnalisé":
+        mapping_file = _create_custom_mapping()
+    else:
+        mapping_file = os.path.join(DEFAULT_MAPPINGS_DIR, answers["mapping_choice"])
+    
+    # Options avancées
+    questions = [
+        inquirer.Confirm('use_llm',
+                        message="Voulez-vous enrichir avec LLM (OpenAI) ?",
+                        default=False),
+        inquirer.Text('max_items',
+                     message="Nombre maximum d'éléments à traiter (vide = tous)",
+                     default=""),
+        inquirer.Confirm('preserve_source',
+                         message="Préserver les fichiers sources originaux ?",
+                         default=True)
+    ]
+    answers_advanced = inquirer.prompt(questions)
+    
+    use_llm = answers_advanced['use_llm']
+    max_items = int(answers_advanced['max_items']) if answers_advanced['max_items'].strip() else None
+    preserve_source = answers_advanced['preserve_source']
+    
+    # LLM si demandé
+    llm_model = None
+    api_key = None
+    if use_llm:
+        # Clé API
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            api_key = typer.prompt("Entrez votre clé API OpenAI", hide_input=True)
+        
+        # Modèle
+        questions = [
+            inquirer.List('llm_model',
+                         message="Choisissez un modèle LLM",
+                         choices=LLM_MODELS,
+                         default="gpt-4.1")
+        ]
+        llm_answers = inquirer.prompt(questions)
+        llm_model = llm_answers['llm_model']
+    
+    # Confirmation finale
+    console.print("\n[bold]Récapitulatif :[/bold]")
+    console.print(f"- Fichier d'entrée : [cyan]{input_file}[/cyan]")
+    console.print(f"- Fichier de sortie : [cyan]{output_file}[/cyan]")
+    console.print(f"- Mapping : [cyan]{mapping_file or 'Auto-détection'}[/cyan]")
+    console.print(f"- Préservation des sources : [cyan]{'Oui' if preserve_source else 'Non'}[/cyan]")
+    if use_llm:
+        console.print(f"- Enrichissement LLM : [cyan]Oui ({llm_model})[/cyan]")
+    if max_items:
+        console.print(f"- Limite d'éléments : [cyan]{max_items}[/cyan]")
+    
+    questions = [
+        inquirer.Confirm('confirm',
+                        message="Lancer le traitement ?",
+                        default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    
+    if not confirm or not confirm['confirm']:
+        console.print("[yellow]Opération annulée.[/yellow]")
+        return
+    
+    # Exécuter process avec les paramètres définis
+    process(
+        input_file=input_file,
+        output_file=output_file,
+        mapping_file=mapping_file,
+        detect=True,
+        auto_mapping=True,
+        use_llm=use_llm,
+        llm_model=llm_model,
+        api_key=api_key,
+        interactive=False,  # Déjà en mode interactif
+        max_items=max_items,
+        root_key="items",
+        preserve_source=preserve_source,
+        outlines=False
+    )
+
+
+def _run_interactive_chunks():
+    """Interface interactive pour la commande chunks."""
+    # Sélection du fichier d'entrée
+    input_file = _prompt_for_file("Sélectionnez le fichier JSON volumineux à découper:")
+    if not input_file:
+        return
+    
+    # Répertoire de sortie
+    default_output_dir = os.path.join(DEFAULT_OUTPUT_DIR, "chunks")
+    output_dir = typer.prompt("Répertoire de sortie pour les morceaux", default=default_output_dir)
+    
+    # Options de découpage
+    questions = [
+        inquirer.Text('items_per_file',
+                     message="Nombre d'éléments par fichier",
+                     default="500"),
+        inquirer.Confirm('process_after',
+                        message="Traiter les morceaux après découpage ?",
+                        default=False),
+        inquirer.Confirm('compress',
+                        message="Activer la compression des fichiers JSON ?",
+                        default=False)
+    ]
+    answers = inquirer.prompt(questions)
+    
+    items_per_file = int(answers['items_per_file'])
+    process_after = answers['process_after']
+    compress = answers['compress']
+    
+    # Options de compression si activée
+    compress_level = 19  # Valeur par défaut
+    keep_originals = True  # Valeur par défaut
+    if compress:
+        compression_questions = [
+            inquirer.List('compress_level',
+                          message=t("compression_level_prompt", "compression"),
+                          choices=["15 (fast)", "19 (balanced)", "22 (max)"],
+                          default="19 (balanced)"),
+            inquirer.Confirm('keep_originals',
+                             message=t("keep_originals_prompt", "compression"),
+                             default=True)
+        ]
+        compression_answers = inquirer.prompt(compression_questions)
+        compress_level = int(compression_answers['compress_level'].split(" ")[0])
+        keep_originals = compression_answers['keep_originals']
+    
+    # Options de traitement si demandé
+    mapping_file = None
+    use_llm = False
+    if process_after:
+        # Mapping
+        mapping_choices = find_mapping_files()
+        mapping_choices.insert(0, "Sans mapping (détection automatique)")
+        
+        questions = [
+            inquirer.List('mapping_choice',
+                         message="Mapping pour le traitement des morceaux",
+                         choices=mapping_choices),
+            inquirer.Confirm('use_llm',
+                            message="Enrichir avec LLM ?",
+                            default=False)
+        ]
+        process_answers = inquirer.prompt(questions)
+        
+        if process_answers['mapping_choice'] != "Sans mapping (détection automatique)":
+            mapping_file = os.path.join(DEFAULT_MAPPINGS_DIR, process_answers['mapping_choice'])
+        
+        use_llm = process_answers['use_llm']
+    
+    # Confirmation finale
+    console.print("\n[bold]Récapitulatif :[/bold]")
+    console.print(f"- Fichier d'entrée : [cyan]{input_file}[/cyan]")
+    console.print(f"- Répertoire de sortie : [cyan]{output_dir}[/cyan]")
+    console.print(f"- Éléments par fichier : [cyan]{items_per_file}[/cyan]")
+    if process_after:
+        console.print(f"- Traitement après découpage : [cyan]Oui[/cyan]")
+        console.print(f"- Mapping : [cyan]{mapping_file or 'Auto-détection'}[/cyan]")
+        console.print(f"- Enrichissement LLM : [cyan]{'Oui' if use_llm else 'Non'}[/cyan]")
+    if compress:
+        console.print(f"- Compression JSON : [cyan]Oui (niveau {compress_level}, conserver originaux: {t('yes', 'messages') if keep_originals else t('no', 'messages')})[/cyan]")
+    else:
+        console.print(f"- Compression JSON : [cyan]Non[/cyan]")
+    
+    questions = [
+        inquirer.Confirm('confirm',
+                        message="Lancer le découpage ?",
+                        default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    
+    if not confirm or not confirm['confirm']:
+        console.print("[yellow]Opération annulée.[/yellow]")
+        return
+    
+    # Exécuter chunks avec les paramètres définis
+    chunks(
+        input_file=input_file,
+        output_dir=output_dir,
+        items_per_file=items_per_file,
+        process_after=process_after,
+        mapping_file=mapping_file,
+        use_llm=use_llm,
+        compress=compress,
+        compress_level=compress_level if compress else None,
+        keep_originals=keep_originals if compress else None
+    )
+
+
+def _run_interactive_clean():
+    """Interface interactive pour la commande clean."""
+    # Sélection du fichier ou dossier d'entrée
+    input_path = _prompt_for_file(t("select_file_clean", "prompts"))
+    if not input_path:
+        return
+    
+    # Options
+    questions = [
+        inquirer.Confirm('recursive',
+                         message=t("recursive", "confirmations"),
+                         default=True),
+        inquirer.Text('output',
+                      message=t("output_clean", "prompts"),
+                      default="")
+    ]
+    answers = inquirer.prompt(questions)
+    
+    recursive = answers['recursive'] if os.path.isdir(input_path) else False
+    output = answers['output'] if answers['output'].strip() else None
+    
+    # Confirmation
+    console.print(f"\n[bold]{t('summary', 'messages')}[/bold]")
+    console.print(f"- {t('input_path', 'messages')} [cyan]{input_path}[/cyan]")
+    console.print(f"- {t('output_path', 'messages')} [cyan]{output or t('auto_detection', 'messages')}[/cyan]")
+    if os.path.isdir(input_path):
+        console.print(f"- {t('recursive', 'messages')} [cyan]{t('yes', 'messages') if recursive else t('no', 'messages')}[/cyan]")
+    
+    questions = [
+        inquirer.Confirm('confirm',
+                         message=t("launch_cleaning", "confirmations"),
+                         default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    
+    if confirm and confirm['confirm']:
+        clean(input_path, output, recursive)
+
+
+@app.command()
+def compress(
+    directory: str = typer.Argument(..., help="Répertoire ou fichier JSON à compresser/optimiser"),
+    compress_level: int = typer.Option(19, "--level", "-l", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux"),
+    language: str = typer.Option(None, "--lang", help="Langue pour le rapport (fr/en)"),
+):
+    """
+    Compresse et optimise des fichiers JSON avec zstd et orjson.
+    Réduit considérablement la taille des fichiers et améliore les performances de lecture/écriture.
+    """
+    console = Console()
+    
+    # Vérifier que le chemin existe
+    if not os.path.exists(directory):
+        console.print(f"[bold red]Le chemin {directory} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    
+    # Définir la langue si spécifiée
+    if language and TRANSLATIONS_LOADED:
+        set_language(language)
+    
+    # Importer le module de compression
+    try:
+        from extract.compress_utils import compress_results_directory
+    except ImportError:
+        console.print("[bold red]Module de compression non disponible. Installation des dépendances...[/bold red]")
+        subprocess.run([sys.executable, "-m", "pip", "install", "zstandard", "orjson"], check=True)
+        try:
+            from extract.compress_utils import compress_results_directory
+        except ImportError:
+            console.print("[bold red]Impossible d'importer le module de compression.[/bold red]")
+            raise typer.Exit(1)
+    
+    # Afficher les infos
+    console.print(Panel.fit(
+        f"[bold]{t('compress_minify_desc', 'compression')}[/bold]\n\n"
+        f"{t('directory_help', 'compression')} : [cyan]{directory}[/cyan]\n"
+        f"{t('compression_level_help', 'compression')} : [cyan]{compress_level}[/cyan]\n"
+        f"{t('keep_originals_help', 'compression')} : [cyan]{t('yes', 'messages') if keep_originals else t('no', 'messages')}[/cyan]",
+        title=t("compression", "interactive_choices"),
+        border_style="blue"
+    ))
+    
+    # Compresser les fichiers
+    with console.status(f"[bold blue]{t('compressing_files', 'compression')} {directory}..."):
+        try:
+            count, report = compress_results_directory(
+                directory, 
+                compression_level=compress_level,
+                keep_originals=keep_originals,
+                generate_report=True
+            )
+        except Exception as e:
+            console.print(f"[bold red]Erreur lors de la compression: {e}[/bold red]")
+            import traceback
+            console.print(traceback.format_exc())
+            raise typer.Exit(1)
+    
+    # Afficher les résultats
+    current_lang = get_current_language()
+    report_path = os.path.join(directory, f"compression_report_{current_lang}.txt")
+    
+    console.print(f"[bold green]✅ {count} {t('files_compressed_success', 'compression')}![/bold green]")
+    console.print(f"[bold]{t('report_available', 'compression')}:[/bold] {report_path}")
+    
+    # Si le rapport existe, afficher un résumé
+    if os.path.exists(report_path):
+        with open(report_path, 'r', encoding='utf-8') as f:
+            report_content = f.read()
+            
+            # Extraire juste le résumé global
+            summary_section = ""
+            in_summary = False
+            for line in report_content.split('\n'):
+                if line.startswith("## Global Summary") or line.startswith("## Résumé Global"):
+                    in_summary = True
+                    summary_section += line + "\n"
+                elif in_summary and line.startswith("##"):
+                    in_summary = False
+                elif in_summary:
+                    summary_section += line + "\n"
+            
+            # Afficher le résumé
+            console.print("\n[bold cyan]Résumé de compression:[/bold cyan]")
+            console.print(Markdown(summary_section))
+
+
+def _run_interactive_compress():
+    """Interface interactive pour la commande compress."""
+    # Sélection du répertoire ou fichier à compresser
+    directory = _prompt_for_file(t("select_dir_compress", "prompts"))
+    if not directory:
+        return
+    
+    # Options de compression
+    questions = [
+        inquirer.List('compress_level',
+                      message=t("compression_level_prompt", "compression"),
+                      choices=["15 (fast)", "19 (balanced)", "22 (max)"],
+                      default="19 (balanced)"),
+        inquirer.Confirm('keep_originals',
+                         message=t("keep_originals_prompt", "compression"),
+                         default=True)
+    ]
+    answers = inquirer.prompt(questions)
+    
+    # Extraire le niveau de compression
+    compress_level = int(answers['compress_level'].split(" ")[0])
+    keep_originals = answers['keep_originals']
+    
+    # Confirmation
+    console.print(f"\n[bold]{t('summary', 'messages')}[/bold]")
+    console.print(f"- {t('directory_help', 'compression')} : [cyan]{directory}[/cyan]")
+    console.print(f"- {t('compression_level_help', 'compression')} : [cyan]{compress_level}[/cyan]")
+    console.print(f"- {t('keep_originals_help', 'compression')} : [cyan]{t('yes', 'messages') if keep_originals else t('no', 'messages')}[/cyan]")
+    
+    questions = [
+        inquirer.Confirm('confirm',
+                         message=t("launch_compression", "confirmations"),
+                         default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    
+    if confirm and confirm['confirm']:
+        # Exécuter la compression
+        compress(directory, compress_level, keep_originals)
+
+
+@app.command()
+def match(
+    jira_file: str = typer.Argument(..., help="Fichier JSON de tickets JIRA traités"),
+    confluence_file: str = typer.Argument(..., help="Fichier JSON de pages Confluence traitées"),
+    output_dir: str = typer.Option(None, "--output-dir", "-o", help="Répertoire de sortie"),
+    min_score: float = typer.Option(None, "--min-score", "-s", help="Score minimum pour les correspondances"),
+    llm_assist: bool = typer.Option(False, "--llm-assist", help="Utiliser un LLM pour améliorer les correspondances"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API pour le LLM (ou variable d'environnement OPENAI_API_KEY)"),
+    llm_model: str = typer.Option(None, "--model", help="Modèle LLM à utiliser"),
+    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
+):
+    """
+    Établit des correspondances entre tickets JIRA et pages Confluence.
+    """
+    # Générer un timestamp pour le nom du dossier
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    
+    # Utiliser le dossier results comme base
+    base_results_dir = "results"
+    ensure_dir(base_results_dir)
+    
+    # Si output_dir est spécifié, l'utiliser comme nom de dossier avec le timestamp
+    if output_dir:
+        output_dir = os.path.join(base_results_dir, f"{output_dir}_{timestamp}")
+    else:
+        # Créer un nom à partir des noms de fichiers
+        jira_name = os.path.splitext(os.path.basename(jira_file))[0]
+        confluence_name = os.path.splitext(os.path.basename(confluence_file))[0]
+        output_dir = os.path.join(base_results_dir, f"matches_{jira_name}_{confluence_name}_{timestamp}")
+    
+    # Valeur par défaut pour min_score
+    min_score = min_score or float(os.environ.get("MIN_MATCH_SCORE", "0.2"))
+    
+    # Vérifier que les fichiers existent
+    if not os.path.exists(jira_file):
+        console.print(f"[bold red]Le fichier JIRA {jira_file} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    
+    if not os.path.exists(confluence_file):
+        console.print(f"[bold red]Le fichier Confluence {confluence_file} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    
+    # Créer le répertoire de sortie
+    ensure_dir(output_dir)
+    
+    # Définir les chemins de sortie
+    matches_file = os.path.join(output_dir, "jira_confluence_matches.json")
+    jira_with_matches_file = os.path.join(output_dir, "jira_with_matches.json")
+    confluence_with_matches_file = os.path.join(output_dir, "confluence_with_matches.json")
+    
+    # Afficher les infos
+    console.print(Panel.fit(
+        f"[bold]Matching JIRA ↔ Confluence[/bold]\n\n"
+        f"JIRA : [cyan]{jira_file}[/cyan]\n"
+        f"Confluence : [cyan]{confluence_file}[/cyan]\n"
+        f"Score minimum : [cyan]{min_score}[/cyan]",
+        title="Matching",
+        border_style="blue"
+    ))
+    
+    # Construire le chemin vers le script match_jira_confluence.py
+    match_script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                             "extract", "match_jira_confluence.py")
+    
+    # Exécuter le script de matching
+    cmd = [
+        sys.executable, match_script,
+        "--jira", jira_file,
+        "--confluence", confluence_file,
+        "--output", matches_file,
+        "--updated-jira", jira_with_matches_file,
+        "--updated-confluence", confluence_with_matches_file,
+        "--min-score", str(min_score)
+    ]
+    
+    with console.status("[bold blue]Matching en cours..."):
+        from subprocess import run, PIPE
+        result = run(cmd, stdout=PIPE, stderr=PIPE, text=True)
+    
+    if result.returncode != 0:
+        console.print("[bold red]Erreur lors du matching:[/bold red]")
+        console.print(result.stderr)
+        raise typer.Exit(1)
+    
+    # Afficher les résultats
+    console.print(result.stdout)
+    
+    # LLM pour améliorer les correspondances si demandé
+    if llm_assist:
+        # Utiliser les valeurs par défaut si non spécifiées
+        if not api_key:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            
+        if not llm_model:
+            llm_model = os.environ.get("DEFAULT_LLM_MODEL", "gpt-4.1")
+            
+        if not api_key:
+            console.print("[bold yellow]Pas de clé API OpenAI trouvée. L'assistance LLM ne sera pas effectuée.[/bold yellow]")
+            llm_assist = False
+        
+        if llm_assist:
+            console.print("[bold]Amélioration des correspondances avec LLM...[/bold]")
+            
+            # TODO: Implémenter l'amélioration des correspondances avec LLM
+            # Cela pourrait inclure:
+            # 1. Analyse des correspondances de faible score pour confirmer/infirmer
+            # 2. Recherche de correspondances supplémentaires basées sur la sémantique
+            # 3. Suggestion de nouveaux liens qui n'ont pas été détectés automatiquement
+            
+            console.print("[bold yellow]Assistance LLM pour les correspondances non implémentée.[/bold yellow]")
+    
+    # Afficher un résumé
+    try:
+        with open(matches_file, 'r', encoding='utf-8') as f:
+            matches = json.load(f)
+        
+        table = Table(title="Résumé des correspondances")
+        table.add_column("Métrique", style="cyan")
+        table.add_column("Valeur", style="green")
+        
+        # Nombre de tickets avec correspondances
+        total_tickets = len(matches)
+        table.add_row("Tickets avec correspondances", str(total_tickets))
+        
+        # Nombre total de correspondances
+        total_matches = sum(len(matches[ticket_id]) for ticket_id in matches)
+        table.add_row("Correspondances totales", str(total_matches))
+        
+        # Moyenne de correspondances par ticket
+        avg_matches = total_matches / total_tickets if total_tickets > 0 else 0
+        table.add_row("Moyenne par ticket", f"{avg_matches:.2f}")
+        
+        console.print(table)
+        
+        console.print(f"\nFichiers générés dans : [bold cyan]{output_dir}[/bold cyan]")
+        console.print("\n[bold green]Matching terminé avec succès ![/bold green]")
+        
+    except Exception as e:
+        console.print(f"[bold red]Erreur lors de l'affichage du résumé: {e}[/bold red]")
+
+
+@app.command()
+def unified(
+    jira_files: List[str] = typer.Argument(..., help="Fichiers JSON JIRA à traiter"),
+    confluence_files: List[str] = typer.Option([], "--confluence", "-c", help="Fichiers JSON Confluence à traiter"),
+    output_dir: str = typer.Option(None, "--output-dir", "-o", help="Répertoire de sortie"),
+    min_match_score: float = typer.Option(None, "--min-score", "-s", help="Score minimum pour les correspondances"),
+    max_items: Optional[int] = typer.Option(None, "--max", help="Nombre maximum d'éléments à traiter par fichier"),
+    use_llm: bool = typer.Option(True, "--llm/--no-llm", help="Utiliser un LLM pour l'enrichissement"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API pour le LLM"),
+    skip_matching: bool = typer.Option(False, "--skip-matching", help="Ne pas effectuer le matching entre JIRA et Confluence"),
+    language: str = typer.Option(None, "--lang", "-l", help="Langue de l'interface (fr/en)"),
+    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
+):
+    """
+    Exécute un flux complet: JIRA + Confluence + Matching
+    """
+    if language:
+        set_language(language)
+        
+    print_header()
+    
+    # Vérifier l'existence des fichiers
+    for file in jira_files:
+        if not os.path.exists(file):
+            print_error(f"Fichier JIRA introuvable: {file}")
+            return
+    
+    for file in confluence_files:
+        if not os.path.exists(file):
+            print_error(f"Fichier Confluence introuvable: {file}")
+            return
+    
+    # Générer un nom de répertoire avec timestamp s'il n'est pas spécifié
+    timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    
+    # Utiliser le dossier results comme base
+    base_results_dir = "results"
+    
+    if not output_dir:
+        output_dir = f"jira_confluence_{timestamp}"
+    
+    # Préparer le chemin complet
+    
+    # S'assurer que le chemin n'est pas dupliqué
+    if output_dir.startswith("results/"):
+        full_output_dir = output_dir
+    else:
+        ensure_dir(base_results_dir)
+        full_output_dir = os.path.join(base_results_dir, output_dir)
+    
+    # Créer la structure de répertoires
+    dirs = {
+        "jira": os.path.join(full_output_dir, "jira"),
+        "confluence": os.path.join(full_output_dir, "confluence"),
+        "matches": os.path.join(full_output_dir, "matches"),
+        "split_jira": os.path.join(full_output_dir, "split_jira_files"),
+        "split_confluence": os.path.join(full_output_dir, "split_confluence_files"),
+        "llm_ready": os.path.join(full_output_dir, "llm_ready")
+    }
+    
+    # Créer tous les répertoires
+    for dir_name, dir_path in dirs.items():
+        ensure_dir(dir_path)
+    
+    # Récupérer les valeurs par défaut des variables d'environnement si nécessaire
+    min_score = min_match_score or float(os.environ.get("MIN_MATCH_SCORE", "0.2"))
+    
+    console.print(Panel(
+        f"[bold]Traitement unifié JIRA + Confluence[/bold]\n\n"
+        f"Fichiers JIRA : {', '.join(jira_files)}\n"
+        f"Fichiers Confluence : {', '.join(confluence_files)}\n"
+        f"Répertoire de sortie : {full_output_dir}",
+        title="Traitement Unifié",
+        expand=False
+    ))
+    
+    # Options pour run_unified_analysis.py
+    cmd = [
+        sys.executable,
+        os.path.join(parent_dir, "extract", "run_unified_analysis.py"),
+        "--jira-files"
+    ] + jira_files
+    
+    if confluence_files:
+        cmd.extend(["--confluence-files"] + confluence_files)
+    
+    cmd.extend([
+        "--output-dir", full_output_dir,
+        "--min-match-score", str(min_score)
+    ])
+    
+    if max_items:
+        cmd.extend(["--max-items", str(max_items)])
+    
+    if use_llm:
+        cmd.append("--with-openai")
+        if api_key:
+            cmd.extend(["--api-key", api_key])
+    else:
+        cmd.append("--no-openai")
+    
+    if skip_matching:
+        cmd.append("--skip-matching")
+    
+    # Ajouter l'option de langue si spécifiée
+    if language:
+        cmd.extend(["--language", language])
+    
+    # Ajouter les options de compression si demandées
+    if compress:
+        cmd.append("--compress")
+        cmd.extend(["--compress-level", str(compress_level)])
+        if not keep_originals:
+            cmd.append("--no-originals")
+    
+    # Exécuter le script run_unified_analysis.py
+    try:
+        console.print("\n[bold cyan]Exécution du flux unifié...[/bold cyan]")
+        process = subprocess.run(cmd, text=True, capture_output=True)
+        
+        if process.returncode == 0:
+            console.print(process.stdout)
+            
+            # Corriger les éventuels problèmes de dossiers dupliqués
+            try:
+                # Importer le module tools
+                from tools import fix_duplicate_paths
+                
+                # Appliquer la correction au répertoire de sortie
+                moved_count = fix_duplicate_paths(full_output_dir)
+                if moved_count > 0:
+                    console.print(f"[yellow]⚠️ Correction de {moved_count} fichiers dans des chemins dupliqués[/yellow]")
+            except ImportError:
+                console.print("[yellow]Module tools non trouvé. Pas de correction de chemins dupliqués.[/yellow]")
+            except Exception as e:
+                console.print(f"[yellow]Erreur lors de la correction des chemins: {str(e)}[/yellow]")
+            
+            print_success(f"Fichiers générés dans : {full_output_dir}")
+            console.print(f"Arborescence globale générée dans : {os.path.join(full_output_dir, 'global_arborescence.txt')}")
+            
+            # Afficher des informations sur la compression si applicable
+            if compress:
+                current_lang = get_current_language()
+                report_path = os.path.join(full_output_dir, f"compression_report_{current_lang}.txt")
+                if os.path.exists(report_path):
+                    console.print(f"[bold cyan]Rapport de compression généré dans : [/bold cyan]{report_path}")
+            
+            print_success("Traitement unifié terminé avec succès !")
+        else:
+            console.print(process.stdout)
+            console.print(process.stderr)
+            print_error("Le traitement a échoué. Consultez les messages d'erreur ci-dessus.")
+            
+    except Exception as e:
+        print_error(f"Erreur lors de l'exécution du flux unifié: {str(e)}")
+        return
+
+
 # Ajouter un nouveau décorateur app.callback pour gérer l'option de langue globale
 @app.callback()
 def main(
@@ -1623,6 +2822,245 @@ def main(
     """
     if language:
         set_language(language)
+
+
+def _run_interactive_match():
+    """Interface interactive pour la commande match."""
+    # Sélection des fichiers
+    console.print("[bold]Sélection des fichiers JIRA et Confluence[/bold]")
+    
+    jira_file = _prompt_for_file("Sélectionnez le fichier JIRA traité:")
+    if not jira_file:
+        return
+    
+    confluence_file = _prompt_for_file("Sélectionnez le fichier Confluence traité:")
+    if not confluence_file:
+        return
+    
+    # Répertoire de sortie
+    default_output_dir = os.environ.get("MATCH_OUTPUT_DIR", "output_matches")
+    output_dir = typer.prompt("Répertoire de sortie", default=default_output_dir)
+    
+    # Options de matching
+    questions = [
+        inquirer.Text('min_score',
+                     message="Score minimum pour les correspondances (0.0-1.0)",
+                     default="0.2"),
+        inquirer.Confirm('llm_assist',
+                        message="Utiliser un LLM pour améliorer les correspondances ?",
+                        default=False),
+        inquirer.Confirm('compress',
+                        message="Activer la compression des fichiers JSON ?",
+                        default=False)
+    ]
+    answers = inquirer.prompt(questions)
+    
+    min_score = float(answers['min_score'])
+    llm_assist = answers['llm_assist']
+    compress = answers['compress']
+    
+    # Options de compression si activée
+    compress_level = 19  # Valeur par défaut
+    keep_originals = True  # Valeur par défaut
+    if compress:
+        compression_questions = [
+            inquirer.List('compress_level',
+                          message=t("compression_level_prompt", "compression"),
+                          choices=["15 (fast)", "19 (balanced)", "22 (max)"],
+                          default="19 (balanced)"),
+            inquirer.Confirm('keep_originals',
+                             message=t("keep_originals_prompt", "compression"),
+                             default=True)
+        ]
+        compression_answers = inquirer.prompt(compression_questions)
+        compress_level = int(compression_answers['compress_level'].split(" ")[0])
+        keep_originals = compression_answers['keep_originals']
+    
+    # Options LLM si demandées
+    llm_model = None
+    api_key = None
+    if llm_assist:
+        # Clé API
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            api_key = typer.prompt("Entrez votre clé API OpenAI", hide_input=True)
+        
+        # Modèle
+        questions = [
+            inquirer.List('llm_model',
+                         message="Choisissez un modèle LLM",
+                         choices=LLM_MODELS,
+                         default="gpt-4.1")
+        ]
+        llm_answers = inquirer.prompt(questions)
+        llm_model = llm_answers['llm_model']
+    
+    # Confirmation finale
+    console.print("\n[bold]Récapitulatif :[/bold]")
+    console.print(f"- Fichier JIRA : [cyan]{jira_file}[/cyan]")
+    console.print(f"- Fichier Confluence : [cyan]{confluence_file}[/cyan]")
+    console.print(f"- Répertoire de sortie : [cyan]{output_dir}[/cyan]")
+    console.print(f"- Score minimum : [cyan]{min_score}[/cyan]")
+    if llm_assist:
+        console.print(f"- Assistance LLM : [cyan]Oui ({llm_model})[/cyan]")
+    if compress:
+        console.print(f"- Compression JSON : [cyan]Oui (niveau {compress_level}, conserver originaux: {t('yes', 'messages') if keep_originals else t('no', 'messages')})[/cyan]")
+    else:
+        console.print(f"- Compression JSON : [cyan]Non[/cyan]")
+    
+    questions = [
+        inquirer.Confirm('confirm',
+                        message="Lancer le matching ?",
+                        default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    
+    if not confirm or not confirm['confirm']:
+        console.print("[yellow]Opération annulée.[/yellow]")
+        return
+    
+    # Exécuter match avec les paramètres définis
+    match(
+        jira_file=jira_file,
+        confluence_file=confluence_file,
+        output_dir=output_dir,
+        min_score=min_score,
+        llm_assist=llm_assist,
+        api_key=api_key,
+        llm_model=llm_model,
+        compress=compress,
+        compress_level=compress_level if compress else None,
+        keep_originals=keep_originals if compress else None
+    )
+
+
+def _run_interactive_unified():
+    """Interface interactive pour la commande unified."""
+    console.print("[bold]Flux complet: JIRA + Confluence + Matching[/bold]")
+    
+    # Sélection des fichiers JIRA (multiples)
+    jira_files = []
+    while True:
+        jira_file = _prompt_for_file(f"Sélectionnez un fichier JIRA ({len(jira_files)} sélectionnés, [Valider la sélection] pour terminer):", allow_validate=True)
+        if not jira_file or jira_file == "__VALIDATE__":
+            break
+        jira_files.append(jira_file)
+        console.print(f"Fichier ajouté : [cyan]{jira_file}[/cyan]")
+    
+    if not jira_files:
+        console.print("[yellow]Aucun fichier JIRA sélectionné. Opération annulée.[/yellow]")
+        return
+    
+    # Sélection des fichiers Confluence (facultatif)
+    confluence_files = []
+    questions = [
+        inquirer.Confirm('add_confluence', message="Ajouter des fichiers Confluence ?", default=True)
+    ]
+    add_conf = inquirer.prompt(questions)
+    if add_conf and add_conf['add_confluence']:
+        while True:
+            confluence_file = _prompt_for_file(f"Sélectionnez un fichier Confluence ({len(confluence_files)} sélectionnés, [Valider la sélection] pour terminer):", allow_validate=True)
+            if not confluence_file or confluence_file == "__VALIDATE__":
+                break
+            confluence_files.append(confluence_file)
+            console.print(f"Fichier ajouté : [cyan]{confluence_file}[/cyan]")
+    
+    # Répertoire de sortie
+    default_output_dir = os.environ.get("UNIFIED_OUTPUT_DIR", "output_unified")
+    output_dir = typer.prompt("Répertoire de sortie", default=default_output_dir)
+    
+    # Options avancées
+    questions = [
+        inquirer.Text('min_match_score',
+                     message="Score minimum pour les correspondances (0.0-1.0)",
+                     default="0.2"),
+        inquirer.Text('max_items',
+                     message="Nombre maximum d'éléments à traiter par fichier (vide = tous)",
+                     default=""),
+        inquirer.Confirm('use_llm',
+                        message="Utiliser un LLM pour l'enrichissement ?",
+                        default=False),
+        inquirer.Confirm('skip_matching',
+                        message="Ignorer le matching entre JIRA et Confluence ?",
+                        default=False),
+        inquirer.Confirm('compress',
+                        message="Activer la compression des fichiers JSON ?",
+                        default=False)
+    ]
+    answers = inquirer.prompt(questions)
+    
+    min_match_score = float(answers['min_match_score'])
+    max_items = int(answers['max_items']) if answers['max_items'].strip() else None
+    use_llm = answers['use_llm']
+    skip_matching = answers['skip_matching']
+    compress = answers['compress']
+    
+    # Options de compression si activée
+    compress_level = 19  # Valeur par défaut
+    keep_originals = True  # Valeur par défaut
+    if compress:
+        compression_questions = [
+            inquirer.List('compress_level',
+                          message=t("compression_level_prompt", "compression"),
+                          choices=["15 (fast)", "19 (balanced)", "22 (max)"],
+                          default="19 (balanced)"),
+            inquirer.Confirm('keep_originals',
+                             message=t("keep_originals_prompt", "compression"),
+                             default=True)
+        ]
+        compression_answers = inquirer.prompt(compression_questions)
+        compress_level = int(compression_answers['compress_level'].split(" ")[0])
+        keep_originals = compression_answers['keep_originals']
+    
+    # Options LLM si demandées
+    api_key = None
+    if use_llm:
+        # Clé API
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            api_key = typer.prompt("Entrez votre clé API OpenAI", hide_input=True)
+    
+    # Confirmation finale
+    console.print("\n[bold]Récapitulatif :[/bold]")
+    console.print(f"- Fichiers JIRA : [cyan]{', '.join(jira_files)}[/cyan]")
+    if confluence_files:
+        console.print(f"- Fichiers Confluence : [cyan]{', '.join(confluence_files)}[/cyan]")
+    console.print(f"- Répertoire de sortie : [cyan]{output_dir}[/cyan]")
+    console.print(f"- Score minimum : [cyan]{min_match_score}[/cyan]")
+    if max_items:
+        console.print(f"- Limite d'éléments : [cyan]{max_items}[/cyan]")
+    console.print(f"- Enrichissement LLM : [cyan]{'Oui' if use_llm else 'Non'}[/cyan]")
+    console.print(f"- Ignorer matching : [cyan]{'Oui' if skip_matching else 'Non'}[/cyan]")
+    if compress:
+        console.print(f"- Compression JSON : [cyan]Oui (niveau {compress_level}, conserver originaux: {t('yes', 'messages') if keep_originals else t('no', 'messages')})[/cyan]")
+    else:
+        console.print(f"- Compression JSON : [cyan]Non[/cyan]")
+    
+    questions = [
+        inquirer.Confirm('confirm',
+                        message="Lancer le traitement unifié ?",
+                        default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    
+    if not confirm or not confirm['confirm']:
+        console.print("[yellow]Opération annulée.[/yellow]")
+        return
+    
+    # Exécuter unified avec les paramètres définis
+    unified(
+        jira_files=jira_files,
+        confluence_files=confluence_files,
+        output_dir=output_dir,
+        min_match_score=min_match_score,
+        max_items=max_items,
+        use_llm=use_llm,
+        api_key=api_key,
+        skip_matching=skip_matching,
+        compress=compress,
+        compress_level=compress_level if compress else None,
+        keep_originals=keep_originals if compress else None
+    )
 
 
 if __name__ == "__main__":
