@@ -5,9 +5,24 @@ Module utilitaire pour générer des résumés des enrichissements LLM
 
 import os
 import json
+import sys
 from datetime import datetime
 
-def generate_llm_summary(output_dir, jira_data=None, confluence_data=None, data=None, filename="llm_enrichment_summary.md"):
+# Importer le module de gestion des langues s'il est disponible
+try:
+    # Ajouter le chemin du parent au path pour trouver le module cli
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from cli.lang_utils import t, get_current_language
+    TRANSLATIONS_LOADED = True
+except ImportError:
+    # Fallback si le module de traduction n'est pas disponible
+    def t(key, category=None, lang=None):
+        return key
+    def get_current_language():
+        return "fr"
+    TRANSLATIONS_LOADED = False
+
+def generate_llm_summary(output_dir, jira_data=None, confluence_data=None, data=None, filename="llm_enrichment_summary.md", language=None):
     """
     Génère un fichier résumé des enrichissements LLM effectués.
     Ce fichier sert de preuve de l'utilisation des capacités LLM et résume
@@ -19,26 +34,30 @@ def generate_llm_summary(output_dir, jira_data=None, confluence_data=None, data=
         confluence_data: Données Confluence enrichies (optionnel)
         data: Données génériques enrichies si jira/confluence non fournies (optionnel)
         filename: Nom du fichier de sortie (par défaut: llm_enrichment_summary.md)
+        language: Code de langue spécifique à utiliser (fr, en) - si None, utilise la langue active
     
     Returns:
         Le chemin du fichier résumé généré
     """
     summary_file = os.path.join(output_dir, filename)
     
+    # Utiliser la langue spécifiée, sinon la langue active
+    lang = language if language else get_current_language() if TRANSLATIONS_LOADED else "fr"
+    
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     # Vérifier si nous avons au moins une source de données
     if not jira_data and not confluence_data and not data:
-        content = f"""# Résumé de l'enrichissement LLM
+        content = f"""# {t("llm_summary_title", "llm_summary", lang)}
 
-## Informations générales
-- Date de l'analyse: {timestamp}
-- AUCUNE DONNÉE ENRICHIE TROUVÉE
+## {t("general_info_title", "llm_summary", lang)}
+- {t("analysis_date", "llm_summary", lang)}: {timestamp}
+- {t("no_data_found", "llm_summary", lang)}
 
-⚠️ Aucune donnée enrichie par LLM n'a été trouvée. Vérifiez que:
-1. L'option d'enrichissement LLM est activée (--with-openai ou --llm)
-2. Une clé API OpenAI valide est disponible
-3. Les fichiers d'entrée contiennent des données valides
+⚠️ {t("no_data_warning", "llm_summary", lang)}
+1. {t("warning_llm_option", "llm_summary", lang)}
+2. {t("warning_api_key", "llm_summary", lang)}
+3. {t("warning_valid_input", "llm_summary", lang)}
 """
         with open(summary_file, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -46,7 +65,7 @@ def generate_llm_summary(output_dir, jira_data=None, confluence_data=None, data=
     
     # Traitement des données génériques si fournies à la place de jira/confluence
     if data and not jira_data and not confluence_data:
-        return _generate_generic_summary(output_dir, data, summary_file, timestamp)
+        return _generate_generic_summary(output_dir, data, summary_file, timestamp, lang)
     
     # Extraire des statistiques
     jira_items_count = len(jira_data.get("items", [])) if jira_data else 0
@@ -129,89 +148,88 @@ def generate_llm_summary(output_dir, jira_data=None, confluence_data=None, data=
         model_used = confluence_data["metadata"]["llm_enrichment"].get("model", "inconnu")
     
     # Créer le contenu du fichier
-    content = f"""# Résumé de l'enrichissement LLM
+    content = f"""# {t("llm_summary_title", "llm_summary", lang)}
 
-## Informations générales
-- Date d'analyse: {timestamp}
-- Nombre total de tickets JIRA analysés: {jira_items_count}
-- Nombre total de pages Confluence analysées: {confluence_items_count}
-- Modèle LLM utilisé: {model_used}
+## {t("general_info_title", "llm_summary", lang)}
+- {t("analysis_date", "llm_summary", lang)}: {timestamp}
+- {t("jira_tickets_count", "llm_summary", lang)}: {jira_items_count}
+- {t("confluence_pages_count", "llm_summary", lang)}: {confluence_items_count}
+- {t("llm_model_used", "llm_summary", lang)}: {model_used}
 """
     
     if jira_items_count > 0:
-        content += """
-## Analyse JIRA
+        content += f"""
+## {t("jira_analysis_title", "llm_summary", lang)}
 
-### Mots-clés principaux extraits
+### {t("main_keywords_title", "llm_summary", lang)}
 """
-        content += f"{', '.join(jira_keywords) if jira_keywords else 'Aucun mot-clé extrait'}\n"
+        content += f"{', '.join(jira_keywords) if jira_keywords else t('no_keywords', 'llm_summary', lang)}\n"
         
-        content += """
-### Distribution des sentiments
+        content += f"""
+### {t("sentiment_distribution_title", "llm_summary", lang)}
 """
-        content += f"{str(jira_sentiment) if jira_sentiment else 'Aucune analyse de sentiment'}\n"
+        content += f"{str(jira_sentiment) if jira_sentiment else t('no_sentiment_analysis', 'llm_summary', lang)}\n"
         
-        content += """
-### Exemple d'enrichissement
+        content += f"""
+### {t("enrichment_example_title", "llm_summary", lang)}
 """
         
         if jira_example:
             content += f"""
-**Ticket**: {jira_example['id']} - {jira_example['title']}
-**Résumé LLM**: {jira_example['summary']}
+**{t("ticket", "llm_summary", lang)}**: {jira_example['id']} - {jira_example['title']}
+**{t("llm_summary", "llm_summary", lang)}**: {jira_example['summary']}
 """
         else:
-            content += "Aucun exemple disponible\n"
+            content += f"{t('no_example_available', 'llm_summary', lang)}\n"
     
     if confluence_items_count > 0:
-        content += """
-## Analyse Confluence
+        content += f"""
+## {t("confluence_analysis_title", "llm_summary", lang)}
 
-### Mots-clés principaux extraits
+### {t("main_keywords_title", "llm_summary", lang)}
 """
-        content += f"{', '.join(confluence_keywords) if confluence_keywords else 'Aucun mot-clé extrait'}\n"
+        content += f"{', '.join(confluence_keywords) if confluence_keywords else t('no_keywords', 'llm_summary', lang)}\n"
         
-        content += """
-### Distribution des sentiments
+        content += f"""
+### {t("sentiment_distribution_title", "llm_summary", lang)}
 """
-        content += f"{str(confluence_sentiment) if confluence_sentiment else 'Aucune analyse de sentiment'}\n"
+        content += f"{str(confluence_sentiment) if confluence_sentiment else t('no_sentiment_analysis', 'llm_summary', lang)}\n"
         
-        content += """
-### Exemple d'enrichissement
+        content += f"""
+### {t("enrichment_example_title", "llm_summary", lang)}
 """
         
         if confluence_example:
             content += f"""
-**Page**: {confluence_example['id']} - {confluence_example['title']}
-**Résumé LLM**: {confluence_example['summary']}
+**{t("page", "llm_summary", lang)}**: {confluence_example['id']} - {confluence_example['title']}
+**{t("llm_summary", "llm_summary", lang)}**: {confluence_example['summary']}
 """
         else:
-            content += "Aucun exemple disponible\n"
+            content += f"{t('no_example_available', 'llm_summary', lang)}\n"
     
-    content += """
-## Utilisation pour Llamendex
+    content += f"""
+## {t("llamendex_usage_title", "llm_summary", lang)}
 
-Les données enrichies par LLM sont prêtes pour ingestion dans Llamendex avec:
-1. Des résumés concis du contenu
-2. Des mots-clés thématiques
-3. Des entités extraites (personnes, organisations)
-4. Une analyse de sentiment
-
-Ces enrichissements améliorent considérablement la qualité des résultats de recherche
-et permettent des fonctionnalités avancées comme le filtrage par sentiment ou 
-la recherche par entités.
+{t("llamendex_usage_text", "llm_summary", lang)}
 """
     
     # Écrire le contenu dans le fichier
     with open(summary_file, 'w', encoding='utf-8') as f:
         f.write(content)
     
-    print(f"✅ Résumé de l'enrichissement LLM généré dans {summary_file}")
+    print(f"✅ {t('llm_summary_generated', 'llm_summary', lang)} {summary_file}")
     return summary_file
 
-def _generate_generic_summary(output_dir, data, summary_file, timestamp):
+def _generate_generic_summary(output_dir, data, summary_file, timestamp, lang="fr"):
     """
     Génère un résumé pour des données génériques (non JIRA/Confluence)
+    
+    Args:
+        output_dir: Répertoire de sortie
+        data: Données à analyser
+        summary_file: Chemin du fichier de sortie
+        timestamp: Horodatage de l'analyse
+        lang: Code de langue à utiliser
     """
     # Déterminer le type de données (liste ou dictionnaire avec 'items')
     items = []
@@ -256,8 +274,8 @@ def _generate_generic_summary(output_dir, data, summary_file, timestamp):
                 
                 # Compter les sentiments
                 if "sentiment" in llm_data:
-                    sentiment_value = llm_data["sentiment"]
-                    sentiment[sentiment_value] = sentiment.get(sentiment_value, 0) + 1
+                    sentiment = llm_data["sentiment"]
+                    sentiment[sentiment] = sentiment.get(sentiment, 0) + 1
     
     # Limiter et dédupliquer les mots-clés
     keywords = list(set(keywords))[:15]  # Top 15 mots-clés uniques
@@ -268,51 +286,43 @@ def _generate_generic_summary(output_dir, data, summary_file, timestamp):
         model_used = data["metadata"]["llm_enrichment"].get("model", "inconnu")
     
     # Créer le contenu du fichier
-    content = f"""# Résumé de l'enrichissement LLM
+    content = f"""# {t("llm_summary_title", "llm_summary", lang)}
 
-## Informations générales
-- Date d'analyse: {timestamp}
-- Nombre total d'éléments analysés: {items_count}
-- Modèle LLM utilisé: {model_used}
+## {t("general_info_title", "llm_summary", lang)}
+- {t("analysis_date", "llm_summary", lang)}: {timestamp}
+- {t("items_count", "llm_summary", lang)}: {items_count}
+- {t("llm_model_used", "llm_summary", lang)}: {model_used}
 
-## Analyse
+## {t("data_analysis_title", "llm_summary", lang)}
 
-### Mots-clés principaux extraits
-{', '.join(keywords) if keywords else "Aucun mot-clé extrait"}
+### {t("main_keywords_title", "llm_summary", lang)}
+{', '.join(keywords) if keywords else t('no_keywords', 'llm_summary', lang)}
 
-### Distribution des sentiments
-{str(sentiment) if sentiment else "Aucune analyse de sentiment"}
+### {t("sentiment_distribution_title", "llm_summary", lang)}
+{str(sentiment) if sentiment else t('no_sentiment_analysis', 'llm_summary', lang)}
 
-### Exemple d'enrichissement
+### {t("enrichment_example_title", "llm_summary", lang)}
 """
     
     if example:
         content += f"""
-**Élément**: {example['id']} - {example['title']}
-**Résumé LLM**: {example['summary']}
+**{t("item", "llm_summary", lang)}**: {example['id']} - {example['title']}
+**{t("llm_summary", "llm_summary", lang)}**: {example['summary']}
 """
     else:
-        content += "Aucun exemple disponible\n"
+        content += f"{t('no_example_available', 'llm_summary', lang)}\n"
     
-    content += """
-## Utilisation pour Llamendex
+    content += f"""
+## {t("llamendex_usage_title", "llm_summary", lang)}
 
-Les données enrichies par LLM sont prêtes pour ingestion dans Llamendex avec:
-1. Des résumés concis du contenu
-2. Des mots-clés thématiques
-3. Des entités extraites (personnes, organisations)
-4. Une analyse de sentiment
-
-Ces enrichissements améliorent considérablement la qualité des résultats de recherche
-et permettent des fonctionnalités avancées comme le filtrage par sentiment ou 
-la recherche par entités.
+{t("llamendex_usage_text", "llm_summary", lang)}
 """
     
     # Écrire le contenu dans le fichier
     with open(summary_file, 'w', encoding='utf-8') as f:
         f.write(content)
     
-    print(f"✅ Résumé de l'enrichissement LLM généré dans {summary_file}")
+    print(f"✅ {t('llm_summary_generated', 'llm_summary', lang)} {summary_file}")
     return summary_file
 
 if __name__ == "__main__":

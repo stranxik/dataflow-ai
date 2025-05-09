@@ -352,57 +352,36 @@ def create_confluence_summary(confluence_file, output_file):
 def main():
     parser = argparse.ArgumentParser(description="Analyse unifiée des fichiers JIRA et Confluence")
     
-    # Arguments pour les fichiers d'entrée
-    parser.add_argument("--jira-files", "-j", nargs="+", required=True, help="Fichiers JSON JIRA à analyser")
-    parser.add_argument("--confluence-files", "-c", nargs="*", default=[], help="Fichiers JSON Confluence à analyser")
+    # Arguments relatifs aux fichiers
+    parser.add_argument('--jira-files', nargs='+', required=True, help='Chemins des fichiers JIRA à analyser')
+    parser.add_argument('--confluence-files', nargs='+', default=[], help='Chemins des fichiers Confluence à analyser')
+    parser.add_argument('--output-dir', default='output', help='Répertoire de sortie')
     
-    # Arguments pour les options de traitement
-    parser.add_argument("--output-dir", "-o", default="results", help="Répertoire de sortie")
-    parser.add_argument("--min-match-score", "-s", type=float, default=0.2, help="Score minimum pour les correspondances")
-    parser.add_argument("--max-items", type=int, help="Nombre maximum d'éléments à traiter par fichier")
+    # Arguments relatifs au matching
+    parser.add_argument('--min-match-score', type=float, default=0.5, help='Score minimum pour les correspondances entre JIRA et Confluence')
+    parser.add_argument('--skip-matching', action='store_true', help='Ne pas effectuer le matching entre JIRA et Confluence')
     
-    # Arguments pour les options LLM
-    parser.add_argument("--with-openai", action="store_true", default=True, help="Activer l'analyse avec OpenAI")
-    parser.add_argument("--no-openai", action="store_false", dest="with_openai", help="Désactiver l'analyse avec OpenAI")
-    parser.add_argument("--api-key", help="Clé API OpenAI (optionnel, sinon utilise OPENAI_API_KEY de l'environnement)")
-    parser.add_argument("--model", default="gpt-4", help="Modèle OpenAI à utiliser")
+    # Arguments relatifs au traitement avancé
+    parser.add_argument('--max-items', type=int, default=None, help='Nombre maximum d\'éléments à traiter par fichier')
+    parser.add_argument('--with-openai', action='store_true', help='Utiliser l\'API OpenAI pour l\'enrichissement')
+    parser.add_argument('--api-key', default=None, help='Clé API OpenAI (si différente de la variable d\'environnement)')
     
-    # Options additionnelles
-    parser.add_argument("--skip-matching", action="store_true", help="Ne pas effectuer le matching entre JIRA et Confluence")
-    parser.add_argument("--install-outlines", action="store_true", help="Installer ou mettre à jour Outlines si nécessaire")
+    # Ajout de l'argument pour la langue
+    parser.add_argument('--language', choices=['fr', 'en'], default=None, help='Langue à utiliser pour les résumés et messages')
     
     args = parser.parse_args()
     
-    # Valider les fichiers d'entrée
-    jira_files_abs = [resolve_input_path(f) for f in args.jira_files]
-    confluence_files_abs = [resolve_input_path(f) for f in args.confluence_files]
+    # Configurer la langue si spécifiée
+    if args.language:
+        try:
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from cli.lang_utils import set_language
+            set_language(args.language)
+            print(f"🌐 Langue configurée: {args.language}")
+        except ImportError:
+            print("⚠️ Module de traduction non disponible, utilisation de la langue par défaut")
     
-    print("\n== Vérification des fichiers d'entrée ==")
-    for file in jira_files_abs:
-        if os.path.exists(file):
-            print(f"✅ Fichier JIRA trouvé: {file}")
-        else:
-            print(f"❌ Fichier JIRA introuvable: {file}")
-    
-    for file in confluence_files_abs:
-        if os.path.exists(file):
-            print(f"✅ Fichier Confluence trouvé: {file}")
-        else:
-            print(f"❌ Fichier Confluence introuvable: {file}")
-    
-    # Vérifier si Outlines est disponible si demandé
-    if args.with_openai or args.install_outlines:
-        print("\n== Vérification de l'installation d'Outlines ==")
-        outlines_available = check_outlines()
-        if not outlines_available and not args.install_outlines:
-            print("⚠️ L'enrichissement par LLM ne sera pas disponible.")
-    
-    # Si une clé API est fournie, la définir dans les variables d'environnement
-    if args.api_key:
-        os.environ["OPENAI_API_KEY"] = args.api_key
-        print(f"✅ Clé API OpenAI définie à partir des arguments")
-    
-    # Utiliser directement le répertoire fourni sans ajouter de timestamp supplémentaire
+    # Définir les répertoires
     output_dir = args.output_dir
     create_output_dir(output_dir)
     
@@ -751,6 +730,17 @@ def main():
     # Générer un résumé LLM même si l'enrichissement n'a pas pu être effectué
     if generate_llm_summary is not None:
         try:
+            # Récupérer la langue si disponible
+            current_language = None
+            try:
+                # Tenter d'importer le module lang_utils pour obtenir la langue actuelle
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from cli.lang_utils import get_current_language
+                current_language = get_current_language()
+                print(f"🌐 Génération des résumés LLM en langue: {current_language}")
+            except ImportError:
+                print("⚠️ Module de traduction non disponible, utilisation de la langue par défaut")
+            
             # Générer le résumé pour JIRA
             if os.path.exists(jira_transform_output):
                 try:
@@ -760,7 +750,8 @@ def main():
                     jira_summary_file = generate_llm_summary(
                         llm_ready_dir,
                         data=jira_data,
-                        filename="jira_llm_enrichment_summary.md"
+                        filename="jira_llm_enrichment_summary.md",
+                        language=current_language
                     )
                     print(f"✅ Résumé de l'enrichissement LLM pour JIRA généré: {jira_summary_file}")
                 except Exception as e:
@@ -775,7 +766,8 @@ def main():
                     confluence_summary_file = generate_llm_summary(
                         llm_ready_dir,
                         data=confluence_data,
-                        filename="confluence_llm_enrichment_summary.md"
+                        filename="confluence_llm_enrichment_summary.md",
+                        language=current_language
                     )
                     print(f"✅ Résumé de l'enrichissement LLM pour Confluence généré: {confluence_summary_file}")
                 except Exception as e:

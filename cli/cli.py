@@ -839,6 +839,10 @@ def unified(
     if skip_matching:
         cmd.append("--skip-matching")
     
+    # Ajouter l'option de langue si spécifiée
+    if language:
+        cmd.extend(["--language", language])
+    
     # Exécuter le script run_unified_analysis.py
     try:
         console.print("\n[bold cyan]Exécution du flux unifié...[/bold cyan]")
@@ -1042,8 +1046,8 @@ def interactive(
         console.print(f"[bold]Changing language to {new_lang}[/bold]" if new_lang == "en" else f"[bold]Changement de langue vers {new_lang}[/bold]")
         set_language(new_lang)
         
-        # Relancer le menu avec la nouvelle langue
-        return interactive()
+        # Relancer le menu avec la nouvelle langue explicitement spécifiée
+        return interactive(language=new_lang)
     
     # Quitter si demandé
     if selected_operation == t("quit", "interactive_choices"):

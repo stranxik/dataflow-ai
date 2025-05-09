@@ -59,18 +59,8 @@
       "quit": "Quitter"
     },
     "panels": {
-      "interactive_title": "Mode Interactif",
-      "interactive_content": "[bold]Assistant interactif pour le traitement de données[/bold]\n\nCet assistant va vous guider à travers les différentes étapes de traitement.",
-      "processing_title": "JSON Processor",
-      "processing_content": "[bold]Traitement de fichier JSON pour Llamendex[/bold]",
-      "matching_title": "Matching",
-      "matching_content": "[bold]Matching JIRA ↔ Confluence[/bold]",
-      "chunking_title": "Découpage en morceaux",
-      "chunking_content": "[bold]Découpage de fichier JSON volumineux[/bold]",
-      "cleaning_title": "Nettoyage de données",
-      "cleaning_content": "[bold]Nettoyage des données sensibles[/bold]",
-      "unified_title": "Traitement Unifié",
-      "unified_content": "[bold]Traitement unifié JIRA + Confluence[/bold]"
+      "interactive_title": "Mode Interactif - JSON Processor",
+      "interactive_content": "Bienvenue dans le mode interactif du JSON Processor.\nCet outil vous permettra d'explorer et d'analyser vos fichiers JSON.\nVous serez guidé à travers les différentes opérations."
     },
     "messages": {
       "select_operation": "Quelle opération souhaitez-vous effectuer ?",
@@ -110,10 +100,40 @@
       "selection_jira_confluence": "Sélection des fichiers JIRA et Confluence"
     },
     "errors": {
-      "missing_tool": "Module tools non trouvé. Pas de correction de chemins dupliqués.",
-      "path_correction": "Erreur lors de la correction des chemins:",
-      "duplicate_paths": "Correction de {count} fichiers dans des chemins dupliqués",
+      "missing_tool": "Module tools non trouvé. Pas de correction des chemins en doublon.",
+      "path_correction": "Erreur pendant la correction des chemins:",
+      "duplicate_paths": "Correction de {count} fichiers en chemins doublons",
       "dependencies": "Installation des dépendances requises..."
+    },
+    "llm_summary": {
+      "llm_summary_title": "Résumé de l'enrichissement LLM",
+      "general_info_title": "Informations générales",
+      "analysis_date": "Date de l'analyse",
+      "no_data_found": "AUCUNE DONNÉE ENRICHIE TROUVÉE",
+      "no_data_warning": "Aucune donnée enrichie par LLM n'a été trouvée. Vérifiez que:",
+      "warning_llm_option": "L'option d'enrichissement LLM est activée (--with-openai ou --llm)",
+      "warning_api_key": "Une clé API OpenAI valide est disponible",
+      "warning_valid_input": "Les fichiers d'entrée contiennent des données valides",
+      "jira_tickets_count": "Nombre total de tickets JIRA analysés",
+      "confluence_pages_count": "Nombre total de pages Confluence analysées",
+      "items_count": "Nombre total d'éléments analysés",
+      "llm_model_used": "Modèle LLM utilisé",
+      "jira_analysis_title": "Analyse JIRA",
+      "confluence_analysis_title": "Analyse Confluence",
+      "data_analysis_title": "Analyse des données",
+      "main_keywords_title": "Mots-clés principaux extraits",
+      "sentiment_distribution_title": "Distribution des sentiments",
+      "enrichment_example_title": "Exemple d'enrichissement",
+      "no_keywords": "Aucun mot-clé extrait",
+      "no_sentiment_analysis": "Aucune analyse de sentiment",
+      "no_example_available": "Aucun exemple disponible",
+      "ticket": "Ticket",
+      "page": "Page",
+      "item": "Élément",
+      "llm_summary": "Résumé LLM",
+      "llamendex_usage_title": "Utilisation pour Llamendex",
+      "llamendex_usage_text": "Les données enrichies par LLM sont prêtes pour ingestion dans Llamendex avec:\n1. Des résumés concis du contenu\n2. Des mots-clés thématiques\n3. Des entités extraites (personnes, organisations)\n4. Une analyse de sentiment\n\nCes enrichissements améliorent considérablement la qualité des résultats de recherche\net permettent des fonctionnalités avancées comme le filtrage par sentiment ou \nla recherche par entités.",
+      "llm_summary_generated": "Résumé de l'enrichissement LLM généré dans"
     }
   },
   "en": {
@@ -176,18 +196,8 @@
       "quit": "Quit"
     },
     "panels": {
-      "interactive_title": "Interactive Mode",
-      "interactive_content": "[bold]Interactive assistant for data processing[/bold]\n\nThis assistant will guide you through the different processing steps.",
-      "processing_title": "JSON Processor",
-      "processing_content": "[bold]JSON file processing for Llamendex[/bold]",
-      "matching_title": "Matching",
-      "matching_content": "[bold]JIRA ↔ Confluence Matching[/bold]",
-      "chunking_title": "Splitting into chunks",
-      "chunking_content": "[bold]Splitting large JSON file[/bold]",
-      "cleaning_title": "Data Cleaning",
-      "cleaning_content": "[bold]Cleaning sensitive data[/bold]",
-      "unified_title": "Unified Processing",
-      "unified_content": "[bold]Unified JIRA + Confluence processing[/bold]"
+      "interactive_title": "Interactive Mode - JSON Processor",
+      "interactive_content": "Welcome to the interactive mode of the JSON Processor.\nThis tool will help you explore and analyze your JSON files.\nYou will be guided through the different operations."
     },
     "messages": {
       "select_operation": "Which operation would you like to perform?",
@@ -231,6 +241,36 @@
       "path_correction": "Error during path correction:",
       "duplicate_paths": "Correction of {count} files in duplicate paths",
       "dependencies": "Installing required dependencies..."
+    },
+    "llm_summary": {
+      "llm_summary_title": "LLM Enrichment Summary",
+      "general_info_title": "General Information",
+      "analysis_date": "Analysis Date",
+      "no_data_found": "NO ENRICHED DATA FOUND",
+      "no_data_warning": "No LLM-enriched data was found. Please check that:",
+      "warning_llm_option": "The LLM enrichment option is enabled (--with-openai or --llm)",
+      "warning_api_key": "A valid OpenAI API key is available",
+      "warning_valid_input": "The input files contain valid data",
+      "jira_tickets_count": "Total JIRA tickets analyzed",
+      "confluence_pages_count": "Total Confluence pages analyzed",
+      "items_count": "Total items analyzed",
+      "llm_model_used": "LLM model used",
+      "jira_analysis_title": "JIRA Analysis",
+      "confluence_analysis_title": "Confluence Analysis",
+      "data_analysis_title": "Data Analysis",
+      "main_keywords_title": "Main extracted keywords",
+      "sentiment_distribution_title": "Sentiment distribution",
+      "enrichment_example_title": "Enrichment example",
+      "no_keywords": "No keywords extracted",
+      "no_sentiment_analysis": "No sentiment analysis",
+      "no_example_available": "No example available",
+      "ticket": "Ticket",
+      "page": "Page",
+      "item": "Item",
+      "llm_summary": "LLM Summary",
+      "llamendex_usage_title": "Usage for Llamendex",
+      "llamendex_usage_text": "LLM-enriched data is ready for ingestion into Llamendex with:\n1. Concise content summaries\n2. Thematic keywords\n3. Extracted entities (people, organizations)\n4. Sentiment analysis\n\nThese enrichments significantly improve the quality of search results\nand enable advanced features such as sentiment filtering or\nentity-based searching.",
+      "llm_summary_generated": "LLM enrichment summary generated in"
     }
   }
 } 
