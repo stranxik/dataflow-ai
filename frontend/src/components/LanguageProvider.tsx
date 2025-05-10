@@ -79,7 +79,7 @@ const translations: Record<Language, Record<string, string>> = {
     
     // Home
     'pdf_analysis': 'Analysez vos PDF avec l\'IA',
-    'extract_text': 'Extraction intelligente du texte et des images, pas un simple OCR',
+    'extract_text': 'Extraction intelligente du texte et des images, plus qu\'un simple OCR pour vos agents IA',
     'max_images': 'Images maximum à analyser:',
     'process_pdf': 'Traiter PDF',
     'why_choose': 'Pourquoi choisir DataFlow AI ?',
@@ -194,7 +194,7 @@ const translations: Record<Language, Record<string, string>> = {
     
     // Home
     'pdf_analysis': 'Analyze PDFs with AI',
-    'extract_text': 'Smart extraction of text and embedded images, not just OCR',
+    'extract_text': 'Intelligent extraction of text and images, more than just a simple OCR for your AI agents',
     'max_images': 'Maximum images to analyze:',
     'process_pdf': 'Process PDF',
     'why_choose': 'Why Choose DataFlow AI?',

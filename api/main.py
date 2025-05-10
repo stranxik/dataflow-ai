@@ -30,7 +30,8 @@ TEMP_DIR.mkdir(exist_ok=True)
 # Create FastAPI application
 app = FastAPI(
     title="DataFlow AI API",
-    description="API for DataFlow AI - Pipeline intelligent, CLI avancée & outils pour la préparation, "
+    description="API for DataFlow AI - Extraction intelligente du texte et des images, pas un simple OCR pour vos agents IA. "
+                "Pipeline intelligent, CLI avancée & outils pour la préparation, "
                 "la transformation, la sécurisation et l'enrichissement des données JSON & PDF pour l'IA et le RAG",
     version="1.0.0",
     docs_url=None,
@@ -77,7 +78,8 @@ async def get_open_api_endpoint():
     return get_openapi(
         title="DataFlow AI API",
         version="1.0.0",
-        description="API for DataFlow AI",
+        description="API for DataFlow AI - Intelligent extraction of text and images, not just a simple OCR for your AI agents. "
+                   "Smart pipeline, advanced CLI & tools for preparation, transformation, security and enrichment of JSON & PDF data for AI and RAG",
         routes=app.routes,
     )
 
