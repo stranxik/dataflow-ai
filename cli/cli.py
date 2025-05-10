@@ -440,9 +440,12 @@ def process(
     # Générer un timestamp pour le nom du fichier
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     
-    # Utiliser le dossier results comme base
-    base_results_dir = "results"
-    ensure_dir(base_results_dir)
+    # Obtenir le chemin absolu vers le répertoire racine du projet
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Utiliser le dossier results comme base à la racine du projet
+    base_results_dir = os.path.join(project_root, "results")
+    os.makedirs(base_results_dir, exist_ok=True)
     
     # Si pas de fichier de sortie spécifié, créer un nom par défaut avec timestamp dans le dossier results
     if not output_file:
@@ -620,9 +623,12 @@ def match(
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     
-    # Utiliser le dossier results comme base
-    base_results_dir = "results"
-    ensure_dir(base_results_dir)
+    # Obtenir le chemin absolu vers le répertoire racine du projet
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Utiliser le dossier results comme base à la racine du projet
+    base_results_dir = os.path.join(project_root, "results")
+    os.makedirs(base_results_dir, exist_ok=True)
     
     # Si output_dir est spécifié, l'utiliser comme nom de dossier avec le timestamp
     if output_dir:
@@ -774,8 +780,12 @@ def unified(
     if os.path.isabs(output_dir_str):
         full_output_dir = output_dir_str
     else:
-        # Rétablir le comportement original: placer les résultats dans results/output_dir
-        full_output_dir = os.path.join("results", output_dir_str)
+        # Utiliser le dossier results à la racine du projet
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        results_dir = os.path.join(project_root, "results")
+        # S'assurer que le répertoire results existe
+        os.makedirs(results_dir, exist_ok=True)
+        full_output_dir = os.path.join(results_dir, output_dir_str)
     
     # Créer le répertoire de sortie s'il n'existe pas
     os.makedirs(full_output_dir, exist_ok=True)
@@ -908,9 +918,12 @@ def chunks(
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     
-    # Utiliser le dossier results comme base
-    base_results_dir = "results"
-    ensure_dir(base_results_dir)
+    # Obtenir le chemin absolu vers le répertoire racine du projet
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Utiliser le dossier results comme base à la racine du projet
+    base_results_dir = os.path.join(project_root, "results")
+    os.makedirs(base_results_dir, exist_ok=True)
     
     # Si output_dir est spécifié, l'utiliser comme nom de dossier avec le timestamp
     if output_dir:
@@ -1369,10 +1382,26 @@ def clean(
         border_style="blue"
     ))
     
-    # Traitement selon le type de chemin
+    # Si le chemin est un fichier
     if os.path.isfile(input_file):
+        # Obtenir le chemin absolu vers le répertoire racine du projet
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Utiliser le dossier results comme base à la racine du projet
+        base_results_dir = os.path.join(project_root, "results")
+        os.makedirs(base_results_dir, exist_ok=True)
+        
         # Fichier unique
-        out_file = output_file if output_file else f"{os.path.splitext(input_file)[0]}_clean{os.path.splitext(input_file)[1]}"
+        if output_file:
+            if not os.path.isabs(output_file):
+                # Si le chemin n'est pas absolu, le placer dans results
+                out_file = os.path.join(base_results_dir, output_file)
+            else:
+                out_file = output_file
+        else:
+            # Créer un nom par défaut dans le dossier results
+            base, ext = os.path.splitext(os.path.basename(input_file))
+            out_file = os.path.join(base_results_dir, f"{base}_clean{ext}")
         
         with console.status(f"[bold blue]Nettoyage de {input_file}..."):
             result = clean_json_file(input_file, out_file)
@@ -1382,9 +1411,27 @@ def clean(
         else:
             console.print(f"[bold red]❌ Échec du nettoyage de {input_file}[/bold red]")
             
+    # Si le chemin est un répertoire
     elif os.path.isdir(input_file):
+        # Obtenir le chemin absolu vers le répertoire racine du projet
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Utiliser le dossier results comme base à la racine du projet
+        base_results_dir = os.path.join(project_root, "results")
+        os.makedirs(base_results_dir, exist_ok=True)
+        
         # Répertoire
-        out_dir = output_file if output_file else os.path.join(input_file, "cleaned")
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        if output_file:
+            if not os.path.isabs(output_file):
+                # Si le chemin n'est pas absolu, le placer dans results
+                out_dir = os.path.join(base_results_dir, output_file)
+            else:
+                out_dir = output_file
+        else:
+            # Créer un nom par défaut dans le dossier results
+            base = os.path.basename(input_file)
+            out_dir = os.path.join(base_results_dir, f"{base}_cleaned_{timestamp}")
         
         # Créer le répertoire de sortie s'il n'existe pas
         os.makedirs(out_dir, exist_ok=True)
@@ -1617,9 +1664,12 @@ def match(
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     
-    # Utiliser le dossier results comme base
-    base_results_dir = "results"
-    ensure_dir(base_results_dir)
+    # Obtenir le chemin absolu vers le répertoire racine du projet
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Utiliser le dossier results comme base à la racine du projet
+    base_results_dir = os.path.join(project_root, "results")
+    os.makedirs(base_results_dir, exist_ok=True)
     
     # Si output_dir est spécifié, l'utiliser comme nom de dossier avec le timestamp
     if output_dir:
@@ -1771,8 +1821,12 @@ def unified(
     if os.path.isabs(output_dir_str):
         full_output_dir = output_dir_str
     else:
-        # Rétablir le comportement original: placer les résultats dans results/output_dir
-        full_output_dir = os.path.join("results", output_dir_str)
+        # Utiliser le dossier results à la racine du projet
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        results_dir = os.path.join(project_root, "results")
+        # S'assurer que le répertoire results existe
+        os.makedirs(results_dir, exist_ok=True)
+        full_output_dir = os.path.join(results_dir, output_dir_str)
     
     # Créer le répertoire de sortie s'il n'existe pas
     os.makedirs(full_output_dir, exist_ok=True)

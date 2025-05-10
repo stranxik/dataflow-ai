@@ -137,19 +137,28 @@ def create_output_dir(output_dir):
         os.makedirs(output_dir)
         print(f"Répertoire de sortie {output_dir} créé.")
 
-def run_step(cmd, desc):
+def run_step(cmd, desc, exit_on_error=False):
     """Exécuter une commande et afficher sa description"""
     print(f"\n== {desc} ==")
     print(f"Commande: {' '.join(cmd)}")
     try:
-        result = subprocess.run(cmd, check=True, text=True, capture_output=True)
+        result = subprocess.run(cmd, text=True, capture_output=True)
         print(result.stdout)
-        return True
+        return True, None
     except subprocess.CalledProcessError as e:
         print(f"Erreur: {e}")
-        print(e.stdout)
-        print(e.stderr)
-        return False
+        if hasattr(e, 'stdout') and e.stdout:
+            print(e.stdout)
+        if hasattr(e, 'stderr') and e.stderr:
+            print(e.stderr)
+        if exit_on_error:
+            sys.exit(1)
+        return False, str(e)
+    except Exception as e:
+        print(f"Exception non gérée: {e}")
+        if exit_on_error:
+            sys.exit(1)
+        return False, str(e)
 
 def resolve_input_path(path):
     """Résout le chemin absolu d'un fichier d'entrée, en cherchant dans le dossier courant et dans ./files/ si besoin."""
@@ -486,9 +495,26 @@ def main():
     jira_files = [resolve_input_path(f) for f in args.jira_files]
     confluence_files = [resolve_input_path(f) for f in args.confluence_files] if args.confluence_files else []
     
-    # Création du répertoire de sortie
-    output_dir = args.output_dir
+    # Création du répertoire de sortie avec chemin absolu à la racine du projet
+    output_dir_name = args.output_dir
+    
+    # Obtenir le chemin absolu vers le répertoire racine du projet
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Créer le chemin absolu vers le répertoire results à la racine du projet
+    results_dir = os.path.join(project_root, "results")
+    
+    # S'assurer que le répertoire results existe
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir, exist_ok=True)
+    
+    # Créer le chemin absolu complet pour le répertoire de sortie dans results
+    output_dir = os.path.join(results_dir, output_dir_name)
+    
+    # Créer le répertoire de sortie
     os.makedirs(output_dir, exist_ok=True)
+    
+    print(f"📂 Répertoire de sortie créé à : {output_dir}")
     
     # Configuration de l'API OpenAI
     use_openai = args.with_openai and not args.no_openai
@@ -539,17 +565,21 @@ def main():
             jira_output = os.path.join(jira_dir, f"{os.path.splitext(os.path.basename(jira_file))[0]}_processed.json")
             
             # 1. Extraire la structure
-            run_step([
+            structure_success, structure_error = run_step([
                 sys.executable, os.path.join(SCRIPTS_DIR, "extract_jira_structure.py"),
                 jira_file,
                 "--output", jira_structure_file
             ], "Extraction de la structure JIRA")
             
+            # Continuer même si l'extraction de structure a échoué
+            if not structure_success:
+                print(f"⚠️ L'extraction de la structure JIRA a échoué, mais le traitement continuera")
+            
             # 2. Découper le fichier si nécessaire
             jira_to_process = jira_file
             if max_items:
                 print(f"\n== Découpage du fichier JIRA ({max_items} éléments par fichier) ==")
-                run_step([
+                split_success, split_error = run_step([
                     sys.executable, os.path.join(SCRIPTS_DIR, "process_by_chunks.py"),
                     "split",
                     "--input", jira_file,
@@ -557,11 +587,14 @@ def main():
                     "--items-per-file", str(max_items)
                 ], "Découpage du fichier JIRA en morceaux")
                 
-                # Utiliser le premier fichier découpé
-                split_files = glob.glob(os.path.join(jira_splits_dir, "*.json"))
-                if split_files:
-                    jira_to_process = split_files[0]
-                    print(f"Utilisation du fichier découpé: {jira_to_process}")
+                # Utiliser le premier fichier découpé si le découpage a réussi
+                if split_success:
+                    split_files = glob.glob(os.path.join(jira_splits_dir, "*.json"))
+                    if split_files:
+                        jira_to_process = split_files[0]
+                        print(f"Utilisation du fichier découpé: {jira_to_process}")
+                else:
+                    print(f"⚠️ Le découpage du fichier JIRA a échoué, mais le traitement continuera avec le fichier original")
             
             # 3. Transformer les données
             cmd = [
@@ -570,7 +603,11 @@ def main():
                 "--output", jira_output
             ]
             
-            run_step(cmd, "Transformation des données JIRA")
+            transform_success, transform_error = run_step(cmd, "Transformation des données JIRA")
+            
+            if not transform_success:
+                print(f"❌ Échec de la transformation des données JIRA")
+                continue  # Skip to the next file
             
             # 4. Générer une arborescence du fichier
             file_structure = write_file_structure(jira_output, output_dir, jira_arbo_filename, max_nodes=10, max_depth=4)
@@ -588,17 +625,21 @@ def main():
             confluence_output = os.path.join(confluence_dir, f"{os.path.splitext(os.path.basename(confluence_file))[0]}_processed.json")
             
             # 1. Extraire la structure
-            run_step([
+            structure_success, structure_error = run_step([
                 sys.executable, os.path.join(SCRIPTS_DIR, "extract_confluence_structure.py"),
                 confluence_file,
                 "--output", confluence_structure_file
             ], "Extraction de la structure Confluence")
             
+            # Continuer même si l'extraction de structure a échoué
+            if not structure_success:
+                print(f"⚠️ L'extraction de la structure Confluence a échoué, mais le traitement continuera")
+            
             # 2. Découper le fichier si nécessaire
             confluence_to_process = confluence_file
             if max_items:
                 print(f"\n== Découpage du fichier Confluence ({max_items} éléments par fichier) ==")
-                run_step([
+                split_success, split_error = run_step([
                     sys.executable, os.path.join(SCRIPTS_DIR, "process_by_chunks.py"),
                     "split",
                     "--input", confluence_file,
@@ -606,11 +647,14 @@ def main():
                     "--items-per-file", str(max_items)
                 ], "Découpage du fichier Confluence en morceaux")
                 
-                # Utiliser le premier fichier découpé
-                split_files = glob.glob(os.path.join(confluence_splits_dir, "*.json"))
-                if split_files:
-                    confluence_to_process = split_files[0]
-                    print(f"Utilisation du fichier découpé: {confluence_to_process}")
+                # Utiliser le premier fichier découpé si le découpage a réussi
+                if split_success:
+                    split_files = glob.glob(os.path.join(confluence_splits_dir, "*.json"))
+                    if split_files:
+                        confluence_to_process = split_files[0]
+                        print(f"Utilisation du fichier découpé: {confluence_to_process}")
+                else:
+                    print(f"⚠️ Le découpage du fichier Confluence a échoué, mais le traitement continuera avec le fichier original")
             
             # 3. Transformer les données
             cmd = [
@@ -620,7 +664,11 @@ def main():
                 "--type", "confluence"
             ]
             
-            run_step(cmd, "Transformation des données Confluence")
+            transform_success, transform_error = run_step(cmd, "Transformation des données Confluence")
+            
+            if not transform_success:
+                print(f"❌ Échec de la transformation des données Confluence")
+                continue  # Skip to the next file
             
             # 4. Générer une arborescence du fichier
             file_structure = write_file_structure(confluence_output, output_dir, confluence_arbo_filename, max_nodes=10, max_depth=4)
@@ -650,7 +698,9 @@ def main():
                     "--min-score", str(min_match_score)
                 ]
                 
-                run_step(cmd, f"Matching {jira_base} avec {confluence_base}")
+                match_success, match_error = run_step(cmd, f"Matching {jira_base} avec {confluence_base}")
+                if not match_success:
+                    print(f"⚠️ Le matching entre {jira_base} et {confluence_base} a échoué, mais le traitement continuera")
     
     # Préparation pour LLM
     if jira_processed_files or confluence_processed_files:
