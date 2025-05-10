@@ -1,4 +1,4 @@
-# JSON Processor & CLI pour Llamendex - Extraction et analyse robuste de données structurées
+# DataFlow AI – Pipeline intelligent, CLI avancée & outils pour la préparation, la transformation, la sécurisation et l'enrichissement des données JSON pour l'IA et le RAG
 
 ![Version](https://img.shields.io/badge/version-1.0-blue) ![Python](https://img.shields.io/badge/Python-3.8%2B-green) ![License](https://img.shields.io/badge/license-MIT-orange)
 
