@@ -29,18 +29,20 @@
 
 ## 🔍 Introduction
 
-This project is a complete solution for processing, analyzing, and transforming JSON files from different sources (JIRA, Confluence, GitHub, etc.) in preparation for indexing in Llamendex or any other modern RAG system.
+This project is a complete solution for processing, analyzing, and transforming JSON files and PDF documents from different sources (JIRA, Confluence, GitHub, etc.) in preparation for indexing in Llamendex or any other modern RAG system.
 
-The uniqueness of this solution lies in its ability to **automatically adapt to any JSON structure** and ensure robust file processing, even in the presence of errors or inconsistencies. Unlike generic JSON processing tools, our solution combines:
+The uniqueness of this solution lies in its ability to **automatically adapt to any JSON structure and extract content from PDF documents** and ensure robust file processing, even in the presence of errors or inconsistencies. Unlike generic JSON processing tools, our solution combines:
 
 - **Intelligent detection** of data structure
 - **Preservation of source files** (never directly modified)
 - **Semantic enrichment via LLM** with Outlines
+- **Smart PDF extraction** (native text + AI-analyzed images)
 - **Detailed reports** automatically generated
 - **Automatic correction** of JSON syntax errors
 - **Interactive and accessible CLI interface**
 
 > 💡 **NEW!** Complete integration of security tools and sensitive data cleaning directly in the CLI interface and JSON processors.
+> 💡 **NEW!** Advanced PDF processing with intelligent text extraction and AI-powered image analysis using GPT-4o.
 
 ### Why this solution?
 
@@ -50,12 +52,14 @@ In the development of RAG (Retrieval Augmented Generation) systems like Llamende
 2. **Malformed files**: Exports often contain syntactic or structural errors
 3. **Large volumes**: Exports can reach several gigabytes, exceeding standard processing capabilities
 4. **Loss of context**: Manual data enrichment is time-consuming and inconsistent
-5. **Absence of correspondences**: Links between JIRA tickets and Confluence pages are often lost
+5. **PDF complexity**: Standard PDF extractors lose structure or convert everything to images
+6. **Absence of correspondences**: Links between JIRA tickets and Confluence pages are often lost
 
 Our solution addresses these challenges by proposing a complete and robust pipeline that:
 - Automatically detects and repairs structural problems
 - Standardizes data in an optimal format for RAG systems
 - Enriches content using LLMs to improve semantic search
+- Intelligently extracts text and images from PDFs with AI analysis
 - Establishes correspondences between different data sources
 - Automatically generates summaries and analyses to facilitate ingestion
 
@@ -82,6 +86,7 @@ The project consists of three main modules:
 | `chunks` | **Split** a large file | `python -m cli.cli chunks large_file.json --items-per-file 500` |
 | `match` | **Match** JIRA-Confluence | `python -m cli.cli match jira.json confluence.json` |
 | `unified` | **Complete flow** processing | `python -m cli.cli unified jira1.json jira2.json --confluence conf1.json` |
+| `extract-images` | **Extract & analyze** PDF content | `python -m cli.cli extract-images complete file.pdf --max-images 10` |
 | `clean` | **Clean** sensitive data | `python -m cli.cli clean file.json --recursive` |
 | `compress` | **Compress & optimize** JSON files | `python -m cli.cli compress directory --level 19` |
 
@@ -238,6 +243,20 @@ python -m cli.cli unified jira1.json --output-dir results_dir --compress
 ```
 
 The compression system uses orjson and zstd to achieve significant space savings (up to 90%) while preserving data integrity.
+
+</div>
+
+<div class="command-box">
+
+### 📄 PDF Text & Image Extraction
+
+```bash
+# Extract text and analyze images from a PDF file
+python -m cli.cli extract-images complete path/to/file.pdf --max-images 10
+
+# Save extracted content to a specific directory
+python -m cli.cli extract-images complete path/to/file.pdf --output-dir pdf_analysis
+```
 
 </div>
 

@@ -29,18 +29,20 @@
 
 ## 🔍 Introduction
 
-Ce projet est une solution complète pour traiter, analyser et transformer des fichiers JSON provenant de différentes sources (JIRA, Confluence, GitHub, etc.) en préparation pour l'indexation dans Llamendex ou tout autre système RAG moderne.
+Ce projet est une solution complète pour traiter, analyser et transformer des fichiers JSON et des documents PDF provenant de différentes sources (JIRA, Confluence, GitHub, etc.) en préparation pour l'indexation dans Llamendex ou tout autre système RAG moderne.
 
-La particularité de cette solution réside dans sa capacité à **s'adapter automatiquement à n'importe quelle structure JSON** et à garantir un traitement robuste des fichiers, même en présence d'erreurs ou d'incohérences. Contrairement aux outils génériques de traitement JSON, notre solution allie:
+La particularité de cette solution réside dans sa capacité à **s'adapter automatiquement à n'importe quelle structure JSON et extraire intelligemment le contenu des PDF** et à garantir un traitement robuste des fichiers, même en présence d'erreurs ou d'incohérences. Contrairement aux outils génériques de traitement JSON, notre solution allie:
 
 - **Détection intelligente** de la structure des données
 - **Préservation des fichiers sources** (jamais modifiés directement)
 - **Enrichissement sémantique par LLM** avec Outlines
+- **Extraction intelligente de PDF** (texte natif + images analysées par IA)
 - **Rapports détaillés** générés automatiquement
 - **Correction automatique** des erreurs de syntaxe JSON
 - **Interface CLI interactive** et accessible
 
 > 💡 **NOUVEAU!** Intégration complète des outils de sécurité et de nettoyage des données sensibles directement dans l'interface CLI et dans les processeurs JSON.
+> 💡 **NOUVEAU!** Traitement avancé des PDF avec extraction intelligente du texte et analyse des images par IA grâce à GPT-4o.
 
 ### Pourquoi cette solution ?
 
@@ -50,12 +52,14 @@ Dans le développement de systèmes RAG (Retrieval Augmented Generation) comme L
 2. **Fichiers mal formés** : Les exports contiennent souvent des erreurs syntaxiques ou structurelles
 3. **Volumes importants** : Les exports peuvent atteindre plusieurs gigaoctets, dépassant les capacités de traitement standard
 4. **Perte de contexte** : L'enrichissement manuel des données est chronophage et inconsistant
-5. **Absence de correspondances** : Les liens entre tickets JIRA et pages Confluence sont souvent perdus
+5. **Complexité des PDF** : Les extracteurs standards perdent la structure ou convertissent tout en images
+6. **Absence de correspondances** : Les liens entre tickets JIRA et pages Confluence sont souvent perdus
 
 Notre solution répond à ces défis en proposant un pipeline complet et robuste qui :
 - Détecte et répare automatiquement les problèmes de structure
 - Standardise les données dans un format optimal pour les systèmes RAG
 - Enrichit le contenu grâce à des LLM pour améliorer la recherche sémantique
+- Extrait intelligemment le texte et les images des PDF avec analyse IA
 - Établit des correspondances entre différentes sources de données
 - Génère automatiquement des résumés et analyses pour faciliter l'ingestion
 
@@ -82,6 +86,7 @@ Le projet se compose de trois modules principaux :
 | `chunks` | **Découper** un fichier volumineux | `python -m cli.cli chunks gros_fichier.json --items-per-file 500` |
 | `match` | **Correspondances** JIRA-Confluence | `python -m cli.cli match jira.json confluence.json` |
 | `unified` | **Flux complet** de traitement | `python -m cli.cli unified jira1.json jira2.json --confluence conf1.json` |
+| `extract-images` | **Extraire & analyser** le contenu PDF | `python -m cli.cli extract-images complete fichier.pdf --max-images 10` |
 | `clean` | **Nettoyer** les données sensibles | `python -m cli.cli clean fichier.json --recursive` |
 | `compress` | **Compresser & optimiser** des fichiers JSON | `python -m cli.cli compress repertoire --level 19` |
 
@@ -238,6 +243,20 @@ python -m cli.cli unified jira1.json --output-dir dossier_resultats --compress
 ```
 
 Le système de compression utilise orjson et zstd pour obtenir des économies d'espace considérables (jusqu'à 90%) tout en préservant l'intégrité des données.
+
+</div>
+
+<div class="command-box">
+
+### 📄 Extraction de texte et d'images PDF
+
+```bash
+# Extraire le texte et analyser les images d'un fichier PDF
+python -m cli.cli extract-images complete chemin/vers/fichier.pdf --max-images 10
+
+# Sauvegarder le contenu extrait dans un répertoire spécifique
+python -m cli.cli extract-images complete chemin/vers/fichier.pdf --output-dir analyse_pdf
+```
 
 </div>
 
