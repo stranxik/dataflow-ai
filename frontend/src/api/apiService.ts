@@ -5,6 +5,10 @@
 
 const API_BASE_URL = "/api";
 
+// Récupérer l'API key depuis les variables d'environnement
+// D'abord essayer window.env (pour Docker), puis import.meta.env (pour dev)
+const API_KEY = (window as any).env?.VITE_API_KEY || import.meta.env?.VITE_API_KEY || '';
+
 interface ApiError {
   error: string;
   type?: string;
@@ -33,6 +37,9 @@ export async function processFile(
   
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: "POST",
+    headers: {
+      'X-API-Key': API_KEY || ''
+    },
     body: formData,
   });
   
@@ -128,6 +135,9 @@ export async function matchFiles(
   
   const response = await fetch(`${API_BASE_URL}/json/match`, {
     method: "POST",
+    headers: {
+      'X-API-Key': API_KEY || ''
+    },
     body: formData,
   });
   
@@ -164,6 +174,9 @@ export async function unifiedProcess(
   
   const response = await fetch(`${API_BASE_URL}/llm/unified`, {
     method: "POST",
+    headers: {
+      'X-API-Key': API_KEY || ''
+    },
     body: formData,
   });
   
@@ -184,6 +197,10 @@ export async function enrichText(content: string): Promise<any> {
   
   const response = await fetch(`${API_BASE_URL}/llm/enrich-text`, {
     method: "POST",
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': API_KEY || ''
+    },
     body: formData,
   });
   
@@ -205,6 +222,7 @@ export const setLanguage = async (language: string): Promise<void> => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-API-Key': API_KEY || ''
       },
       body: JSON.stringify({ language }),
     });

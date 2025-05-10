@@ -20,6 +20,7 @@ from fastapi.openapi.utils import get_openapi
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from api.routes import pdf_routes, json_routes, llm_routes, settings_routes
+from api.routes.auth import require_api_key
 from api.services.temp_file_service import setup_temp_cleanup
 
 # Create temp directory if it doesn't exist
@@ -36,20 +37,24 @@ app = FastAPI(
     redoc_url=None,
 )
 
+# Récupérer les origines frontend autorisées depuis les variables d'environnement
+frontend_origins = os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://localhost:80,http://frontend:80")
+allowed_origins = frontend_origins.split(",")
+
 # Setup CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "X-API-Key"],
 )
 
-# Include routers
-app.include_router(pdf_routes.router, prefix="/api/pdf", tags=["PDF Processing"])
-app.include_router(json_routes.router, prefix="/api/json", tags=["JSON Processing"])
-app.include_router(llm_routes.router, prefix="/api/llm", tags=["LLM Enrichment"])
-app.include_router(settings_routes.router, prefix="/api/settings", tags=["Settings"])
+# Include routers with API key authentication
+app.include_router(pdf_routes.router, prefix="/api/pdf", tags=["PDF Processing"], dependencies=[require_api_key])
+app.include_router(json_routes.router, prefix="/api/json", tags=["JSON Processing"], dependencies=[require_api_key])
+app.include_router(llm_routes.router, prefix="/api/llm", tags=["LLM Enrichment"], dependencies=[require_api_key])
+app.include_router(settings_routes.router, prefix="/api/settings", tags=["Settings"], dependencies=[require_api_key])
 
 # Task storage - in production this should be replaced with a proper task queue
 tasks: Dict[str, Dict] = {}
@@ -76,7 +81,7 @@ async def get_open_api_endpoint():
         routes=app.routes,
     )
 
-# Health check endpoint
+# Health check endpoint - pas d'authentification requise
 @app.get("/api/health", tags=["Health"])
 async def health_check():
     return {

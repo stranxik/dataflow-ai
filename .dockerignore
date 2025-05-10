@@ -1,0 +1,53 @@
+# Dossiers et fichiers généraux à ignorer
+.git
+.github
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+.tox/
+.nox/
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Environnements virtuels
+venv*/
+env/
+ENV/
+
+# Dossiers de données et résultats
+files/*
+!files/.gitkeep
+results/*
+!results/.gitkeep
+node_modules/
+
+# Frontend build
+frontend/dist/
+frontend/node_modules/
+
+# Fichiers Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Données sensibles
+.env
+*.env
+!.env.example
+
+# Fichiers spécifiques
+*.log
+*.cache
+*.tmp
+*.bak
+*.swp
+
+# Fichiers volumineux
+*.chunks 

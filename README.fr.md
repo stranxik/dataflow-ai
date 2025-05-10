@@ -27,6 +27,7 @@
 - [Frontend](#-frontend)
 - [Sécurité](#-sécurité)
 - [Dépendances](#️-dépendances)
+- [Déploiement Docker](#-déploiement-docker)
 - [Licence](#-licence)
 
 ## 🔍 Introduction
@@ -593,15 +594,32 @@ DataFlow AI inclut une API RESTful robuste construite avec FastAPI qui fournit u
 - **Architecture RESTful** - Méthodes HTTP standards avec réponses JSON cohérentes
 - **Documentation interactive** - Interface Swagger générée automatiquement à `/docs`
 - **Endpoints flexibles** - Accès complet à toutes les fonctionnalités de traitement
+- **Authentification sécurisée** - Authentification par clé API pour tous les endpoints
 - **Téléversements sécurisés** - Validation des fichiers et stockage temporaire sécurisé
 - **Support Cross-Origin** - CORS configuré pour les applications web
 - **Traitement asynchrone** - Opérations non bloquantes pour de meilleures performances
+
+### Sécurité de l'API
+
+L'API utilise une authentification par clé API pour sécuriser tous les endpoints :
+
+- Toutes les requêtes doivent inclure un en-tête `X-API-Key`
+- Configurez votre clé API dans le fichier `.env` à la racine du projet
+- Pour la production, générez une clé aléatoire sécurisée : `openssl rand -hex 32`
+- La protection CORS garantit que seules les origines autorisées peuvent accéder à l'API
 
 ### Endpoints principaux
 
 - **Traitement PDF** - Extraction de texte et analyse d'images des documents PDF
 - **Traitement JSON** - Nettoyage, compression et transformation des données JSON
 - **Traitement unifié** - Traitement et correspondance des données JIRA et Confluence
+
+Exemple d'appel API :
+```bash
+curl -X POST http://localhost:8000/api/json/process \
+  -H "X-API-Key: votre_clé_api_sécurisée" \
+  -F "file=@mon_fichier.json"
+```
 
 Pour la documentation complète, consultez le dossier [Documentation API](documentation/api/).
 
@@ -617,6 +635,20 @@ DataFlow AI inclut une interface web moderne construite avec React et TypeScript
 - **Glisser-déposer** - Téléversement et traitement intuitifs des fichiers
 - **Workflow interactif** - Guidage étape par étape à travers les options de traitement
 - **Visualisation des résultats** - Présentation claire des résultats de traitement
+- **Intégration API sécurisée** - Authentification automatique par clé API pour la communication avec le backend
+
+### Configuration du Frontend
+
+Le frontend nécessite une configuration minimale :
+
+1. Définissez votre clé API dans le fichier `frontend/.env` :
+   ```
+   VITE_API_KEY=votre_clé_api_sécurisée
+   ```
+
+2. Assurez-vous que la clé API correspond à celle configurée dans le fichier `.env` du backend.
+
+3. Pour les déploiements Docker, les variables d'environnement sont injectées au moment de l'exécution.
 
 ### Écrans principaux
 
@@ -673,6 +705,103 @@ Pour plus de détails, consultez le fichier [SECURITY.md](SECURITY.md).
 - openai (optionnel, pour les fonctionnalités LLM)
 - outlines==0.2.3 (optionnel, pour l'extraction structurée)
 - zstandard, orjson (optionnel, pour la compression et l'optimisation JSON)
+
+## 🐳 Déploiement Docker
+
+DataFlow AI peut être facilement déployé en utilisant Docker et Docker Compose.
+
+### Prérequis
+
+- Docker et Docker Compose installés sur votre système
+- Dépôt Git cloné localement
+
+### Démarrage rapide avec Docker
+
+1. **Configurer les variables d'environnement** :
+   - Créez un fichier `.env` à la racine du projet avec votre clé API et autres paramètres
+   - Créez un fichier `frontend/.env` avec la même clé API pour le frontend
+
+2. **Construire et démarrer tous les services** :
+
+```bash
+docker-compose up -d
+```
+
+Cela démarrera à la fois les services API et frontend. L'API sera disponible à l'adresse http://localhost:8000 et le frontend à l'adresse http://localhost:5173.
+
+3. **Utiliser la CLI dans Docker** :
+
+```bash
+# Exécuter la CLI en mode interactif
+docker-compose run cli interactive
+
+# Ou exécuter une commande CLI spécifique
+docker-compose run cli process chemin/vers/fichier.json --llm
+```
+
+4. **Arrêter tous les services** :
+
+```bash
+docker-compose down
+```
+
+### Architecture Docker
+
+DataFlow AI suit une architecture Docker modulaire :
+
+- Chaque composant (API, frontend, CLI) possède son propre Dockerfile dans son répertoire respectif
+- Un Dockerfile multi-stage principal est disponible à la racine comme méthode de build alternative
+- Les composants communiquent via un réseau Docker partagé
+- Les variables d'environnement sont chargées à partir des fichiers `.env` pour une configuration sécurisée
+
+#### Construction des composants individuellement
+
+Vous pouvez construire et exécuter chaque composant individuellement :
+
+```bash
+# Construire et exécuter l'API
+cd api
+docker build -t dataflow-api .
+docker run -p 8000:8000 --env-file ../.env dataflow-api
+
+# Construire et exécuter le frontend
+cd frontend
+docker build -t dataflow-frontend .
+docker run -p 5173:80 --env-file .env dataflow-frontend
+
+# Construire et exécuter la CLI
+cd cli
+docker build -t dataflow-cli .
+docker run -it --env-file ../.env dataflow-cli
+```
+
+#### Utilisation du Dockerfile multi-stage
+
+Le Dockerfile racine prend en charge les builds multi-stage pour tous les composants :
+
+```bash
+# Construire l'API
+docker build --target api -t dataflow-api .
+
+# Construire le frontend
+docker build --target frontend -t dataflow-frontend .
+
+# Construire la CLI
+docker build --target cli -t dataflow-cli .
+```
+
+### Volumes
+
+Docker Compose configure deux volumes partagés :
+
+- `./files` : Pour les fichiers d'entrée à traiter
+- `./results` : Pour les résultats de traitement en sortie
+
+### Sécurité dans Docker
+
+1. **Ne jamais coder en dur les clés API** dans le fichier `docker-compose.yml` ou les Dockerfiles
+2. **Utiliser des fichiers d'environnement** (`.env`) pour toutes les configurations sensibles
+3. Pour les déploiements en production, envisagez d'utiliser Docker Swarm secrets ou Kubernetes secrets
 
 ## 📜 Licence
 

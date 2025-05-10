@@ -27,6 +27,7 @@
 - [Frontend](#-frontend)
 - [Security](#-security)
 - [Dependencies](#️-dependencies)
+- [Docker Deployment](#-docker-deployment)
 - [License](#-license)
 
 ## 🔍 Introduction
@@ -162,7 +163,7 @@ The system automatically detects the available configuration and adapts accordin
 python -m tests.test_outlines_integration
 ```
 
-## 📖 Quick Start Guide
+## 🖖 Quick Start Guide
 
 <div class="command-box">
 
@@ -593,15 +594,32 @@ DataFlow AI includes a robust RESTful API built with FastAPI that provides progr
 - **RESTful Architecture** - Standard HTTP methods with consistent JSON responses
 - **Interactive Documentation** - Automatically generated Swagger UI at `/docs`
 - **Flexible Endpoints** - Complete access to all processing functionalities
+- **Secure Authentication** - API key authentication for all endpoints
 - **Secure Uploads** - File validation and secure temporary storage
 - **Cross-Origin Support** - Configured CORS for web applications
 - **Asynchronous Processing** - Non-blocking operations for improved performance
+
+### API Security
+
+The API uses API key authentication to secure all endpoints:
+
+- All requests must include an `X-API-Key` header
+- Configure your API key in the `.env` file at the project root
+- For production, generate a secure random key: `openssl rand -hex 32`
+- CORS protection ensures only authorized origins can access the API
 
 ### Main Endpoints
 
 - **PDF Processing** - Extract text and analyze images from PDF documents
 - **JSON Processing** - Clean, compress, and transform JSON data
 - **Unified Processing** - Process and match JIRA and Confluence data
+
+Example API call:
+```bash
+curl -X POST http://localhost:8000/api/json/process \
+  -H "X-API-Key: your_secure_api_key" \
+  -F "file=@my_file.json"
+```
 
 For full documentation, see the [API Documentation](documentation/api/) folder.
 
@@ -617,6 +635,20 @@ DataFlow AI includes a modern web interface built with React and TypeScript that
 - **Drag-and-Drop** - Intuitive file upload and processing
 - **Interactive Workflow** - Step-by-step guidance through processing options
 - **Result Visualization** - Clear presentation of processing results
+- **Secure API Integration** - Automatic API key authentication for backend communication
+
+### Frontend Configuration
+
+The frontend requires minimal configuration:
+
+1. Set your API key in the `frontend/.env` file:
+   ```
+   VITE_API_KEY=your_secure_api_key
+   ```
+
+2. Ensure the API key matches the one configured in the backend's `.env` file.
+
+3. For Docker deployments, environment variables are injected at runtime.
 
 ### Key Screens
 
@@ -673,6 +705,103 @@ For more details, see the [SECURITY.md](SECURITY.md) file.
 - openai (optional, for LLM functionalities)
 - outlines==0.2.3 (optional, for structured extraction)
 - zstandard, orjson (optional, for JSON compression and optimization)
+
+## 🐳 Docker Deployment
+
+DataFlow AI can be easily deployed using Docker and Docker Compose.
+
+### Prerequisites
+
+- Docker and Docker Compose installed on your system
+- Git repository cloned locally
+
+### Quick Start with Docker
+
+1. **Configure environment variables**:
+   - Create a `.env` file at the project root with your API key and other settings
+   - Create a `frontend/.env` file with the same API key for the frontend
+
+2. **Build and start all services**:
+
+```bash
+docker-compose up -d
+```
+
+This will start both the API and frontend services. The API will be available at http://localhost:8000 and the frontend at http://localhost:5173.
+
+3. **Use the CLI in Docker**:
+
+```bash
+# Run the CLI in interactive mode
+docker-compose run cli interactive
+
+# Or run a specific CLI command
+docker-compose run cli process path/to/file.json --llm
+```
+
+4. **Stop all services**:
+
+```bash
+docker-compose down
+```
+
+### Docker Architecture
+
+DataFlow AI follows a modular Docker architecture:
+
+- Each component (API, frontend, CLI) has its own Dockerfile in its respective directory
+- A main multi-stage Dockerfile is available at the root as an alternative build method
+- Components communicate through a shared Docker network
+- Environment variables are loaded from `.env` files for secure configuration
+
+#### Building Components Individually
+
+You can build and run each component individually:
+
+```bash
+# Build and run the API
+cd api
+docker build -t dataflow-api .
+docker run -p 8000:8000 --env-file ../.env dataflow-api
+
+# Build and run the frontend
+cd frontend
+docker build -t dataflow-frontend .
+docker run -p 5173:80 --env-file .env dataflow-frontend
+
+# Build and run the CLI
+cd cli
+docker build -t dataflow-cli .
+docker run -it --env-file ../.env dataflow-cli
+```
+
+#### Using the Multi-stage Dockerfile
+
+The root Dockerfile supports multi-stage builds for all components:
+
+```bash
+# Build the API
+docker build --target api -t dataflow-api .
+
+# Build the frontend
+docker build --target frontend -t dataflow-frontend .
+
+# Build the CLI
+docker build --target cli -t dataflow-cli .
+```
+
+### Volumes
+
+Docker Compose sets up two shared volumes:
+
+- `./files`: For input files to process
+- `./results`: For output results from processing
+
+### Security in Docker
+
+1. **Never hardcode API keys** in the `docker-compose.yml` file or Dockerfiles
+2. **Use environment files** (`.env`) for all sensitive configurations
+3. For production deployments, consider using Docker Swarm secrets or Kubernetes secrets
 
 ## 📜 License
 

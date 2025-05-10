@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Service API FastAPI
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: dataflow-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./files:/app/files
+      - ./results:/app/results
+    env_file:
+      - .env
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DEBUG=False
+    networks:
+      - dataflow-network
+
+  # Service Frontend React
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dataflow-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    env_file:
+      - frontend/.env
+    environment:
+      - VITE_API_URL=/api  # Défini pour être utilisé par le script d'environnement
+    depends_on:
+      - api
+    networks:
+      - dataflow-network
+
+  # Service CLI (en mode non interactif)
+  cli:
+    build:
+      context: .
+      dockerfile: cli/Dockerfile
+    container_name: dataflow-cli
+    volumes:
+      - ./files:/app/files
+      - ./results:/app/results
+    env_file:
+      - .env
+    # Commande par défaut en mode interactif remplacée dans le docker-compose
+    command: ["--help"]
+    profiles: ["cli"]  # Ne démarre pas automatiquement avec docker-compose up
+    networks:
+      - dataflow-network
+
+networks:
+  dataflow-network:
+    driver: bridge 

@@ -25,12 +25,55 @@ api/
 │   ├── __init__.py      # Initialisation du package routes
 │   ├── pdf.py           # Routes pour le traitement PDF
 │   ├── json.py          # Routes pour le traitement JSON
-│   └── unified.py       # Routes pour le traitement unifié (JIRA/Confluence)
+│   ├── unified.py       # Routes pour le traitement unifié (JIRA/Confluence)
+│   └── auth.py          # Middleware d'authentification par API key
 └── services/            # Logique métier et services sous-jacents
     ├── __init__.py      # Initialisation du package services
     ├── pdf_service.py   # Service de traitement PDF
     ├── json_service.py  # Service de traitement JSON
     └── unified_service.py # Service de traitement unifié
+```
+
+## Authentification API
+
+Tous les endpoints de l'API (à l'exception des endpoints de santé `/api/health` et racine `/`) nécessitent une authentification par API key.
+
+### Configuration de l'API Key
+
+1. Définissez votre clé API dans le fichier `.env` à la racine du projet :
+   ```
+   API_KEY=votre_clé_api_sécurisée
+   ```
+
+2. Pour la production, utilisez une clé forte et aléatoire :
+   ```bash
+   openssl rand -hex 32
+   ```
+
+### Utilisation de l'API Key
+
+Pour chaque requête API, incluez la clé API dans l'en-tête HTTP :
+
+```
+X-API-Key: votre_clé_api_sécurisée
+```
+
+Exemple avec curl :
+```bash
+curl -X POST http://localhost:8000/api/json/process \
+  -H "X-API-Key: votre_clé_api_sécurisée" \
+  -F "file=@mon_fichier.json"
+```
+
+Exemple avec JavaScript/Fetch :
+```javascript
+const response = await fetch('http://localhost:8000/api/json/process', {
+  method: 'POST',
+  headers: {
+    'X-API-Key': 'votre_clé_api_sécurisée'
+  },
+  body: formData
+});
 ```
 
 ## Endpoints principaux
@@ -65,7 +108,18 @@ source venv_outlines/bin/activate  # Sur Windows: venv_outlines\\Scripts\\activa
 pip install -r requirements.txt
 ```
 
-4. Lancez le serveur:
+4. Créez un fichier `.env` avec vos configurations:
+
+```
+API_PORT=8000
+API_HOST=localhost
+DEBUG=True
+MAX_UPLOAD_SIZE=52428800  # 50MB
+API_KEY=votre_clé_api_sécurisée
+FRONTEND_ORIGINS=http://localhost:5173,http://localhost:3000
+```
+
+5. Lancez le serveur:
 
 ```bash
 python run_api.py
@@ -82,18 +136,31 @@ API_PORT=8000
 API_HOST=localhost
 DEBUG=True
 MAX_UPLOAD_SIZE=52428800  # 50MB
+API_KEY=votre_clé_api_sécurisée
+FRONTEND_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
 
 ## Intégration avec le Frontend
 
-L'API est conçue pour fonctionner avec le frontend DataFlow AI, mais peut également être utilisée indépendamment comme service backend. Les réponses sont formatées en JSON et suivent des structures cohérentes.
+L'API est conçue pour fonctionner avec le frontend DataFlow AI. Le frontend utilise automatiquement la clé API définie dans son fichier `.env` pour toutes les communications avec l'API. Pour configurer le frontend :
+
+1. Assurez-vous que la même clé API est configurée dans `frontend/.env` :
+   ```
+   VITE_API_KEY=votre_clé_api_sécurisée
+   ```
+
+2. La variable `FRONTEND_ORIGINS` dans le fichier `.env` du backend doit inclure l'origine du frontend pour permettre les requêtes CORS.
 
 ## Sécurité
 
-- Tous les fichiers traités sont temporaires et ne sont pas stockés de façon permanente
-- Validation des entrées via Pydantic
-- Limites de taille de fichier pour éviter les abus
-- Prise en charge CORS pour les requêtes cross-origin sécurisées
+- **Authentification API Key** - Toutes les routes sont protégées par une clé API
+- **Validation CORS** - Seules les origines autorisées peuvent accéder à l'API
+- **Fichiers temporaires** - Tous les fichiers traités sont temporaires et ne sont pas stockés de façon permanente
+- **Validation des entrées** - Utilisation de Pydantic pour valider les entrées
+- **Limites de taille** - Limites de taille de fichier pour éviter les abus
+- **Headers sécurisés** - Headers HTTP configurés pour la sécurité
+
+Pour plus de détails sur la sécurité et l'authentification, consultez le document dédié dans `documentation/security/API_AUTHENTICATION.md`.
 
 ## Performances
 
@@ -108,4 +175,7 @@ Pour étendre l'API avec de nouvelles fonctionnalités:
 1. Créez un nouveau fichier de routes dans le dossier `routes/`
 2. Implémentez les services nécessaires dans `services/`
 3. Définissez les modèles de données dans `models/` si nécessaire
-4. Enregistrez les nouveaux routes dans `main.py` 
+4. Enregistrez les nouveaux routes dans `main.py` avec la dépendance d'authentification
+   ```python
+   app.include_router(ma_nouvelle_route.router, prefix="/api/nouveau", tags=["Nouvelle Fonctionnalité"], dependencies=[require_api_key])
+   ``` 
