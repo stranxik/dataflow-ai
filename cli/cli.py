@@ -131,10 +131,16 @@ def print_stepper(current:int, total:int, steps:list):
 
 # --- NAVIGATION AVEC ICONES ---
 def _prompt_for_file(message: str, allow_validate: bool = False, file_extension: str = ".json") -> Optional[str]:
-    current_dir = os.getcwd()
-    
-    # Vérifier si le dossier "files" existe à la racine du projet
+    """Assure que le sélecteur de fichiers commence toujours dans le dossier 'files' du projet."""
+    # Trouver le chemin du dossier files à la racine du projet
     files_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "files")
+    
+    # Vérifier si le dossier files existe, sinon utiliser le répertoire courant
+    if os.path.exists(files_dir):
+        current_dir = files_dir
+    else:
+        current_dir = os.getcwd()
+        console.print(f"[yellow]Dossier 'files' non trouvé. Utilisation du répertoire courant.[/yellow]")
     
     while True:
         console.print(f"\n[bold]{t('current_directory', 'messages')}[/bold] {current_dir}")
@@ -148,24 +154,15 @@ def _prompt_for_file(message: str, allow_validate: bool = False, file_extension:
         
         choices = []
         
-        # Option pour remonter au dossier parent si nous ne sommes pas à la racine
+        # Option pour remonter au dossier parent
         if current_dir != os.path.dirname(current_dir):
             choices.append(t("parent_dir", "options"))
         
-        # Mettre le dossier "files" en premier si nous sommes à la racine du projet
-        if os.path.exists(files_dir) and os.path.dirname(files_dir) == current_dir:
-            dirs.remove("files")
-            choices.append(f"{t('dir_prefix', 'options')} files")
-        
-        # Ajouter les autres dossiers
+        # Ajouter les dossiers
         choices += [f"{t('dir_prefix', 'options')} {d}" for d in dirs]
         
         # Ajouter les fichiers filtrés
         choices += [f"{t('file_prefix', 'options')} {f}" for f in files]
-        
-        # Si nous ne sommes pas dans le dossier "files", proposer d'y aller directement
-        if os.path.exists(files_dir) and current_dir != files_dir:
-            choices.insert(1, t("go_to_files", "options"))
         
         # Ajouter les options de validation/annulation
         if allow_validate:
@@ -197,13 +194,6 @@ def _prompt_for_file(message: str, allow_validate: bool = False, file_extension:
                 current_dir = os.path.dirname(current_dir)
                 os.chdir(current_dir)
                 
-            elif choice == t("go_to_files", "options"):
-                if os.path.exists(files_dir):
-                    current_dir = files_dir
-                    os.chdir(current_dir)
-                else:
-                    console.print("[bold red]Le dossier 'files' n'existe pas.[/bold red]")
-                    
             elif choice == t("enter_manually", "options"):
                 # Demander un chemin manuellement
                 manual_path = inquirer.prompt([
