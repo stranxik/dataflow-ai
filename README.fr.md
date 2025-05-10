@@ -4,7 +4,7 @@
 
 > 🇬🇧 [English version available here](README.md)
 > 📚 **Toute la documentation (FR/EN) est désormais centralisée dans le dossier [`/documentation`](documentation/).**
-> Vous y trouverez tous les guides (CLI, Extract, LLM, Outlines, Sécurité) en français et en anglais dans les sous-dossiers correspondants.
+> Vous y trouverez tous les guides (CLI, Extract, LLM, Outlines, Sécurité, API, Frontend) en français et en anglais dans les sous-dossiers correspondants.
 
 ## 📑 Sommaire
 
@@ -23,6 +23,8 @@
 - [Intégration avec Temporal et Llamendex](#-intégration-avec-temporal-et-llamendex)
 - [Format pour Llamendex](#-format-pour-llamendex)
 - [Analyse de documents PDF](#-analyse-de-documents-pdf)
+- [API](#-api)
+- [Frontend](#-frontend)
 - [Sécurité](#-sécurité)
 - [Dépendances](#️-dépendances)
 - [Licence](#-licence)
@@ -581,6 +583,48 @@ Une documentation détaillée est disponible dans le dossier [`/documentation/pd
 - Exemples de commandes avancées
 - Description détaillée de la structure de sortie
 - Guide de dépannage
+
+## 🚀 API
+
+DataFlow AI inclut une API RESTful robuste construite avec FastAPI qui fournit un accès programmatique à toutes les fonctionnalités de traitement et d'analyse de données.
+
+### Fonctionnalités clés de l'API
+
+- **Architecture RESTful** - Méthodes HTTP standards avec réponses JSON cohérentes
+- **Documentation interactive** - Interface Swagger générée automatiquement à `/docs`
+- **Endpoints flexibles** - Accès complet à toutes les fonctionnalités de traitement
+- **Téléversements sécurisés** - Validation des fichiers et stockage temporaire sécurisé
+- **Support Cross-Origin** - CORS configuré pour les applications web
+- **Traitement asynchrone** - Opérations non bloquantes pour de meilleures performances
+
+### Endpoints principaux
+
+- **Traitement PDF** - Extraction de texte et analyse d'images des documents PDF
+- **Traitement JSON** - Nettoyage, compression et transformation des données JSON
+- **Traitement unifié** - Traitement et correspondance des données JIRA et Confluence
+
+Pour la documentation complète, consultez le dossier [Documentation API](documentation/api/).
+
+## 💻 Frontend
+
+DataFlow AI inclut une interface web moderne construite avec React et TypeScript qui fournit un moyen convivial d'accéder à toutes les fonctionnalités du système.
+
+### Fonctionnalités du Frontend
+
+- **Interface moderne** - Interface propre et responsive utilisant React et Tailwind CSS
+- **Multilingue** - Support complet pour le français et l'anglais
+- **Modes clair/sombre** - Personnalisation du thème selon les préférences de l'utilisateur
+- **Glisser-déposer** - Téléversement et traitement intuitifs des fichiers
+- **Workflow interactif** - Guidage étape par étape à travers les options de traitement
+- **Visualisation des résultats** - Présentation claire des résultats de traitement
+
+### Écrans principaux
+
+- **Analyse PDF** - Téléversement et traitement de documents PDF avec analyse d'images par IA
+- **Traitement JSON** - Nettoyage, compression et découpage de fichiers JSON
+- **Traitement unifié** - Correspondance et traitement des données JIRA et Confluence
+
+Pour la documentation complète, consultez le dossier [Documentation Frontend](documentation/frontend/).
 
 ## 🔒 Sécurité
 

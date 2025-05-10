@@ -4,7 +4,7 @@
 
 > 🌐 [Version française disponible ici](README.fr.md)
 > 📚 **All documentation (EN/FR) is now centralized in the [`/documentation`](documentation/) folder.**
-> You will find English and French guides for CLI, Extract, LLM, Outlines, and Security in their respective subfolders.
+> You will find English and French guides for CLI, Extract, LLM, Outlines, Security, API, and Frontend in their respective subfolders.
 
 ## 📑 Table of Contents
 
@@ -23,6 +23,8 @@
 - [Integration with Temporal and Llamendex](#-integration-with-temporal-and-llamendex)
 - [Llamendex Format](#-llamendex-format)
 - [PDF Document Analysis](#-pdf-document-analysis)
+- [API](#-api)
+- [Frontend](#-frontend)
 - [Security](#-security)
 - [Dependencies](#️-dependencies)
 - [License](#-license)
@@ -581,6 +583,48 @@ Detailed documentation is available in the [`/documentation/pdf/`](documentation
 - Advanced command examples
 - Detailed description of output structure
 - Troubleshooting guide
+
+## 🚀 API
+
+DataFlow AI includes a robust RESTful API built with FastAPI that provides programmatic access to all data processing and analysis features.
+
+### Key API Features
+
+- **RESTful Architecture** - Standard HTTP methods with consistent JSON responses
+- **Interactive Documentation** - Automatically generated Swagger UI at `/docs`
+- **Flexible Endpoints** - Complete access to all processing functionalities
+- **Secure Uploads** - File validation and secure temporary storage
+- **Cross-Origin Support** - Configured CORS for web applications
+- **Asynchronous Processing** - Non-blocking operations for improved performance
+
+### Main Endpoints
+
+- **PDF Processing** - Extract text and analyze images from PDF documents
+- **JSON Processing** - Clean, compress, and transform JSON data
+- **Unified Processing** - Process and match JIRA and Confluence data
+
+For full documentation, see the [API Documentation](documentation/api/) folder.
+
+## 💻 Frontend
+
+DataFlow AI includes a modern web interface built with React and TypeScript that provides a user-friendly way to access all system features.
+
+### Frontend Features
+
+- **Modern UI** - Clean, responsive interface using React and Tailwind CSS
+- **Multilingual** - Complete support for English and French
+- **Dark/Light Modes** - Theme customization based on user preference
+- **Drag-and-Drop** - Intuitive file upload and processing
+- **Interactive Workflow** - Step-by-step guidance through processing options
+- **Result Visualization** - Clear presentation of processing results
+
+### Key Screens
+
+- **PDF Analysis** - Upload and process PDF documents with AI image analysis
+- **JSON Processing** - Clean, compress and split JSON files
+- **Unified Processing** - Match and process JIRA and Confluence data
+
+For full documentation, see the [Frontend Documentation](documentation/frontend/) folder.
 
 ## 🔒 Security
 
