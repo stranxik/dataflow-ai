@@ -20,16 +20,20 @@ from dotenv import load_dotenv
 # Import d'Outlines avec gestion des erreurs
 try:
     import outlines
-    from outlines import models, generate, prompts
-    from outlines.json_schema import JsonSchemaParser  # type: ignore
-except ImportError:
-    logging.warning("Modules Outlines non disponibles. Utilisation des stubs internes.")
-    # Utiliser notre version stub complète
+    from outlines import models
+    from outlines import Template
+    from outlines import samplers
+    import outlines.generate as generate
+    USING_STUB = False
+except ImportError as e:
+    import traceback
+    logging.warning(f"Modules Outlines non disponibles. Utilisation des stubs internes. Erreur: {e}\n{traceback.format_exc()}")
+    USING_STUB = True
     try:
-        from extract.outlines_stub import JsonSchemaParser, models, prompts, generate
+        from extract.outlines_stub import models, generate, Template, samplers, IS_STUB
     except ImportError:
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from extract.outlines_stub import JsonSchemaParser, models, prompts, generate
+        from extract.outlines_stub import models, generate, Template, samplers, IS_STUB
 
 # Définir une version de secours pour la classe qui pourrait ne pas être disponible
 class FallbackJsonSchemaParser:

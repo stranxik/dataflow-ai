@@ -19,33 +19,32 @@ import traceback
 from dotenv import load_dotenv
 
 # Import d'Outlines 0.2.3 avec gestion des erreurs
+USING_STUB = False
 try:
     import outlines
     from outlines import models
     from outlines import Template
     from outlines import samplers
     import outlines.generate as generate
-    
     # Vérifier la version d'Outlines si possible
+    logger = logging.getLogger("outlines_parser")
     if hasattr(outlines, '__version__'):
-        logger = logging.getLogger("outlines_parser")
         logger.info(f"Utilisation d'Outlines version {outlines.__version__}")
-    
-    # Indiquer que nous utilisons la vraie bibliothèque
-    USING_STUB = False
-        
+    logger.info("Bibliothèque Outlines importée avec succès (pas de stubs)")
 except ImportError as e:
-    logging.warning(f"Modules Outlines non disponibles. Utilisation des stubs internes. Erreur: {e}")
-    # Utiliser notre version stub complète
+    USING_STUB = True
+    logger = logging.getLogger("outlines_parser")
+    import traceback
+    logger.warning(f"Modules Outlines non disponibles. Utilisation des stubs internes. Erreur: {e}\n{traceback.format_exc()}")
     try:
         from extract.outlines_stub import models, generate, Template, samplers, IS_STUB
-        USING_STUB = True
-        logging.info("Utilisation des stubs d'Outlines (fonctionnalités limitées)")
+        logger.info("Utilisation des stubs d'Outlines (fonctionnalités limitées)")
     except ImportError:
+        import sys
+        import os
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from extract.outlines_stub import models, generate, Template, samplers, IS_STUB
-        USING_STUB = True
-        logging.info("Utilisation des stubs d'Outlines (fonctionnalités limitées)")
+        logger.info("Utilisation des stubs d'Outlines (fonctionnalités limitées)")
 
 # Import des modules existants
 try:

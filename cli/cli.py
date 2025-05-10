@@ -27,6 +27,7 @@ import inquirer
 from openai import OpenAI
 from rich.markdown import Markdown
 from rich.rule import Rule
+from extract.image_describer import PDFImageDescriber
 
 # Importer le module de gestion des langues
 try:
@@ -1042,6 +1043,7 @@ def interactive(
         t("unified", "interactive_choices"),
         t("clean", "interactive_choices"),
         t("compress", "interactive_choices"),
+        t("describe_images", "interactive_choices"),
         # Ajouter l'option pour changer de langue
         f"🌐 {t('change_language', 'interactive_choices', 'fr')} / {t('change_language', 'interactive_choices', 'en')}",
         t("quit", "interactive_choices")
@@ -1087,6 +1089,8 @@ def interactive(
         _run_interactive_clean()
     elif t("compress", "interactive_choices") in selected_operation:
         _run_interactive_compress()
+    elif t("describe_images", "interactive_choices") in selected_operation:
+        _run_interactive_describe_images()
 
 
 def _run_interactive_process():
@@ -2183,6 +2187,123 @@ def _run_interactive_unified():
         compress_level=compress_level if compress else None,
         keep_originals=keep_originals if compress else None
     )
+
+
+@app.command()
+def describe_images(
+    input_file: str = typer.Argument(..., help="Fichier PDF à analyser (doit se trouver dans le dossier files/)"),
+    output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Fichier de sortie JSON (par défaut: dans /results/{pdf_base}_{timestamp}/...)"),
+    max_images: int = typer.Option(10, "--max-images", help="Nombre maximum d'images à traiter"),
+    timeout: int = typer.Option(30, "--timeout", help="Timeout (secondes) par image pour l'appel API"),
+    language: str = typer.Option("fr", "--lang", help="Langue de l'analyse (fr/en)"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API OpenAI (si non définie dans les variables d'environnement)"),
+    compress: bool = typer.Option(False, "--compress", help="Compresser le fichier de sortie avec zstd et orjson"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver le JSON original en plus du compressé"),
+):
+    """
+    Analyse un PDF, extrait les images intégrées et génère une description intelligente pour chaque image via GPT-4 Vision.
+    Les résultats sont sauvegardés dans un fichier JSON dans un dossier horodaté dans /results.
+    Possibilité de compresser le résultat comme dans la commande unified.
+    """
+    console = Console()
+    if not os.path.exists(input_file):
+        console.print(f"[bold red]Le fichier {input_file} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    if not input_file.lower().endswith(".pdf"):
+        console.print(f"[bold red]Le fichier {input_file} n'est pas un PDF.[/bold red]")
+        raise typer.Exit(1)
+    if not api_key:
+        api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        console.print("[bold red]Clé API OpenAI manquante. Utilisez --api-key ou définissez OPENAI_API_KEY.[/bold red]")
+        raise typer.Exit(1)
+    # Générer le dossier de sortie horodaté dans /results
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    pdf_base = os.path.splitext(os.path.basename(input_file))[0]
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    results_dir = os.path.join(project_root, "results")
+    os.makedirs(results_dir, exist_ok=True)
+    output_dir = os.path.join(results_dir, f"{pdf_base}_{timestamp}")
+    os.makedirs(output_dir, exist_ok=True)
+    # Déterminer le nom du fichier de sortie
+    if not output_file:
+        output_file = os.path.join(output_dir, f"{pdf_base}_images_described.json")
+    elif not os.path.isabs(output_file):
+        output_file = os.path.join(output_dir, output_file)
+    describer = PDFImageDescriber(
+        openai_api_key=api_key,
+        max_images=max_images,
+        timeout=timeout,
+        language=language,
+    )
+    console.print(Panel(f"Analyse des images du PDF : [cyan]{input_file}[/cyan]", title="Describe Images", border_style="blue"))
+    with console.status("[bold blue]Extraction et analyse des images..."):
+        try:
+            results = describer.describe_images_in_pdf(input_file)
+        except Exception as e:
+            console.print(f"[bold red]Erreur lors de l'analyse : {e}[/bold red]")
+            raise typer.Exit(1)
+    # Sauvegarder les résultats
+    try:
+        with open(output_file, "w", encoding="utf-8") as f:
+            import json
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        console.print(f"[bold green]✅ Analyse terminée. Résultats sauvegardés dans :\n[cyan]{output_file}[/cyan]\n[dim]Dossier : {output_dir}[/dim][/bold green]")
+        # Compression si demandée
+        if compress:
+            try:
+                from extract.compress_utils import compress_results_directory
+                count, report = compress_results_directory(
+                    output_dir,
+                    compression_level=compress_level,
+                    keep_originals=keep_originals,
+                    generate_report=True
+                )
+                current_lang = get_current_language()
+                report_path = os.path.join(output_dir, f"compression_report_{current_lang}.txt")
+                console.print(f"[bold cyan]Compression terminée : {count} fichiers compressés.[/bold cyan]")
+                if os.path.exists(report_path):
+                    console.print(f"[bold]Rapport de compression :[/bold] {report_path}")
+            except Exception as e:
+                console.print(f"[bold yellow]⚠️ Erreur lors de la compression : {e}[/bold yellow]")
+    except Exception as e:
+        console.print(f"[bold red]Erreur lors de la sauvegarde : {e}[/bold red]")
+        raise typer.Exit(1)
+
+
+def _run_interactive_describe_images():
+    """Interface interactive pour la commande describe-images."""
+    input_path = _prompt_for_file(t("select_file_pdf", "prompts"))
+    if not input_path:
+        return
+    questions = [
+        inquirer.Text('output', message=t("output_file", "prompts"), default=""),
+        inquirer.Text('max_images', message="Nombre max d'images à traiter (défaut: 10)", default="10"),
+        inquirer.Text('timeout', message="Timeout par image (secondes, défaut: 30)", default="30"),
+        inquirer.Text('api_key', message=t("api_key", "prompts"), default=""),
+        inquirer.List('language', message="Langue", choices=["fr", "en"], default="fr"),
+    ]
+    answers = inquirer.prompt(questions)
+    output = answers['output'] if answers['output'].strip() else None
+    max_images = int(answers['max_images']) if answers['max_images'].strip() else 10
+    timeout = int(answers['timeout']) if answers['timeout'].strip() else 30
+    api_key = answers['api_key'] if answers['api_key'].strip() else None
+    language = answers['language']
+    # Confirmation
+    console.print(f"\n[bold]{t('summary', 'messages')}[/bold]")
+    console.print(f"- {t('input_path', 'messages')} [cyan]{input_path}[/cyan]")
+    console.print(f"- {t('output_path', 'messages')} [cyan]{output or t('auto_detection', 'messages')}[/cyan]")
+    console.print(f"- Max images: [cyan]{max_images}[/cyan]")
+    console.print(f"- Timeout: [cyan]{timeout}[/cyan]")
+    console.print(f"- Langue: [cyan]{language}[/cyan]")
+    questions = [
+        inquirer.Confirm('confirm', message="Lancer l'analyse des images ?", default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    if confirm and confirm['confirm']:
+        describe_images(input_path, output, max_images, timeout, language, api_key)
 
 
 if __name__ == "__main__":

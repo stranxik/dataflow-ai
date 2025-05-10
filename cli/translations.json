@@ -29,7 +29,8 @@
       "select_file_chunks": "Sélectionnez le fichier JSON volumineux à découper:",
       "select_dir_compress": "Sélectionnez le répertoire ou fichier JSON à compresser:",
       "select_jira_file": "Sélectionnez le fichier JIRA traité:",
-      "select_confluence_file": "Sélectionnez le fichier Confluence traité:"
+      "select_confluence_file": "Sélectionnez le fichier Confluence traité:",
+      "select_file_pdf": "Sélectionnez le fichier PDF à analyser :"
     },
     "confirmations": {
       "use_llm": "Voulez-vous enrichir avec LLM (OpenAI) ?",
@@ -57,12 +58,13 @@
     },
     "interactive_choices": {
       "process": "Traiter un fichier JSON (process)",
-      "chunks": "Découper un fichier volumineux (chunks)",
-      "match": "Établir des correspondances JIRA-Confluence (match)",
+      "chunks": "Découper un gros fichier (chunks)",
+      "match": "Faire le matching JIRA-Confluence (match)",
       "unified": "Flux complet JIRA + Confluence (unified)",
       "clean": "Nettoyer les données sensibles (clean)",
-      "compress": "Compresser et optimiser des fichiers JSON",
-      "change_language": "Changer la langue",
+      "compress": "Compresser et optimiser les fichiers JSON",
+      "describe_images": "Décrire les images d'un PDF (describe-images)",
+      "change_language": "Changer de langue",
       "quit": "Quitter"
     },
     "panels": {
@@ -189,7 +191,8 @@
       "select_file_chunks": "Select the large JSON file to split:",
       "select_dir_compress": "Select the directory or JSON file to compress:",
       "select_jira_file": "Select the processed JIRA file:",
-      "select_confluence_file": "Select the processed Confluence file:"
+      "select_confluence_file": "Select the processed Confluence file:",
+      "select_file_pdf": "Select the PDF file to analyze:"
     },
     "confirmations": {
       "use_llm": "Do you want to enrich with LLM (OpenAI)?",
@@ -222,6 +225,7 @@
       "unified": "Complete JIRA + Confluence flow (unified)",
       "clean": "Clean sensitive data (clean)",
       "compress": "Compress and optimize JSON files",
+      "describe_images": "Describe images in a PDF (describe-images)",
       "change_language": "Change language",
       "quit": "Quit"
     },
