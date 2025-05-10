@@ -242,8 +242,9 @@ Tous les résultats sont organisés dans le dossier `results/` avec une structur
 
 ```
 results/
-├── jira_confluence_2023-08-30-14-22-55/     # Dossier d'une exécution unified
+├── demo_test/                             # Exemple de dossier de notre dernier test
 │   ├── jira/                               # Sous-dossier pour les fichiers JIRA
+│   │   ├── demo_NEXUS_jira_processed.json  # Fichier JIRA traité
 │   ├── confluence/                         # Sous-dossier pour les fichiers Confluence
 │   ├── matches/                            # Sous-dossier pour les correspondances
 │   ├── split_jira_files/                   # Fichiers JIRA découpés
@@ -275,7 +276,7 @@ Exemple de résumé généré:
 # Résumé de l'enrichissement LLM
 
 ## Informations générales
-- Date d'analyse: 2025-05-08 23:34:37
+- Date d'analyse: 2023-05-08 23:34:37
 - Nombre total d'éléments analysés: 42
 - Modèle LLM utilisé: gpt-4
 
@@ -287,8 +288,11 @@ projet, développement, API, backend, utilisateur, interface, base de données
 {'positive': 12, 'neutral': 25, 'negative': 5}
 
 ### Exemple d'enrichissement
-**Ticket**: PROJ-123 - Implémentation de l'authentification OAuth2
-**Résumé LLM**: Ce ticket concerne l'intégration du protocole OAuth2 pour sécuriser l'API...
+**Ticket**: NEXUS-123 - Implémentation de l'authentification OAuth2
+**Résumé LLM**: Ce ticket concerne l'intégration du protocole OAuth2 pour sécuriser l'API. L'implémentation comprend l'enregistrement des clients, la gestion des tokens et la gestion des périmètres d'accès. L'équipe a noté des défis avec la persistance des tokens de rafraîchissement, mais les a résolus grâce à une table de base de données dédiée. Les tests montrent une intégration réussie avec l'application frontend. Prêt pour révision par l'équipe de sécurité avant le déploiement final en production.
+**Mots-clés**: OAuth2, authentification, sécurité API, tokens, enregistrement client
+**Entités**: Jean Dupont (développeur), Équipe de Sécurité, protocole OAuth2, JWT
+**Sentiment**: Positif
 ```
 
 </details>
@@ -321,6 +325,18 @@ Notre solution est conçue pour fonctionner dans différents environnements, gr�
 | **4** | Fallback standard | Parseur JSON standard en dernier recours |
 
 Cette architecture garantit que le système reste opérationnel même sans connexion internet ou clé API.
+
+## 🔄 Traitement JSON robuste
+
+Le système inclut des capacités avancées de traitement JSON pour gérer les fichiers JSON malformés ou invalides :
+
+- **Parsing robuste** : Multiples mécanismes de fallback pour gérer les fichiers JSON malformés
+- **Réparation intelligente** : Capacité à récupérer des erreurs de format JSON courantes
+- **Réparation assistée par LLM** : Utilisation optionnelle de LLM pour corriger des problèmes structurels complexes
+- **Parsing progressif** : Peut traiter des fichiers extrêmement volumineux en les lisant par morceaux
+- **Tolérance aux pannes** : Le système continue le traitement même si certains fichiers contiennent des erreurs
+
+Dans nos derniers tests, le système a traité avec succès les fichiers de démonstration du projet NEXUS qui contenaient plusieurs incohérences de formatage, sans nécessiter d'intervention manuelle.
 
 ## 🛠️ Utilitaires
 

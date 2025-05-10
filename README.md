@@ -244,8 +244,9 @@ All results are organized in the `results/` folder with a clear structure:
 
 ```
 results/
-├── jira_confluence_2023-08-30-14-22-55/     # Folder for a unified execution
+├── demo_test/                             # Example folder from our latest run
 │   ├── jira/                               # Subfolder for JIRA files
+│   │   ├── demo_NEXUS_jira_processed.json  # Processed JIRA file
 │   ├── confluence/                         # Subfolder for Confluence files
 │   ├── matches/                            # Subfolder for matches
 │   ├── split_jira_files/                   # Split JIRA files
@@ -277,7 +278,7 @@ Example of a generated summary:
 # LLM Enrichment Summary
 
 ## General Information
-- Analysis date: 2025-05-08 23:34:37
+- Analysis date: 2023-05-08 23:34:37
 - Total number of elements analyzed: 42
 - LLM model used: gpt-4
 
@@ -289,8 +290,11 @@ project, development, API, backend, user, interface, database
 {'positive': 12, 'neutral': 25, 'negative': 5}
 
 ### Enrichment example
-**Ticket**: PROJ-123 - OAuth2 Authentication Implementation
-**LLM Summary**: This ticket concerns the integration of the OAuth2 protocol to secure the API...
+**Ticket**: NEXUS-123 - OAuth2 Authentication Implementation
+**LLM Summary**: This ticket concerns the integration of the OAuth2 protocol to secure the API. The implementation includes client registration, token management, and scope handling. The team noted challenges with refresh token persistence but resolved these through a dedicated database table. Testing shows successful integration with the frontend application. Ready for review by the security team before final deployment to production.
+**Keywords**: OAuth2, authentication, API security, tokens, client registration
+**Entities**: John Smith (developer), Security Team, OAuth2 protocol, JWT
+**Sentiment**: Positive
 ```
 
 </details>
@@ -323,6 +327,18 @@ Our solution is designed to work in different environments, thanks to a multi-le
 | **4** | Standard fallback | Standard JSON parser as a last resort |
 
 This architecture ensures that the system remains operational even without internet connection or API key.
+
+## 🔄 Robust JSON Processing
+
+The system includes advanced JSON processing capabilities to handle malformed or invalid JSON files:
+
+- **Robust parsing**: Multiple fallback mechanisms to handle malformed JSON files
+- **Smart repair**: Ability to recover from common JSON format errors
+- **LLM-assisted repair**: Optional use of LLM to fix complex structural issues
+- **Progressive parsing**: Can process extremely large files by reading them in chunks
+- **Fault tolerance**: The system continues processing even if some files have errors
+
+In our latest tests, the system successfully processed the demo files with NEXUS project data that contained several formatting inconsistencies, without any manual intervention required.
 
 ## 🛠️ Utilities
 
