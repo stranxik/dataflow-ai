@@ -3,6 +3,8 @@
 ![Version](https://img.shields.io/badge/version-1.0-blue) ![Python](https://img.shields.io/badge/Python-3.8%2B-green) ![License](https://img.shields.io/badge/license-MIT-orange)
 
 > 🌐 [Version française disponible ici](README.fr.md)
+> 📚 **All documentation (EN/FR) is now centralized in the [`/documentation`](documentation/) folder.**
+> You will find English and French guides for CLI, Extract, LLM, Outlines, and Security in their respective subfolders.
 
 ## 📑 Table of Contents
 
