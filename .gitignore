@@ -84,15 +84,64 @@ Thumbs.db
 
 # Fichiers spécifiques à l'utilisateur
 .ipynb_checkpoints/
-*.ipynb# Test data files that may contain sensitive information
+*.ipynb
+
+# Test data files that may contain sensitive information
 tests/test_data/test_data.json
 **/*test_data*.json
+
 # Fichiers spécifiques contenant des données sensibles
 files/CARTAN_jira.json
 files/CASM_jira.json
 files/hollard_confluence.json
+
 # Prévention des fuites de données sensibles
 # Exclusion de tous les fichiers de données volumineux
 files/*.json
 results/*/jira/*.json
 results/*/confluence/*.json
+
+# Frontend specific
+# Dépendances
+node_modules/
+**/node_modules/
+/.pnp
+.pnp.js
+
+# Builds et production
+/build/
+/dist/
+/frontend/build/
+/frontend/dist/
+/frontend/.cache/
+.next/
+out/
+.nuxt/
+public/assets/
+
+# Couverture de test
+/coverage/
+frontend/coverage/
+
+# Variables d'environnement frontend
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel
+.vercel
+
+# Cache et fichiers temporaires frontend
+.eslintcache
+.stylelintcache
+.parcel-cache/
+tsconfig.tsbuildinfo
+
+# Packages 
+package-lock.json
+**/package-lock.json
+yarn.lock
+**/yarn.lock
+pnpm-lock.yaml
+**/pnpm-lock.yaml
