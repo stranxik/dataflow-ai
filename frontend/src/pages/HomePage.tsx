@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,78 @@ export default function HomePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [maxImages, setMaxImages] = useState(10);
   const { toast } = useToast();
+
+  // Add the Blaike easter egg in the console
+  useEffect(() => {
+    const blaikeLogo = `
+%c████████╗ ██████╗ ██████╗     ███████╗███████╗ ██████╗██████╗ ███████╗████████╗
+%c╚══██╔══╝██╔═══██╗██╔══██╗    ██╔════╝██╔════╝██╔════╝██╔══██╗██╔════╝╚══██╔══╝
+%c   ██║   ██║   ██║██████╔╝    ███████╗█████╗  ██║     ██████╔╝█████╗     ██║   
+%c   ██║   ██║   ██║██╔═══╝     ╚════██║██╔══╝  ██║     ██╔══██╗██╔══╝     ██║   
+%c   ██║   ╚██████╔╝██║         ███████║███████╗╚██████╗██║  ██║███████╗   ██║   
+%c   ╚═╝    ╚═════╝ ╚═╝         ╚══════╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝   ╚═╝   
+                                                                             
+%cBBBBB   L       AAAAA   III  K   K  EEEEE
+%cB    B  L      A     A  I   K  K   E
+%cBBBBB   L      AAAAAAA  I   KKK    EEEE
+%cB    B  L      A     A  I   K  K   E
+%cBBBBB   LLLLL  A     A III  K   K  EEEEE
+    `;
+
+    // Console styling
+    console.log(
+      blaikeLogo,
+      'color: #6d28d9; font-weight: bold;',
+      'color: #7c3aed; font-weight: bold;',
+      'color: #8b5cf6; font-weight: bold;',
+      'color: #9d7aea; font-weight: bold;',
+      'color: #a78bfa; font-weight: bold;',
+      'color: #c4b5fd; font-weight: bold;',
+      'color: #7c3aed; font-weight: bold;',
+      'color: #8b5cf6; font-weight: bold;',
+      'color: #9d7aea; font-weight: bold;',
+      'color: #a78bfa; font-weight: bold;',
+      'color: #c4b5fd; font-weight: bold;',
+    );
+
+    const welcomeMessage = `
+%c📢 So, you found us! Welcome to Blaike's hidden world.
+
+%cWho are we?
+%cBlaike is a specialized entity in AI. We combine technical and educational expertise to support professionals and companies in their digital transformation, with a particular focus on data sovereignty and operational efficiency.
+
+%cOur Services:
+%c• AI Agents - Conversational assistants tailored to your business needs
+• RAG Systems - Connect your document bases for intelligent retrieval
+• Smart Automation - Integrate with your existing tools
+• Rapid AI Prototyping - From concept to MVP in days
+
+%cOur Products:
+%c• Passerelle.cc - SaaS for training management and data integration
+• Flowz.cc - Workflow automation and data orchestration platform
+• DataFlow AI - This tool you're using for intelligent PDF extraction!
+
+%cWant to learn more or work with us?
+%cVisit us at https://blaike.cc
+Contact us at https://blaike.cc/contact
+Explore our ecosystem at https://blaike.cc/ecosystem
+    `;
+
+    setTimeout(() => {
+      console.log(
+        welcomeMessage,
+        'font-size: 14px; font-weight: bold; color: #6d28d9;',
+        'font-size: 16px; font-weight: bold; color: #4f46e5;',
+        'font-size: 14px; color: #4b5563;',
+        'font-size: 16px; font-weight: bold; color: #4f46e5;',
+        'font-size: 14px; color: #4b5563;',
+        'font-size: 16px; font-weight: bold; color: #4f46e5;',
+        'font-size: 14px; color: #4b5563;',
+        'font-size: 16px; font-weight: bold; color: #4f46e5;',
+        'font-size: 14px; color: #6d28d9;'
+      );
+    }, 500);
+  }, []);
 
   const onDrop = (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
