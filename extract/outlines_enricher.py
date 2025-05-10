@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
 import traceback
+from cli.lang_utils import get_current_language
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -46,13 +47,14 @@ except ImportError:
 # Vérifier l'import d'Outlines
 outlines_available = check_outlines()
 
-def enrich_with_llm(item_data: Dict[str, Any], model_name: str = "gpt-4-0125-preview") -> Dict[str, Any]:
+def enrich_with_llm(item_data: Dict[str, Any], model_name: str = "gpt-4-0125-preview", language: str = None) -> Dict[str, Any]:
     """
     Enrichit un élément (ticket JIRA ou page Confluence) avec des analyses LLM
     
     Args:
         item_data: Données de l'élément à enrichir
         model_name: Nom du modèle LLM à utiliser (doit supporter les sorties JSON structurées)
+        language: Langue à utiliser pour le prompt (par défaut: la langue courante)
     
     Returns:
         Élément enrichi avec des analyses LLM
@@ -90,30 +92,52 @@ def enrich_with_llm(item_data: Dict[str, Any], model_name: str = "gpt-4-0125-pre
         # Utiliser directement l'API OpenAI
         client = OpenAI(api_key=api_key)
         
-        # Créer le prompt avec une demande explicite de réponse au format JSON
-        prompt_text = f"""
-        Tu es un expert en analyse de documents techniques.
-        Analyse le contenu suivant et retourne UNIQUEMENT un objet JSON structuré contenant les champs suivants:
-        
-        1. "summary": un résumé concis du contenu (150 mots maximum)
-        2. "keywords": un tableau de 5-10 mots-clés importants extraits du contenu
-        3. "entities": un objet contenant:
-           - "people": un tableau des personnes mentionnées
-           - "organizations": un tableau des organisations mentionnées
-           - "technical_terms": un tableau des termes techniques mentionnés
-        4. "sentiment": le sentiment général (uniquement "positive", "neutral" ou "negative")
-        
-        Contenu à analyser:
-        {content}
-        
-        Réponds UNIQUEMENT avec un objet JSON valide sans aucun texte additionnel.
-        """
+        # Prompt dynamique selon la langue
+        lang = language or get_current_language() or "fr"
+        if lang == "en":
+            prompt_text = f"""
+            You are an expert in technical document analysis.
+            Analyze the following content and return ONLY a structured JSON object with the following fields:
+
+            1. \"summary\": a concise summary of the content (max 150 words)
+            2. \"keywords\": an array of 5-10 important keywords extracted from the content
+            3. \"entities\": an object containing:
+               - \"people\": an array of mentioned people
+               - \"organizations\": an array of mentioned organizations
+               - \"technical_terms\": an array of mentioned technical terms
+            4. \"sentiment\": the overall sentiment (\"positive\", \"neutral\" or \"negative\" only)
+
+            Content to analyze:
+            {content}
+
+            Respond ONLY with a valid JSON object and no additional text.
+            """
+            system_prompt = "You are a technical assistant who only returns structured JSON."
+        else:
+            prompt_text = f"""
+            Tu es un expert en analyse de documents techniques.
+            Analyse le contenu suivant et retourne UNIQUEMENT un objet JSON structuré contenant les champs suivants:
+
+            1. \"summary\": un résumé concis du contenu (150 mots maximum)
+            2. \"keywords\": un tableau de 5-10 mots-clés importants extraits du contenu
+            3. \"entities\": un objet contenant:
+               - \"people\": un tableau des personnes mentionnées
+               - \"organizations\": un tableau des organisations mentionnées
+               - \"technical_terms\": un tableau des termes techniques mentionnées
+            4. \"sentiment\": le sentiment général (uniquement \"positive\", \"neutral\" ou \"negative\")
+
+            Contenu à analyser:
+            {content}
+
+            Réponds UNIQUEMENT avec un objet JSON valide sans aucun texte additionnel.
+            """
+            system_prompt = "Tu es un assistant technique qui retourne uniquement du JSON structuré."
         
         # Appeler l'API
         response = client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "Tu es un assistant technique qui retourne uniquement du JSON structuré."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt_text}
             ],
             temperature=0.0
@@ -197,7 +221,7 @@ def extract_content_from_item(item: Dict[str, Any]) -> str:
     
     return content
 
-def enrich_data_file(input_file: str, output_file: str, model_name: str = "gpt-4-0125-preview") -> bool:
+def enrich_data_file(input_file: str, output_file: str, model_name: str = "gpt-4-0125-preview", language: str = None) -> bool:
     """
     Enrichit un fichier de données JSON avec des analyses LLM
     
@@ -205,6 +229,7 @@ def enrich_data_file(input_file: str, output_file: str, model_name: str = "gpt-4
         input_file: Chemin vers le fichier d'entrée
         output_file: Chemin vers le fichier de sortie
         model_name: Nom du modèle LLM à utiliser
+        language: Langue à utiliser pour le prompt (par défaut: la langue courante)
     
     Returns:
         True si l'enrichissement a réussi, False sinon
@@ -228,7 +253,7 @@ def enrich_data_file(input_file: str, output_file: str, model_name: str = "gpt-4
         
         for i, item in enumerate(data["items"]):
             logger.info(f"Enrichissement de l'élément {i+1}/{total_items}")
-            enriched_item = enrich_with_llm(item, model_name)
+            enriched_item = enrich_with_llm(item, model_name, language=language)
             enriched_items.append(enriched_item)
         
         # Mettre à jour les données
@@ -304,6 +329,7 @@ if __name__ == "__main__":
     parser.add_argument("--input", "-i", required=True, help="Fichier JSON d'entrée")
     parser.add_argument("--output", "-o", help="Fichier JSON de sortie (par défaut: enriched_[input])")
     parser.add_argument("--model", "-m", default="gpt-4-0125-preview", help="Modèle LLM à utiliser")
+    parser.add_argument("--language", "-l", help="Langue à utiliser pour le prompt")
     
     args = parser.parse_args()
     
@@ -314,7 +340,7 @@ if __name__ == "__main__":
         output_file = str(input_path.parent / f"enriched_{input_path.name}")
     
     # Enrichir les données
-    success = enrich_data_file(args.input, output_file, args.model)
+    success = enrich_data_file(args.input, output_file, args.model, args.language)
     
     if success:
         print(f"✅ Enrichissement terminé avec succès: {output_file}")

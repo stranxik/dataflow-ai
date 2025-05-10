@@ -723,18 +723,20 @@ def main():
         # Enrichissement LLM si demandé
         if use_openai and api_key:
             print("\n== Enrichissement des données avec LLM ==")
-            
-            # Importer le modèle d'enrichissement
             try:
                 # Ajouter le répertoire des scripts au chemin de recherche si nécessaire
                 if SCRIPTS_DIR not in sys.path:
                     sys.path.append(SCRIPTS_DIR)
                 from outlines_enricher import enrich_data_file
-                
+                # Récupérer la langue courante
+                current_language = None
+                if TRANSLATIONS_LOADED:
+                    current_language = get_current_language()
+                model = "gpt-4-0125-preview"  # Valeur par défaut, à adapter si besoin
                 if os.path.exists(jira_llm_file):
                     try:
                         print(f"🔄 Enrichissement JIRA...")
-                        jira_enriched = enrich_data_file(jira_llm_file, jira_llm_file)
+                        jira_enriched = enrich_data_file(jira_llm_file, jira_llm_file, model, language=current_language)
                         if jira_enriched:
                             print(f"✅ Enrichissement JIRA réussi")
                         else:
@@ -742,11 +744,10 @@ def main():
                     except Exception as e:
                         print(f"❌ Erreur lors de l'enrichissement JIRA: {e}")
                         traceback.print_exc()
-                
                 if os.path.exists(confluence_llm_file):
                     try:
                         print(f"🔄 Enrichissement Confluence...")
-                        confluence_enriched = enrich_data_file(confluence_llm_file, confluence_llm_file)
+                        confluence_enriched = enrich_data_file(confluence_llm_file, confluence_llm_file, model, language=current_language)
                         if confluence_enriched:
                             print(f"✅ Enrichissement Confluence réussi")
                         else:
