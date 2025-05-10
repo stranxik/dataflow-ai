@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { FileText, Upload, Check, Loader2, Shield, Wrench, Database, HelpCircle, Bot } from 'lucide-react';
+import { FileText, Upload, Check, Loader2, Shield, Wrench, Database, Bot } from 'lucide-react';
 import { processPdf } from '@/api/apiService';
 import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
@@ -69,7 +68,7 @@ export default function HomePage() {
 %cOur Products:
 %c• Passerelle.cc - SaaS for training management and data integration
 • Flowz.cc - Workflow automation and data orchestration platform
-• DataFlow AI - This tool you're using for intelligent PDF extraction!
+• DataFlow AI - This tool you're using for intelligent PDF extraction and JSON processing!
 
 %cWant to learn more or work with us?
 %cVisit us at https://blaike.cc

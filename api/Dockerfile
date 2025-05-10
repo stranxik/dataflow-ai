@@ -6,9 +6,11 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Installer curl pour le healthcheck
+RUN apt-get update && apt-get install -y curl && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Copier uniquement les fichiers nécessaires à l'API
 COPY requirements.txt .
-COPY .env.example ./.env
 COPY api/ ./api/
 COPY extract/ ./extract/
 COPY tools/ ./tools/
@@ -17,9 +19,9 @@ COPY run_api.py .
 # Installer les dépendances
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Créer un utilisateur non-root pour plus de sécurité
-RUN adduser --disabled-password --gecos "" appuser
-USER appuser
+# Créer les répertoires pour les volumes et donner les permissions
+RUN mkdir -p /app/files /app/results && \
+    chmod -R 777 /app/files /app/results
 
 # Exposer le port de l'API
 EXPOSE 8000

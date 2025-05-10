@@ -14,8 +14,17 @@ FROM python-base AS api
 COPY api/ ./api/
 COPY extract/ ./extract/
 COPY tools/ ./tools/
-COPY .env.example ./.env
+COPY .env* ./
+RUN if [ ! -f .env ]; then \
+       if [ -f .env.example ]; then \
+         cp .env.example .env; \
+       else \
+         touch .env; \
+       fi \
+    fi
 COPY run_api.py .
+RUN apt-get update && apt-get install -y curl && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /app/files /app/results && chmod -R 777 /app/files /app/results
 EXPOSE 8000
 CMD ["python", "run_api.py"]
 
@@ -28,7 +37,14 @@ COPY tools/ ./tools/
 COPY tests/ ./tests/
 COPY documentation/ ./documentation/
 COPY README.md README.fr.md ./
-COPY .env.example ./.env
+COPY .env* ./
+RUN if [ ! -f .env ]; then \
+       if [ -f .env.example ]; then \
+         cp .env.example .env; \
+       else \
+         touch .env; \
+       fi \
+    fi
 VOLUME ["/app/files", "/app/results"]
 ENTRYPOINT ["python", "-m", "cli.cli"]
 CMD ["interactive"]
@@ -42,8 +58,26 @@ COPY frontend/ ./
 RUN npm run build
 
 # Image frontend
-FROM nginx:alpine AS frontend
-COPY --from=frontend-build /app/dist /usr/share/nginx/html
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+FROM node:20-alpine AS frontend
+WORKDIR /app
+COPY --from=frontend-build /app/dist ./dist
+COPY --from=frontend-build /app/package*.json ./
+
+# Installer un serveur HTTP simple
+RUN npm install -g serve
+
+# Créer un script pour injecter les variables d'environnement au runtime
+RUN echo '#!/bin/sh' > /docker-entrypoint.sh && \
+    echo 'set -e' >> /docker-entrypoint.sh && \
+    echo 'cat > /app/dist/env-config.js << EOF' >> /docker-entrypoint.sh && \
+    echo 'window.env = {' >> /docker-entrypoint.sh && \
+    echo '  VITE_API_KEY: "${VITE_API_KEY}",' >> /docker-entrypoint.sh && \
+    echo '  VITE_API_URL: "${VITE_API_URL:-/api}"' >> /docker-entrypoint.sh && \
+    echo '};' >> /docker-entrypoint.sh && \
+    echo 'EOF' >> /docker-entrypoint.sh && \
+    echo 'exec "$@"' >> /docker-entrypoint.sh && \
+    chmod +x /docker-entrypoint.sh
+
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"] 
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["serve", "-s", "dist", "-l", "80"] 

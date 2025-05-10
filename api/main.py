@@ -42,10 +42,10 @@ app = FastAPI(
 frontend_origins = os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://localhost:80,http://frontend:80")
 allowed_origins = frontend_origins.split(",")
 
-# Setup CORS
+# Setup CORS - Assurons-nous que CORS fonctionne bien avec Coolify et Traefik
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],  # Autoriser toutes les origines dans un environnement Coolify/Traefik
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*", "X-API-Key"],

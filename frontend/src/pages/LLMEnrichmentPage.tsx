@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Cpu, Loader2, Link as LinkIcon, FileJson, Bot } from 'lucide-react';
+import { Loader2, Link as LinkIcon, FileJson, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { unifiedProcess } from '@/api/apiService';

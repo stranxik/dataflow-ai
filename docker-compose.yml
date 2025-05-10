@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Service API FastAPI
   api:
@@ -11,34 +9,38 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./files:/app/files
-      - ./results:/app/results
+      - ./files:/app/files:rw
+      - ./results:/app/results:rw
     env_file:
       - .env
     environment:
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - DEBUG=False
-    networks:
-      - dataflow-network
+      - FRONTEND_ORIGINS=*
+      - API_KEY=${API_KEY:-df_api_7fa9e520c31d465bade83e92fb54a7dc}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-dummy-key}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # Service Frontend React
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_KEY=${API_KEY:-df_api_7fa9e520c31d465bade83e92fb54a7dc}
+        - VITE_API_URL=${VITE_API_URL:-/api}
     container_name: dataflow-frontend
     restart: unless-stopped
     ports:
-      - "5173:80"
-    env_file:
-      - frontend/.env
-    environment:
-      - VITE_API_URL=/api  # Défini pour être utilisé par le script d'environnement
+      - "80:80"
     depends_on:
       - api
-    networks:
-      - dataflow-network
 
   # Service CLI (en mode non interactif)
   cli:
@@ -47,16 +49,13 @@ services:
       dockerfile: cli/Dockerfile
     container_name: dataflow-cli
     volumes:
-      - ./files:/app/files
-      - ./results:/app/results
+      - ./files:/app/files:rw
+      - ./results:/app/results:rw
     env_file:
       - .env
+    environment:
+      - API_KEY=${API_KEY:-df_api_7fa9e520c31d465bade83e92fb54a7dc}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-dummy-key}
     # Commande par défaut en mode interactif remplacée dans le docker-compose
     command: ["--help"]
-    profiles: ["cli"]  # Ne démarre pas automatiquement avec docker-compose up
-    networks:
-      - dataflow-network
-
-networks:
-  dataflow-network:
-    driver: bridge 
+    profiles: ["cli"]  # Ne démarre pas automatiquement avec docker-compose up 
