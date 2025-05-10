@@ -47,7 +47,7 @@ The extraction approach takes place in several precise steps:
 - Identification of image coordinates on the page
 
 ### 3. AI Analysis of Images Only
-- Semantic analysis of images via OpenAI API (GPT-4o or other multimodal model)
+- Semantic analysis of images via OpenAI API (GPT-4o)
 - Contextualization with surrounding text extracted around each image
 - Detailed description including image type, content, and significance
 
@@ -179,10 +179,10 @@ By default, the system uses the model defined in the `VISION_LLM_MODEL` environm
 
 ```bash
 # In .env
-VISION_LLM_MODEL=gpt-4-vision-preview
+VISION_LLM_MODEL=gpt-4o
 
 # Or via CLI
-python -m cli.cli extract-images complete file.pdf --model gpt-4-vision-preview
+python -m cli.cli extract-images complete file.pdf --model gpt-4o
 ```
 
 ### Custom Prompts

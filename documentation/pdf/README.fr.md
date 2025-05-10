@@ -47,7 +47,7 @@ L'approche d'extraction se déroule en plusieurs étapes précises:
 - Identification des coordonnées de l'image sur la page
 
 ### 3. Analyse IA des images uniquement
-- Analyse sémantique des images via l'API OpenAI (GPT-4o ou autre modèle multimodal)
+- Analyse sémantique des images via l'API OpenAI (GPT-4o)
 - Contextualisation avec le texte environnant extrait autour de chaque image
 - Description détaillée incluant le type d'image, son contenu et sa signification
 
@@ -179,10 +179,10 @@ Par défaut, le système utilise le modèle défini dans la variable d'environne
 
 ```bash
 # Dans .env
-VISION_LLM_MODEL=gpt-4-vision-preview
+VISION_LLM_MODEL=gpt-4o
 
 # Ou via CLI
-python -m cli.cli extract-images complete fichier.pdf --model gpt-4-vision-preview
+python -m cli.cli extract-images complete fichier.pdf --model gpt-4o
 ```
 
 ### Prompts personnalisés

@@ -504,7 +504,7 @@ The output structure is optimized for Llamendex, allowing direct conversion to `
     "source_file": "source_file.json",
     "processed_at": "PROCESSING_DATE",
     "llm_enrichment": {
-      "model": "gpt-4",
+      "model": "gpt-4o",
       "enrichment_date": "ENRICHMENT_DATE"
     }
   }
