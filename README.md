@@ -1,4 +1,4 @@
-# DataFlow AI – Intelligent Pipeline, Advanced CLI & Tools for Preparation, Transformation, Security, and Enrichment of JSON Data for AI and RAG
+# DataFlow AI – Intelligent Pipeline, Advanced CLI & Tools for Preparation, Transformation, Security, and Enrichment of JSON & PDF Data for AI and RAG
 
 ![Version](https://img.shields.io/badge/version-1.0-blue) ![Python](https://img.shields.io/badge/Python-3.8%2B-green) ![License](https://img.shields.io/badge/license-MIT-orange)
 
@@ -22,6 +22,7 @@
 - [Extending the System](#-extending-the-system)
 - [Integration with Temporal and Llamendex](#-integration-with-temporal-and-llamendex)
 - [Llamendex Format](#-llamendex-format)
+- [PDF Document Analysis](#-pdf-document-analysis)
 - [Security](#-security)
 - [Dependencies](#️-dependencies)
 - [License](#-license)
@@ -509,6 +510,58 @@ The output structure is optimized for Llamendex, allowing direct conversion to `
   }
 }
 ```
+
+## 📄 PDF Document Analysis
+
+> 🔍 **NEW!** The system now includes an intelligent PDF extractor that combines native text extraction and AI image analysis.
+
+### PDF Extractor Features
+
+The Complete PDF Extractor is a specialized module designed to intelligently extract and analyze PDF document content. Unlike traditional PDF extractors, this module:
+
+1. **Natively extracts** raw text from the PDF, preserving its original structure
+2. **Detects and extracts** only the embedded images in the document
+3. **Analyzes with AI** exclusively the images for enriched understanding
+4. **Generates a unified JSON** combining the extracted text and image analyses
+
+This targeted approach avoids transforming all pages into images, preserving the quality of native text while enabling enhanced AI understanding of visual elements.
+
+### Usage via CLI
+
+```bash
+# Interactive mode
+python -m cli.cli interactive
+# Then select "Complete PDF extraction (text + analyzed images)"
+
+# OR direct command
+python -m cli.cli extract-images complete path/to/file.pdf --max-images 10
+```
+
+### Unified JSON Structure
+
+For each processed PDF, you will get a structured JSON containing:
+
+- Document metadata (name, timestamp, language)
+- Raw text of each page
+- Structured elements by page (text and images)
+- AI descriptions for each image with context
+- General statistics (pages, detected images, analyzed images)
+
+### Application Examples
+
+- **Technical document analysis**: Extraction of textual content with AI enrichment of diagrams and figures
+- **Legal documentation**: Preservation of exact text structure with analysis of signatures and stamps
+- **Financial reports**: Extraction of textual data with AI understanding of charts and tables
+- **Scientific publications**: Conservation of structured text with analysis of formulas and illustrations
+
+### Complete Documentation
+
+Detailed documentation is available in the [`/documentation/pdf/`](documentation/pdf/) folder with:
+
+- Complete user guide in English and French
+- Advanced command examples
+- Detailed description of output structure
+- Troubleshooting guide
 
 ## 🔒 Security
 

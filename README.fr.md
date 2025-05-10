@@ -1,4 +1,4 @@
-# DataFlow AI – Pipeline intelligent, CLI avancée & outils pour la préparation, la transformation, la sécurisation et l'enrichissement des données JSON pour l'IA et le RAG
+# DataFlow AI – Pipeline intelligent, CLI avancée & outils pour la préparation, la transformation, la sécurisation et l'enrichissement des données JSON & PDF pour l'IA et le RAG
 
 ![Version](https://img.shields.io/badge/version-1.0-blue) ![Python](https://img.shields.io/badge/Python-3.8%2B-green) ![License](https://img.shields.io/badge/license-MIT-orange)
 
@@ -22,6 +22,7 @@
 - [Extension du système](#-extension-du-système)
 - [Intégration avec Temporal et Llamendex](#-intégration-avec-temporal-et-llamendex)
 - [Format pour Llamendex](#-format-pour-llamendex)
+- [Analyse de documents PDF](#-analyse-de-documents-pdf)
 - [Sécurité](#-sécurité)
 - [Dépendances](#️-dépendances)
 - [Licence](#-licence)
@@ -509,6 +510,58 @@ La structure de sortie est optimisée pour Llamendex, permettant une conversion 
   }
 }
 ```
+
+## 📄 Analyse de documents PDF
+
+> 🔍 **NOUVEAU!** Le système inclut désormais un extracteur PDF intelligent qui combine extraction native de texte et analyse IA des images.
+
+### Fonctionnalités de l'extracteur PDF
+
+L'Extracteur PDF Complet est un module spécialisé conçu pour extraire et analyser intelligemment le contenu des documents PDF. Contrairement aux extracteurs PDF traditionnels, ce module:
+
+1. **Extrait nativement** le texte brut du PDF, préservant sa structure originale
+2. **Détecte et extrait** uniquement les images intégrées dans le document
+3. **Analyse avec IA** exclusivement les images pour une compréhension enrichie 
+4. **Génère un JSON unifié** combinant le texte extrait et les analyses d'images
+
+Cette approche ciblée évite de transformer toutes les pages en images, ce qui préserve la qualité du texte natif tout en permettant une compréhension améliorée par IA des éléments visuels.
+
+### Utilisation via CLI
+
+```bash
+# Mode interactif
+python -m cli.cli interactive
+# Puis sélectionner "Extraction complète d'un PDF (texte + images analysées)"
+
+# OU commande directe
+python -m cli.cli extract-images complete chemin/vers/fichier.pdf --max-images 10
+```
+
+### Structure du JSON unifié
+
+Pour chaque PDF traité, vous obtiendrez un JSON structuré contenant:
+
+- Métadonnées du document (nom, timestamp, langue)
+- Texte brut de chaque page
+- Éléments structurés par page (texte et images)
+- Descriptions IA pour chaque image avec contexte
+- Statistiques générales (pages, images détectées, images analysées)
+
+### Exemples d'applications
+
+- **Analyse de documents techniques**: Extraction du contenu textuel avec enrichissement IA des diagrammes et figures
+- **Documentation juridique**: Préservation de la structure exacte du texte avec analyse des signatures et tampons
+- **Rapports financiers**: Extraction des données textuelles avec compréhension IA des graphiques et tableaux
+- **Publications scientifiques**: Conservation du texte structuré avec analyse des formules et illustrations
+
+### Documentation complète
+
+Une documentation détaillée est disponible dans le dossier [`/documentation/pdf/`](documentation/pdf/) avec:
+
+- Guide d'utilisation complet en français et anglais
+- Exemples de commandes avancées
+- Description détaillée de la structure de sortie
+- Guide de dépannage
 
 ## 🔒 Sécurité
 

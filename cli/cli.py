@@ -28,6 +28,7 @@ from openai import OpenAI
 from rich.markdown import Markdown
 from rich.rule import Rule
 from extract.image_describer import PDFImageDescriber
+import rich
 
 # Importer le module de gestion des langues
 try:
@@ -106,7 +107,7 @@ def print_header():
         "[/bold magenta]"
     )
     console.print(logo)
-    console.print("[bold cyan]J S O N    P A R S E R    C L I[/bold cyan] [green]v1.0[/green] 🚀\n")
+    console.print("[bold cyan]D A T A F L O W    A I    C L I[/bold cyan] [green]v1.0[/green] 🚀\n")
     
     # Afficher la langue actuelle
     if TRANSLATIONS_LOADED:
@@ -129,7 +130,7 @@ def print_stepper(current:int, total:int, steps:list):
     console.print(stepper)
 
 # --- NAVIGATION AVEC ICONES ---
-def _prompt_for_file(message: str, allow_validate: bool = False) -> Optional[str]:
+def _prompt_for_file(message: str, allow_validate: bool = False, file_extension: str = ".json") -> Optional[str]:
     current_dir = os.getcwd()
     
     # Vérifier si le dossier "files" existe à la racine du projet
@@ -138,7 +139,7 @@ def _prompt_for_file(message: str, allow_validate: bool = False) -> Optional[str
     while True:
         console.print(f"\n[bold]{t('current_directory', 'messages')}[/bold] {current_dir}")
         items = os.listdir(current_dir)
-        files = [f for f in items if os.path.isfile(os.path.join(current_dir, f)) and f.endswith('.json')]
+        files = [f for f in items if os.path.isfile(os.path.join(current_dir, f)) and f.endswith(file_extension)]
         dirs = [d for d in items if os.path.isdir(os.path.join(current_dir, d))]
         
         # Trier les dossiers et les fichiers
@@ -159,7 +160,7 @@ def _prompt_for_file(message: str, allow_validate: bool = False) -> Optional[str
         # Ajouter les autres dossiers
         choices += [f"{t('dir_prefix', 'options')} {d}" for d in dirs]
         
-        # Ajouter les fichiers JSON
+        # Ajouter les fichiers filtrés
         choices += [f"{t('file_prefix', 'options')} {f}" for f in files]
         
         # Si nous ne sommes pas dans le dossier "files", proposer d'y aller directement
@@ -212,7 +213,7 @@ def _prompt_for_file(message: str, allow_validate: bool = False) -> Optional[str
                 
                 if manual_path and manual_path['path']:
                     path = os.path.expanduser(manual_path['path'])
-                    if os.path.exists(path) and (os.path.isdir(path) or (os.path.isfile(path) and path.endswith('.json'))):
+                    if os.path.exists(path) and (os.path.isdir(path) or (os.path.isfile(path) and path.endswith(file_extension))):
                         if os.path.isdir(path):
                             current_dir = path
                             os.chdir(current_dir)
@@ -236,7 +237,7 @@ def _prompt_for_file(message: str, allow_validate: bool = False) -> Optional[str
                 # Sélectionner un fichier
                 file = choice.split(' ', 2)[-1]
                 file_path = os.path.join(current_dir, file)
-                if os.path.isfile(file_path) and file_path.endswith('.json'):
+                if os.path.isfile(file_path) and file_path.endswith(file_extension):
                     return file_path
                 else:
                     console.print(f"[bold red]{t('invalid_path', 'messages')}[/bold red]")
@@ -2194,116 +2195,386 @@ def describe_images(
     input_file: str = typer.Argument(..., help="Fichier PDF à analyser (doit se trouver dans le dossier files/)"),
     output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Fichier de sortie JSON (par défaut: dans /results/{pdf_base}_{timestamp}/...)"),
     max_images: int = typer.Option(10, "--max-images", help="Nombre maximum d'images à traiter"),
-    timeout: int = typer.Option(30, "--timeout", help="Timeout (secondes) par image pour l'appel API"),
-    language: str = typer.Option("fr", "--lang", help="Langue de l'analyse (fr/en)"),
-    api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API OpenAI (si non définie dans les variables d'environnement)"),
+    timeout: int = typer.Option(30, "--timeout", help="Timeout en secondes pour l'appel API OpenAI"),
+    language: str = typer.Option(get_current_language(), "--lang", "-l", help="Langue de description (fr, en)"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API OpenAI (par défaut: variable d'environnement OPENAI_API_KEY)"),
+    model: Optional[str] = typer.Option(None, "--model", help="Modèle OpenAI multimodal (par défaut: variable d'environnement VISION_LLM_MODEL)"),
+    no_save_images: bool = typer.Option(False, "--no-save-images", help="Ne pas sauvegarder les images en fichiers PNG"),
     compress: bool = typer.Option(False, "--compress", help="Compresser le fichier de sortie avec zstd et orjson"),
-    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
-    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver le JSON original en plus du compressé"),
+    compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression (1-22, 19 par défaut)"),
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux après compression"),
 ):
     """
-    Analyse un PDF, extrait les images intégrées et génère une description intelligente pour chaque image via GPT-4 Vision.
-    Les résultats sont sauvegardés dans un fichier JSON dans un dossier horodaté dans /results.
-    Possibilité de compresser le résultat comme dans la commande unified.
+    Analyse un fichier PDF pour extraire et décrire les images avec IA multimodale.
+    Ajoute une description IA pour chaque image détectée et génère un fichier JSON.
     """
-    console = Console()
-    if not os.path.exists(input_file):
-        console.print(f"[bold red]Le fichier {input_file} n'existe pas.[/bold red]")
-        raise typer.Exit(1)
-    if not input_file.lower().endswith(".pdf"):
-        console.print(f"[bold red]Le fichier {input_file} n'est pas un PDF.[/bold red]")
-        raise typer.Exit(1)
+    try:
+        console = rich.console.Console()
+        
+        # Vérifier que le fichier existe
+        if not os.path.exists(input_file):
+            # Tenter de trouver le fichier dans le dossier files/
+            files_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "files")
+            potential_file = os.path.join(files_dir, input_file)
+            if os.path.exists(potential_file):
+                input_file = potential_file
+            else:
+                console.print(f"[bold red]Erreur[/bold red]: Le fichier {input_file} n'existe pas.")
+                return
+        
+        # Récupérer la clé API OpenAI
+        if not api_key:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                console.print("[bold red]Erreur[/bold red]: Aucune clé API OpenAI fournie.")
+                console.print("Définissez la variable d'environnement OPENAI_API_KEY, ajoutez-la dans .env, ou utilisez --api-key.")
+                return
+        
+        # Configuration du dossier de sortie
+        pdf_base = os.path.splitext(os.path.basename(input_file))[0]
+        timestamp = time.strftime("%Y-%m-%d-%H-%M-%S")
+        output_dir_name = f"{pdf_base}_{timestamp}"
+        
+        # Créer le dossier de sortie dans /results/ (pas dans /results/results/)
+        results_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "results")
+        output_dir = os.path.join(results_dir, output_dir_name)
+        
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Définir le nom du fichier de sortie
+        if not output_file:
+            output_name = f"{pdf_base}_images_described.json"
+            output_file = os.path.join(output_dir, output_name)
+        elif not os.path.isabs(output_file):
+            output_file = os.path.join(output_dir, output_file)
+        
+        # Initialiser le module d'extraction et de description
+        from extract.image_describer import PDFImageDescriber
+        
+        # Afficher un message de démarrage
+        console.print(f"\n[bold green]Analyse du document PDF[/bold green]: {input_file}")
+        console.print(f"[bold]Langue[/bold]: {language}")
+        console.print(f"[bold]Modèle[/bold]: {model or os.environ.get('VISION_LLM_MODEL', 'gpt-4o')}")
+        console.print(f"[bold]Images max[/bold]: {max_images}")
+        console.print(f"[bold]Sauvegarde des images[/bold]: {'Non' if no_save_images else 'Oui'}")
+        
+        with console.status("[bold green]Analyse en cours...[/bold green]"):
+            # Extraire et décrire les images
+            describer = PDFImageDescriber(
+                openai_api_key=api_key,
+                max_images=max_images,
+                timeout=timeout,
+                language=language,
+                model=model,
+                save_images=not no_save_images
+            )
+            
+            # Utiliser le répertoire de sortie créé
+            result = describer.describe_images_in_pdf(input_file, output_dir)
+        
+        # Afficher un résumé
+        console.print(f"\n[bold green]Résultats[/bold green]:")
+        console.print(f"  • Images détectées: [bold]{result['nb_images_detectees']}[/bold]")
+        console.print(f"  • Images analysées: [bold]{result['nb_images_analysees']}[/bold]")
+        console.print(f"  • Répertoire de sortie: [bold]{output_dir}[/bold]")
+        
+        # Chercher les fichiers générés
+        json_files = glob.glob(os.path.join(output_dir, "*.json"))
+        image_files = glob.glob(os.path.join(output_dir, "*.png"))
+        txt_files = glob.glob(os.path.join(output_dir, "*.txt"))
+        
+        console.print(f"  • Fichiers JSON: [bold]{len(json_files)}[/bold]")
+        if not no_save_images:
+            console.print(f"  • Fichiers image: [bold]{len(image_files)}[/bold]")
+        console.print(f"  • Fichiers texte: [bold]{len(txt_files)}[/bold]")
+        
+        # Si un rapport texte a été généré, l'afficher
+        report_files = [f for f in txt_files if "_report.txt" in f]
+        if report_files:
+            console.print(f"\n[bold green]Un rapport détaillé a été généré:[/bold green] {report_files[0]}")
+        
+        # Compresser le résultat si demandé
+        if compress:
+            console.print("\n[bold]Compression des résultats...[/bold]")
+            
+            from extract.compress_utils import compress_results_directory
+            compression_result = compress_results_directory(
+                output_dir,
+                compress_level=compress_level,
+                keep_originals=keep_originals,
+                language=language
+            )
+            
+            console.print(f"[bold green]Compression terminée[/bold green]: {compression_result['files_stats']['nb_files_compressed']} fichiers compressés")
+            console.print(f"Rapport de compression: [bold]{compression_result['report_path']}[/bold]")
+        
+        return output_dir
+    
+    except Exception as e:
+        console = rich.console.Console()
+        console.print(f"[bold red]Erreur lors du traitement[/bold red]: {str(e)}")
+        import traceback
+        console.print(traceback.format_exc())
+        return None
+
+def _run_interactive_describe_images():
+    """Interface interactive pour la commande describe-images."""
+    input_path = _prompt_for_file(t("select_file_pdf", "prompts"), file_extension=".pdf")
+    if not input_path:
+        return
+    
+    # Déterminer la langue actuelle
+    language = get_current_language()
+    
+    questions = [
+        inquirer.Text('output', message=t("output_file", "prompts"), default=""),
+        inquirer.Text('max_images', message="Nombre max d'images à traiter (défaut: 10)", default="10"),
+        inquirer.Text('timeout', message="Timeout API en secondes (défaut: 30)", default="30"),
+        inquirer.Confirm('save_images', message="Sauvegarder les images extraites en PNG?", default=True),
+        inquirer.Confirm('compress', message="Compresser le fichier de sortie?", default=False),
+    ]
+    
+    if inquirer.prompt(questions)['compress']:
+        questions_compress = [
+            inquirer.Text('compress_level', message="Niveau de compression (1-22, défaut: 19)", default="19"),
+            inquirer.Confirm('keep_originals', message="Conserver les fichiers originaux?", default=True),
+        ]
+        compress_answers = inquirer.prompt(questions_compress)
+    else:
+        compress_answers = {'compress_level': '19', 'keep_originals': True}
+    
+    answers = inquirer.prompt(questions)
+    
+    # Récupérer la clé API depuis l'environnement
+    api_key = os.environ.get("OPENAI_API_KEY")
+    
+    # Obtenir le modèle depuis l'environnement
+    model = os.environ.get("VISION_LLM_MODEL")
+    
+    # Si la clé API n'est pas définie, la demander à l'utilisateur
     if not api_key:
-        api_key = os.environ.get("OPENAI_API_KEY")
+        api_key_question = [
+            inquirer.Text('api_key', message="Enter your OpenAI API key: ")
+        ]
+        api_key = inquirer.prompt(api_key_question)['api_key']
+    
+    # Construire les options pour l'appel de commande
+    options = {}
+    
+    if answers['output']:
+        options['output_file'] = answers['output']
+    
+    try:
+        options['max_images'] = int(answers['max_images'])
+    except ValueError:
+        options['max_images'] = 10
+    
+    try:
+        options['timeout'] = int(answers['timeout'])
+    except ValueError:
+        options['timeout'] = 30
+    
+    options['language'] = language
+    options['api_key'] = api_key
+    options['model'] = model
+    options['no_save_images'] = not answers['save_images']
+    options['compress'] = answers['compress']
+    
+    if answers['compress']:
+        try:
+            options['compress_level'] = int(compress_answers['compress_level'])
+        except ValueError:
+            options['compress_level'] = 19
+        options['keep_originals'] = compress_answers['keep_originals']
+    
+    # Appeler la commande avec les options
+    describe_images(input_path, **options)
+
+
+# Créer un groupe de commandes pour l'extraction d'images
+extract_images = typer.Typer(help="Commandes pour l'extraction et l'analyse d'images depuis des PDF")
+app.add_typer(extract_images, name="extract-images", help="Extraction et analyse d'images depuis des PDF")
+
+@extract_images.command(name="describe", help="Extraire et décrire les images d'un fichier PDF avec IA multimodale")
+def extract_pdf_images(
+    pdf_path: str = typer.Argument(..., help="Fichier PDF à analyser"),
+    max_images: int = typer.Option(10, "--max-images", "-m", help="Nombre maximum d'images à traiter"),
+    timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout pour l'appel API (secondes)"),
+    language: str = typer.Option("fr", "--language", "-l", help="Langue de description (fr, en)"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Répertoire de sortie pour les résultats"),
+    no_save_images: bool = typer.Option(False, "--no-save-images", help="Ne pas sauvegarder les images en fichiers PNG"),
+    model: Optional[str] = typer.Option(None, "--model", help="Modèle OpenAI à utiliser (par défaut: VISION_LLM_MODEL)")
+):
+    """Extraire et décrire les images d'un fichier PDF avec une IA multimodale"""
+    from extract.image_describer import PDFImageDescriber
+    import os
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    
+    # Vérifier que le fichier existe
+    if not os.path.exists(pdf_path):
+        # Tenter de trouver le fichier dans le dossier files/
+        files_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "files")
+        potential_file = os.path.join(files_dir, pdf_path)
+        if os.path.exists(potential_file):
+            pdf_path = potential_file
+        else:
+            console.print(f"[bold red]Erreur[/bold red]: Le fichier {pdf_path} n'existe pas.")
+            return
+    
+    # Récupérer la clé API depuis l'environnement
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        console.print("[bold red]Clé API OpenAI manquante. Utilisez --api-key ou définissez OPENAI_API_KEY.[/bold red]")
-        raise typer.Exit(1)
-    # Générer le dossier de sortie horodaté dans /results
-    from datetime import datetime
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    pdf_base = os.path.splitext(os.path.basename(input_file))[0]
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    results_dir = os.path.join(project_root, "results")
-    os.makedirs(results_dir, exist_ok=True)
-    output_dir = os.path.join(results_dir, f"{pdf_base}_{timestamp}")
-    os.makedirs(output_dir, exist_ok=True)
-    # Déterminer le nom du fichier de sortie
-    if not output_file:
-        output_file = os.path.join(output_dir, f"{pdf_base}_images_described.json")
-    elif not os.path.isabs(output_file):
-        output_file = os.path.join(output_dir, output_file)
+        console.print("[bold red]Erreur: La clé API OpenAI n'est pas définie.[/bold red]")
+        console.print("Définissez la variable d'environnement OPENAI_API_KEY ou ajoutez-la dans le fichier .env")
+        return
+    
+    # Récupérer le modèle depuis l'environnement ou utiliser la valeur par défaut
+    # Priorité: paramètre modèle > variable VISION_LLM_MODEL > valeur par défaut gpt-4o
+    vision_model = model or os.environ.get("VISION_LLM_MODEL") or "gpt-4o"
+    
+    console.print(f"[bold]Analyse du PDF[/bold]: {pdf_path}")
+    console.print(f"[dim]Paramètres: max_images={max_images}, timeout={timeout}, language={language}, modèle={vision_model}[/dim]")
+    
+    # Initialiser le descripteur d'images
     describer = PDFImageDescriber(
         openai_api_key=api_key,
         max_images=max_images,
         timeout=timeout,
         language=language,
+        model=vision_model,
+        save_images=not no_save_images,
     )
-    console.print(Panel(f"Analyse des images du PDF : [cyan]{input_file}[/cyan]", title="Describe Images", border_style="blue"))
-    with console.status("[bold blue]Extraction et analyse des images..."):
-        try:
-            results = describer.describe_images_in_pdf(input_file)
-        except Exception as e:
-            console.print(f"[bold red]Erreur lors de l'analyse : {e}[/bold red]")
-            raise typer.Exit(1)
-    # Sauvegarder les résultats
-    try:
-        with open(output_file, "w", encoding="utf-8") as f:
-            import json
-            json.dump(results, f, ensure_ascii=False, indent=2)
-        console.print(f"[bold green]✅ Analyse terminée. Résultats sauvegardés dans :\n[cyan]{output_file}[/cyan]\n[dim]Dossier : {output_dir}[/dim][/bold green]")
-        # Compression si demandée
-        if compress:
-            try:
-                from extract.compress_utils import compress_results_directory
-                count, report = compress_results_directory(
-                    output_dir,
-                    compression_level=compress_level,
-                    keep_originals=keep_originals,
-                    generate_report=True
-                )
-                current_lang = get_current_language()
-                report_path = os.path.join(output_dir, f"compression_report_{current_lang}.txt")
-                console.print(f"[bold cyan]Compression terminée : {count} fichiers compressés.[/bold cyan]")
-                if os.path.exists(report_path):
-                    console.print(f"[bold]Rapport de compression :[/bold] {report_path}")
-            except Exception as e:
-                console.print(f"[bold yellow]⚠️ Erreur lors de la compression : {e}[/bold yellow]")
-    except Exception as e:
-        console.print(f"[bold red]Erreur lors de la sauvegarde : {e}[/bold red]")
-        raise typer.Exit(1)
+    
+    # Analyser le document
+    result = describer.describe_images_in_pdf(pdf_path, output)
+    
+    # Afficher un résumé des résultats
+    console.print(f"\n[bold]Résumé de l'analyse:[/bold]")
+    console.print(f"  Fichier: {result['meta']['filename']}")
+    console.print(f"  Images détectées: {result['nb_images_detectees']}")
+    console.print(f"  Images analysées: {result['nb_images_analysees']}")
+    console.print(f"  Résultats sauvegardés dans: {result['meta']['output_dir']}")
 
+@extract_images.command(name="complete", help="Extraction complète d'un PDF: texte et images avec analyse IA")
+def extract_pdf_complete(
+    pdf_path: str = typer.Argument(..., help="Fichier PDF à analyser"),
+    max_images: int = typer.Option(10, "--max-images", "-m", help="Nombre maximum d'images à traiter"),
+    timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout pour l'appel API (secondes)"),
+    language: str = typer.Option("fr", "--language", "-l", help="Langue de description (fr, en)"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Répertoire de sortie pour les résultats"),
+    no_save_images: bool = typer.Option(False, "--no-save-images", help="Ne pas sauvegarder les images en fichiers PNG"),
+    model: Optional[str] = typer.Option(None, "--model", help="Modèle OpenAI à utiliser (par défaut: VISION_LLM_MODEL)")
+):
+    """
+    Extrait le texte et les images d'un PDF. Analyse les images avec IA et génère un JSON unifié.
+    """
+    from extract.pdf_complete_extractor import PDFCompleteExtractor
+    import os
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    
+    # Vérifier que le fichier existe
+    if not os.path.exists(pdf_path):
+        # Tenter de trouver le fichier dans le dossier files/
+        files_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "files")
+        potential_file = os.path.join(files_dir, pdf_path)
+        if os.path.exists(potential_file):
+            pdf_path = potential_file
+        else:
+            console.print(f"[bold red]Erreur[/bold red]: Le fichier {pdf_path} n'existe pas.")
+            return
+    
+    # Récupérer la clé API depuis l'environnement
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        console.print("[bold red]Erreur: La clé API OpenAI n'est pas définie.[/bold red]")
+        console.print("Définissez la variable d'environnement OPENAI_API_KEY ou ajoutez-la dans le fichier .env")
+        return
+    
+    # Récupérer le modèle depuis l'environnement ou utiliser la valeur par défaut
+    # Priorité: paramètre modèle > variable VISION_LLM_MODEL > valeur par défaut gpt-4o
+    vision_model = model or os.environ.get("VISION_LLM_MODEL") or "gpt-4o"
+    
+    console.print(f"[bold]Extraction complète du PDF[/bold]: {pdf_path}")
+    console.print(f"[dim]Paramètres: max_images={max_images}, timeout={timeout}, language={language}, modèle={vision_model}[/dim]")
+    
+    # Initialiser l'extracteur complet
+    extractor = PDFCompleteExtractor(
+        openai_api_key=api_key,
+        max_images=max_images,
+        timeout=timeout,
+        language=language,
+        model=vision_model,
+        save_images=not no_save_images,
+    )
+    
+    # Analyser le document
+    result = extractor.process_pdf(pdf_path, output)
+    
+    # Afficher un résumé des résultats
+    console.print(f"\n[bold]Résumé de l'extraction complète:[/bold]")
+    console.print(f"  Fichier: {result['meta']['filename']}")
+    console.print(f"  Pages extraites: {len(result['pages'])}")
+    console.print(f"  Images détectées: {result.get('nb_images_detectees', 0)}")
+    console.print(f"  Images analysées: {result.get('nb_images_analysees', 0)}")
+    console.print(f"  Résultats sauvegardés dans: {result['meta']['output_dir']}")
 
-def _run_interactive_describe_images():
-    """Interface interactive pour la commande describe-images."""
-    input_path = _prompt_for_file(t("select_file_pdf", "prompts"))
+def _run_interactive_extract_complete():
+    """Interface interactive pour la commande extract-images complete."""
+    input_path = _prompt_for_file(t("select_file_pdf", "prompts"), file_extension=".pdf")
     if not input_path:
         return
+    
+    # Déterminer la langue actuelle
+    language = get_current_language()
+    
     questions = [
-        inquirer.Text('output', message=t("output_file", "prompts"), default=""),
+        inquirer.Text('output', message=t("output_dir", "prompts"), default=""),
         inquirer.Text('max_images', message="Nombre max d'images à traiter (défaut: 10)", default="10"),
-        inquirer.Text('timeout', message="Timeout par image (secondes, défaut: 30)", default="30"),
-        inquirer.Text('api_key', message=t("api_key", "prompts"), default=""),
-        inquirer.List('language', message="Langue", choices=["fr", "en"], default="fr"),
+        inquirer.Text('timeout', message="Timeout API en secondes (défaut: 30)", default="30"),
+        inquirer.Confirm('save_images', message="Sauvegarder les images extraites en PNG?", default=True),
     ]
+    
     answers = inquirer.prompt(questions)
-    output = answers['output'] if answers['output'].strip() else None
-    max_images = int(answers['max_images']) if answers['max_images'].strip() else 10
-    timeout = int(answers['timeout']) if answers['timeout'].strip() else 30
-    api_key = answers['api_key'] if answers['api_key'].strip() else None
-    language = answers['language']
-    # Confirmation
-    console.print(f"\n[bold]{t('summary', 'messages')}[/bold]")
-    console.print(f"- {t('input_path', 'messages')} [cyan]{input_path}[/cyan]")
-    console.print(f"- {t('output_path', 'messages')} [cyan]{output or t('auto_detection', 'messages')}[/cyan]")
-    console.print(f"- Max images: [cyan]{max_images}[/cyan]")
-    console.print(f"- Timeout: [cyan]{timeout}[/cyan]")
-    console.print(f"- Langue: [cyan]{language}[/cyan]")
-    questions = [
-        inquirer.Confirm('confirm', message="Lancer l'analyse des images ?", default=True)
-    ]
-    confirm = inquirer.prompt(questions)
-    if confirm and confirm['confirm']:
-        describe_images(input_path, output, max_images, timeout, language, api_key)
+    
+    # Récupérer la clé API depuis l'environnement
+    api_key = os.environ.get("OPENAI_API_KEY")
+    
+    # Obtenir le modèle depuis l'environnement
+    model = os.environ.get("VISION_LLM_MODEL")
+    
+    # Si la clé API n'est pas définie, la demander à l'utilisateur
+    if not api_key:
+        api_key_question = [
+            inquirer.Text('api_key', message="Enter your OpenAI API key: ")
+        ]
+        api_key = inquirer.prompt(api_key_question)['api_key']
+    
+    # Construire les options pour l'appel de commande
+    options = {}
+    
+    if answers['output']:
+        options['output'] = answers['output']
+    
+    try:
+        options['max_images'] = int(answers['max_images'])
+    except ValueError:
+        options['max_images'] = 10
+    
+    try:
+        options['timeout'] = int(answers['timeout'])
+    except ValueError:
+        options['timeout'] = 30
+    
+    options['language'] = language
+    options['no_save_images'] = not answers['save_images']
+    options['model'] = model
+    
+    # Appeler la commande avec les options
+    extract_pdf_complete(input_path, **options)
 
 
 if __name__ == "__main__":
