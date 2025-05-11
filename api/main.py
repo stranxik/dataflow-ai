@@ -71,6 +71,27 @@ async def api_test():
         "env_vars": {k: "***" if k.lower().endswith("key") else v[:10] + "..." for k, v in os.environ.items() if isinstance(v, str) and len(v) > 10}
     }
 
+# Handle OpenAI-style /v1/models requests to prevent 404 errors
+@app.get("/v1/models", tags=["OpenAI Compatibility"])
+async def models_redirect():
+    """
+    Compatibility endpoint for apps trying to use OpenAI API format
+    """
+    return JSONResponse(
+        status_code=200,
+        content={
+            "object": "list",
+            "data": [
+                {
+                    "id": "gpt-4",
+                    "object": "model",
+                    "created": int(datetime.now().timestamp()),
+                    "owned_by": "dataflow"
+                }
+            ]
+        }
+    )
+
 # Task storage - in production this should be replaced with a proper task queue
 tasks: Dict[str, Dict] = {}
 

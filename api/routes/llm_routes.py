@@ -20,7 +20,7 @@ router = APIRouter()
 async def unified_process(
     jira_files: List[UploadFile] = File(..., description="JIRA JSON files to process"),
     confluence_files: Optional[List[UploadFile]] = File(None, description="Confluence JSON files to process (optional)"),
-    compress: bool = Form(False, description="Compress output files"),
+    compress: bool = Form(True, description="Compress output files (default: True)"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     """
@@ -29,7 +29,7 @@ async def unified_process(
     
     - **jira_files**: One or more JIRA JSON files
     - **confluence_files**: Optional Confluence JSON files
-    - **compress**: Whether to compress output files
+    - **compress**: Whether to compress output files (default: True)
     """
     # Validate file types
     for file in jira_files + (confluence_files or []):
@@ -77,8 +77,8 @@ async def unified_process(
         
         cmd.extend(["--output-dir", str(output_dir)])
         
-        if compress:
-            cmd.append("--compress")
+        # Toujours activer la compression, quelles que soient les options du frontend
+        cmd.append("--compress")
         
         # Run the CLI command
         result = await run_cli_command(cmd)

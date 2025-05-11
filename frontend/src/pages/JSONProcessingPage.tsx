@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Database, Upload, Check, Loader2, Scissors } from 'lucide-react';
+import { Database, Check, Loader2, Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,12 +8,6 @@ import { processJson, cleanJson, compressJson } from '@/api/apiService';
 import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { useLanguage } from '@/components/LanguageProvider';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { Bot } from 'lucide-react';
 
 export default function JSONProcessingPage() {
@@ -67,16 +61,21 @@ export default function JSONProcessingPage() {
 
     try {
       let result: Blob;
+      let filename: string;
       
+      // Process the file based on the selected mode
       switch (processingMode) {
         case 'process':
           result = await processJson(selectedFile, true, true);
+          filename = `${selectedFile.name.replace('.json', '')}_processed.json`;
           break;
         case 'clean':
           result = await cleanJson(selectedFile, recursive);
+          filename = `${selectedFile.name.replace('.json', '')}_cleaned.json`;
           break;
         case 'compress':
           result = await compressJson(selectedFile, compressionLevel, false);
+          filename = `${selectedFile.name.replace('.json', '')}_compressed.zst`;
           break;
         case 'chunks':
           // Call API to split JSON file
@@ -95,28 +94,14 @@ export default function JSONProcessingPage() {
           }
 
           result = await response.blob();
-          
-          // Create a download link for the processed file
-          createDownloadLink(
-            result, 
-            `${selectedFile.name.replace('.json', '')}_chunks.zip`
-          );
-          
-          toast({
-            title: t('processing_complete'),
-            description: t('your_json_file_has_been_split_into_chunks_successfully'),
-          });
-          setIsProcessing(false);
-          return;
+          filename = `${selectedFile.name.replace('.json', '')}_chunks.zip`;
+          break;
         default:
           throw new Error('Invalid processing mode');
       }
       
-      // Create a download link for the processed file (for non-chunks modes)
-      createDownloadLink(
-        result, 
-        `${selectedFile.name.replace('.json', '')}_processed.json`
-      );
+      // Create a download link and trigger download immediately
+      createDownloadLink(result, filename);
       
       toast({
         title: t('processing_complete'),
@@ -249,28 +234,18 @@ export default function JSONProcessingPage() {
               
               <div className="mb-6">
                 <label className="block text-sm font-medium mb-1">
-                  {t('items_per_chunk')}
+                  {t('items_per_file')}
                 </label>
                 <input
                   type="number"
-                  min="100"
-                  max="10000"
                   value={itemsPerFile}
                   onChange={(e) => setItemsPerFile(Number(e.target.value))}
+                  min={1}
+                  step={100}
                   className="w-full p-2 border rounded-md bg-background"
                 />
-              </div>
-              
-              <div className="mt-4 p-4 bg-muted rounded-lg">
-                <h2 className="text-lg font-semibold mb-2">{t('when_use_chunking')}</h2>
-                <ul className="space-y-2 text-sm text-muted-foreground ml-5 list-disc">
-                  <li>{t('large_files')}</li>
-                  <li>{t('parallel_processing')}</li>
-                  <li>{t('timeout_errors')}</li>
-                  <li>{t('memory_management')}</li>
-                </ul>
-                <p className="mt-4 text-sm text-muted-foreground">
-                  {t('chunked_files_output')}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('recommended_value_500')}
                 </p>
               </div>
             </CardContent>
@@ -278,100 +253,67 @@ export default function JSONProcessingPage() {
         </TabsContent>
       </Tabs>
       
-      <div className="mt-8">
-        <div
-          {...getRootProps()}
-          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-            isDragActive ? 'border-primary bg-primary/5' : 'border-border'
-          } ${selectedFile ? 'bg-primary/5' : ''}`}
-        >
-          <input {...getInputProps()} />
-          
-          {selectedFile ? (
-            <div className="space-y-2">
-              <Check className="h-10 w-10 text-green-500 mx-auto" />
-              <p className="font-medium">{selectedFile.name}</p>
-              <p className="text-sm text-muted-foreground">
-                {formatFileSize(selectedFile.size)}
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedFile(null);
-                }}
-              >
-                {t('change_file')}
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex justify-center">
-                {isDragActive ? (
-                  <Upload className="h-10 w-10 text-primary" />
-                ) : (
-                  <Database className="h-10 w-10 text-primary" />
-                )}
-              </div>
-              <p className="font-medium">
-                {isDragActive
-                  ? t('drop_files')
-                  : t('drop_files')}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {t('json_files_only')}
-              </p>
-            </div>
-          )}
+      <div className={`mt-6 p-6 border-2 border-dashed rounded-lg ${isDragActive ? 'border-primary' : 'border-muted-foreground/25'}`} {...getRootProps()}>
+        <input {...getInputProps()} />
+        <div className="text-center">
+          <Database className="mx-auto h-10 w-10 text-muted-foreground mb-4" />
+          <p className="text-sm text-muted-foreground mb-2">
+            {isDragActive ? t('drop_the_file_here') : t('drag_drop_json')}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t('or_click_to_select')}
+          </p>
         </div>
       </div>
       
-      <div className="mt-6 flex justify-end">
+      {selectedFile && (
+        <div className="mt-4 p-4 border rounded-md">
+          <p className="text-sm font-medium">
+            {t('selected_file')}: <span className="text-primary">{selectedFile.name}</span> ({formatFileSize(selectedFile.size)})
+          </p>
+        </div>
+      )}
+      
+      <div className="mt-6 flex justify-center">
         <Button
           onClick={handleProcessJSON}
           disabled={!selectedFile || isProcessing}
-          className="min-w-32"
+          className="min-w-[200px]"
         >
           {isProcessing ? (
             <React.Fragment>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {processingMode === 'chunks' ? t('splitting') : t('processing')}
+              {t('processing')}...
             </React.Fragment>
           ) : (
-            processingMode === 'chunks' ? t('split_chunks') : t('process_json')
+            <React.Fragment>
+              {processingMode === 'process' && (
+                <React.Fragment>
+                  <Bot className="mr-2 h-4 w-4" />
+                  {t('process_file')}
+                </React.Fragment>
+              )}
+              {processingMode === 'clean' && (
+                <React.Fragment>
+                  <Check className="mr-2 h-4 w-4" />
+                  {t('clean_file')}
+                </React.Fragment>
+              )}
+              {processingMode === 'compress' && (
+                <React.Fragment>
+                  <Database className="mr-2 h-4 w-4" />
+                  {t('compress_file')}
+                </React.Fragment>
+              )}
+              {processingMode === 'chunks' && (
+                <React.Fragment>
+                  <Scissors className="mr-2 h-4 w-4" />
+                  {t('split_file')}
+                </React.Fragment>
+              )}
+            </React.Fragment>
           )}
         </Button>
-      </div>
-
-      <div className="mt-8 p-4 bg-primary-foreground rounded-lg">
-        <h2 className="text-lg font-semibold mb-2">{t('processing_info')}</h2>
-        <p className="text-sm text-muted-foreground">
-          {t('secure_server')}. {t('automatic_pipeline')}.
-        </p>
-      </div>
-
-      {/* Help button in the bottom right corner */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="default" size="icon" className="h-14 w-14 shadow-lg bg-primary hover:bg-primary/90 transition-all">
-                <Bot className="h-6 w-6" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left" align="end" className="max-w-md p-4 bg-card border shadow-lg">
-              <div className="space-y-2">
-                <h4 className="font-semibold text-base">{t('help_tooltip')}</h4>
-                <p className="text-sm whitespace-pre-line">
-                  {t('language') === 'en' 
-                    ? "• Process: Extract data structure and detect fields automatically\n• Clean: Remove sensitive data like API keys and credentials\n• Compress: Reduce file size for storage or transfer\n• Split: Break large JSON into manageable chunks"
-                    : "• Traiter: Extrait la structure et détecte les champs automatiquement\n• Nettoyer: Supprime les données sensibles (clés API, identifiants)\n• Compresser: Réduit la taille des fichiers pour stockage ou transfert\n• Diviser: Découpe les gros fichiers JSON en morceaux gérables"}
-                </p>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
     </div>
   );

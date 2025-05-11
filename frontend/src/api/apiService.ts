@@ -186,12 +186,37 @@ export async function processJson(
   llmEnrichment: boolean = false,
   preserveSource: boolean = false
 ): Promise<Blob> {
-  const response = await processFile(file, "/json/process", {
-    llm_enrichment: llmEnrichment,
-    preserve_source: preserveSource,
-  });
+  console.log(`Processing JSON: ${file.name}, llmEnrichment: ${llmEnrichment}, preserveSource: ${preserveSource}`);
   
-  return await response.blob();
+  try {
+    const response = await processFile(file, "/json/process", {
+      llm_enrichment: llmEnrichment,
+      preserve_source: preserveSource,
+    });
+    
+    const blob = await response.blob();
+    
+    // Vérifier le blob
+    console.log(`Response blob type: ${blob.type}, size: ${blob.size} bytes`);
+    
+    // Si le contenu est HTML et de petite taille, il s'agit probablement d'une erreur
+    if (blob.type.includes('html') && blob.size < 1000) {
+      const text = await blob.text();
+      console.error('HTML response instead of JSON:', text.substring(0, 200));
+      throw new Error('Received HTML instead of JSON file. API error or redirect occurred.');
+    }
+    
+    // Si le type MIME n'est pas JSON, corriger
+    if (!blob.type.includes('json')) {
+      console.warn(`Warning: Expected JSON but got ${blob.type}`);
+      return new Blob([blob], { type: 'application/json' });
+    }
+    
+    return blob;
+  } catch (error) {
+    console.error('Error in processJson:', error);
+    throw error;
+  }
 }
 
 /**
@@ -201,11 +226,36 @@ export async function cleanJson(
   file: File,
   recursive: boolean = false
 ): Promise<Blob> {
-  const response = await processFile(file, "/json/clean", {
-    recursive,
-  });
+  console.log(`Cleaning JSON: ${file.name}, recursive: ${recursive}`);
   
-  return await response.blob();
+  try {
+    const response = await processFile(file, "/json/clean", {
+      recursive,
+    });
+    
+    const blob = await response.blob();
+    
+    // Vérifier le blob
+    console.log(`Response blob type: ${blob.type}, size: ${blob.size} bytes`);
+    
+    // Si le contenu est HTML et de petite taille, il s'agit probablement d'une erreur
+    if (blob.type.includes('html') && blob.size < 1000) {
+      const text = await blob.text();
+      console.error('HTML response instead of JSON:', text.substring(0, 200));
+      throw new Error('Received HTML instead of JSON file. API error or redirect occurred.');
+    }
+    
+    // Si le type MIME n'est pas JSON, corriger
+    if (!blob.type.includes('json')) {
+      console.warn(`Warning: Expected JSON but got ${blob.type}`);
+      return new Blob([blob], { type: 'application/json' });
+    }
+    
+    return blob;
+  } catch (error) {
+    console.error('Error in cleanJson:', error);
+    throw error;
+  }
 }
 
 /**
@@ -214,14 +264,46 @@ export async function cleanJson(
 export async function compressJson(
   file: File,
   compressionLevel: number = 19,
-  keepOriginal: boolean = false
+  keepOriginal: boolean = true
 ): Promise<Blob> {
-  const response = await processFile(file, "/json/compress", {
-    compression_level: compressionLevel,
-    keep_original: keepOriginal,
-  });
+  console.log(`Compressing JSON: ${file.name}, compressionLevel: ${compressionLevel}, keepOriginal: ${keepOriginal}`);
   
-  return await response.blob();
+  try {
+    const response = await processFile(file, "/json/compress", {
+      compression_level: compressionLevel,
+      keep_original: true,
+    });
+    
+    const blob = await response.blob();
+    
+    // Vérifier le blob
+    console.log(`Response blob type: ${blob.type}, size: ${blob.size} bytes`);
+    
+    // Vérifier que le blob est valide
+    if (blob.size === 0) {
+      throw new Error("Empty response received from server");
+    }
+    
+    // Le résultat devrait être un fichier ZIP
+    if (!blob.type.includes('zip') && !blob.type.includes('octet-stream')) {
+      console.warn(`Warning: Expected ZIP but got ${blob.type}`);
+      
+      // Si le contenu est HTML et de petite taille, il s'agit probablement d'une erreur
+      if (blob.type.includes('html') && blob.size < 1000) {
+        const text = await blob.text();
+        console.error('HTML response instead of ZIP:', text.substring(0, 200));
+        throw new Error('Received HTML instead of ZIP file. API error or redirect occurred.');
+      }
+      
+      // Tenter de corriger le type MIME
+      return new Blob([blob], { type: 'application/zip' });
+    }
+    
+    return blob;
+  } catch (error) {
+    console.error('Error in compressJson:', error);
+    throw error;
+  }
 }
 
 /**
@@ -231,105 +313,223 @@ export async function matchFiles(
   jiraFile: File,
   confluenceFile: File
 ): Promise<Blob> {
-  const formData = new FormData();
-  formData.append("jira_file", jiraFile);
-  formData.append("confluence_file", confluenceFile);
+  console.log(`Matching files: ${jiraFile.name} with ${confluenceFile.name}`);
   
-  const response = await fetch(`${API_BASE_URL}/json/match`, {
-    method: "POST",
-    headers: {
-      'X-API-Key': API_KEY || ''
-    },
-    body: formData,
-  });
-  
-  if (!response.ok) {
-    const errorData = await response.json() as ApiError;
-    throw new Error(errorData.error || `Error: ${response.status} ${response.statusText}`);
+  try {
+    const formData = new FormData();
+    formData.append("jira_file", jiraFile);
+    formData.append("confluence_file", confluenceFile);
+    
+    // Log request details
+    console.log(`Making API request to ${API_BASE_URL}/json/match`);
+    console.log('Headers:', { 'X-API-Key': API_KEY ? '***' : 'Not set' });
+    console.log('FormData contains:', ['jira_file: [File]', 'confluence_file: [File]']);
+    
+    const response = await fetch(`${API_BASE_URL}/json/match`, {
+      method: "POST",
+      headers: {
+        'X-API-Key': API_KEY || ''
+      },
+      body: formData,
+    });
+    
+    // Log response details
+    console.log(`Response status: ${response.status} ${response.statusText}`);
+    console.log(`Response headers:`, Object.fromEntries([...response.headers.entries()]));
+    
+    if (!response.ok) {
+      // Try to get error details
+      let errorMessage;
+      const contentType = response.headers.get('content-type') || '';
+      
+      if (contentType.includes('application/json')) {
+        const errorData = await response.json() as ApiError;
+        errorMessage = errorData.error || `Error: ${response.status} ${response.statusText}`;
+      } else {
+        // Try to read error message from text response
+        errorMessage = await response.text();
+        if (errorMessage.length > 200) {
+          errorMessage = errorMessage.substring(0, 200) + '...';
+        }
+        errorMessage = `Error: ${response.status} ${response.statusText} - ${errorMessage}`;
+      }
+      
+      console.error('API error:', errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    const blob = await response.blob();
+    
+    // Vérifier le blob
+    console.log(`Response blob type: ${blob.type}, size: ${blob.size} bytes`);
+    
+    // Si le contenu est HTML et de petite taille, il s'agit probablement d'une erreur
+    if (blob.type.includes('html') && blob.size < 1000) {
+      const text = await blob.text();
+      console.error('HTML response instead of JSON:', text.substring(0, 200));
+      throw new Error('Received HTML instead of JSON file. API error or redirect occurred.');
+    }
+    
+    return blob;
+  } catch (error) {
+    console.error('Error in matchFiles:', error);
+    throw error;
   }
-  
-  return await response.blob();
 }
 
 /**
- * Run unified processing with LLM enrichment
+ * Unified process for JIRA and Confluence files
  */
 export async function unifiedProcess(
   jiraFiles: File[],
   confluenceFiles: File[] = [],
-  compress: boolean = false
+  compress: boolean = true
 ): Promise<Blob> {
-  const formData = new FormData();
+  console.log(`Unified processing: ${jiraFiles.length} JIRA files, ${confluenceFiles.length} Confluence files, compress: ${compress}`);
   
-  // Add all JIRA files
-  jiraFiles.forEach((file) => {
-    formData.append("jira_files", file);
-  });
-  
-  // Add all Confluence files
-  confluenceFiles.forEach((file) => {
-    formData.append("confluence_files", file);
-  });
-  
-  // Add options
-  formData.append("compress", compress ? "true" : "false");
-  
-  const response = await fetch(`${API_BASE_URL}/llm/unified`, {
-    method: "POST",
-    headers: {
-      'X-API-Key': API_KEY || ''
-    },
-    body: formData,
-  });
-  
-  if (!response.ok) {
-    const errorData = await response.json() as ApiError;
-    throw new Error(errorData.error || `Error: ${response.status} ${response.statusText}`);
+  try {
+    const formData = new FormData();
+    
+    // Add JIRA files
+    jiraFiles.forEach((file) => {
+      formData.append("jira_files", file);
+    });
+    
+    // Add Confluence files
+    confluenceFiles.forEach((file) => {
+      formData.append("confluence_files", file);
+    });
+    
+    // Add options - Toujours compresser, quelle que soit la valeur de l'option
+    formData.append("compress", "true");
+    
+    // Log request details
+    console.log(`Making API request to ${API_BASE_URL}/llm/unified`);
+    console.log('Headers:', { 'X-API-Key': API_KEY ? '***' : 'Not set' });
+    console.log('FormData contains JIRA files:', jiraFiles.map(f => f.name));
+    console.log('FormData contains Confluence files:', confluenceFiles.map(f => f.name));
+    console.log('FormData options: compress=true');
+    
+    const response = await fetch(`${API_BASE_URL}/llm/unified`, {
+      method: "POST",
+      headers: {
+        'X-API-Key': API_KEY || '',
+        'Accept': 'application/zip, application/octet-stream'
+      },
+      body: formData,
+    });
+    
+    // Log response details
+    console.log(`Response status: ${response.status} ${response.statusText}`);
+    console.log(`Response headers:`, Object.fromEntries([...response.headers.entries()]));
+    
+    if (!response.ok) {
+      // Try to get error details
+      let errorMessage;
+      const contentType = response.headers.get('content-type') || '';
+      
+      if (contentType.includes('application/json')) {
+        const errorData = await response.json() as ApiError;
+        errorMessage = errorData.error || `Error: ${response.status} ${response.statusText}`;
+      } else {
+        // Try to read error message from text response
+        errorMessage = await response.text();
+        if (errorMessage.length > 200) {
+          errorMessage = errorMessage.substring(0, 200) + '...';
+        }
+        errorMessage = `Error: ${response.status} ${response.statusText} - ${errorMessage}`;
+      }
+      
+      console.error('API error:', errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    const blob = await response.blob();
+    
+    // Vérifier le blob
+    console.log(`Response blob type: ${blob.type}, size: ${blob.size} bytes`);
+    
+    // Le résultat devrait être un ZIP
+    if (!blob.type.includes('zip') && !blob.type.includes('octet-stream')) {
+      console.warn(`Warning: Expected ZIP but got ${blob.type}`);
+      
+      // Si le contenu est HTML et de petite taille, il s'agit probablement d'une erreur
+      if (blob.type.includes('html') && blob.size < 1000) {
+        const text = await blob.text();
+        console.error('HTML response instead of ZIP:', text.substring(0, 200));
+        throw new Error('Received HTML instead of ZIP file. API error or redirect occurred.');
+      }
+      
+      // Tenter de corriger le type MIME
+      return new Blob([blob], { type: 'application/zip' });
+    }
+    
+    return blob;
+  } catch (error) {
+    console.error('Error in unifiedProcess:', error);
+    throw error;
   }
-  
-  return await response.blob();
 }
 
 /**
- * Enrich text content with LLM
+ * Enrichie un texte avec LLM
  */
 export async function enrichText(content: string): Promise<any> {
-  const formData = new FormData();
-  formData.append("content", content);
+  console.log(`Enriching text (length: ${content.length})`);
   
-  const response = await fetch(`${API_BASE_URL}/llm/enrich-text`, {
-    method: "POST",
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': API_KEY || ''
-    },
-    body: formData,
-  });
-  
-  if (!response.ok) {
-    const errorData = await response.json() as ApiError;
-    throw new Error(errorData.error || `Error: ${response.status} ${response.statusText}`);
+  try {
+    const formData = new FormData();
+    formData.append("content", content);
+    
+    // Log request details
+    console.log(`Making API request to ${API_BASE_URL}/llm/enrich-text`);
+    console.log('Headers:', { 'X-API-Key': API_KEY ? '***' : 'Not set' });
+    
+    const response = await fetch(`${API_BASE_URL}/llm/enrich-text`, {
+      method: "POST",
+      headers: {
+        'X-API-Key': API_KEY || ''
+      },
+      body: formData,
+    });
+    
+    // Log response details
+    console.log(`Response status: ${response.status} ${response.statusText}`);
+    
+    if (!response.ok) {
+      const errorData = await response.json() as ApiError;
+      throw new Error(errorData.error || `Error: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('Response data:', data);
+    return data;
+  } catch (error) {
+    console.error('Error in enrichText:', error);
+    throw error;
   }
-  
-  return await response.json();
 }
 
 /**
- * Change the language setting in the backend
- * @param language The language code ('fr' or 'en')
+ * Set language for API
  */
 export const setLanguage = async (language: string): Promise<void> => {
   try {
-    await fetch(`${API_BASE_URL}/settings/language`, {
-      method: 'POST',
+    const response = await fetch(`${API_BASE_URL}/settings/language`, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         'X-API-Key': API_KEY || ''
       },
       body: JSON.stringify({ language }),
     });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Error: ${response.status} ${response.statusText}`);
+    }
   } catch (error) {
-    console.error('Error setting language:', error);
+    console.error("Error setting language:", error);
     throw error;
   }
 }; 

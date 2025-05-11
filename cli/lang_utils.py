@@ -49,6 +49,12 @@ def detect_language() -> str:
         Code de langue (fr, en, etc.)
     """
     try:
+        # D'abord vérifier si une langue est définie dans l'environnement
+        env_lang = os.environ.get("DATAFLOW_LANG")
+        if env_lang and env_lang.lower() in ["fr", "en"]:
+            return env_lang.lower()
+            
+        # Sinon, détecter à partir des paramètres du système
         system_lang = locale.getdefaultlocale()[0]
         if system_lang:
             lang_code = system_lang.split('_')[0].lower()
@@ -65,7 +71,13 @@ def set_language(lang: str) -> None:
         lang: Code de langue (fr, en)
     """
     global _current_lang
-    _current_lang = lang if lang in ["fr", "en"] else "en"
+    
+    # Normaliser et valider la langue
+    normalized_lang = lang.lower() if lang else "en"
+    _current_lang = normalized_lang if normalized_lang in ["fr", "en"] else "en"
+    
+    # Définir également dans l'environnement pour les sous-processus
+    os.environ["DATAFLOW_LANG"] = _current_lang
 
 def get_current_language() -> str:
     """
@@ -116,7 +128,27 @@ def t(key: str, category: Optional[str] = None, lang: Optional[str] = None) -> s
         if isinstance(values, dict) and key in values:
             return values[key]
     
-    # Si la clé n'est pas trouvée, retourner la clé elle-même
+    # Si la clé n'est pas trouvée dans la langue actuelle, essayer l'autre langue
+    fallback_lang = "en" if use_lang == "fr" else "fr"
+    if fallback_lang in _translations:
+        # Essayer de trouver la clé dans la langue de secours
+        if category and category in _translations[fallback_lang]:
+            category_dict = _translations[fallback_lang][category]
+            if isinstance(category_dict, dict) and key in category_dict:
+                # On a trouvé dans la catégorie de la langue de secours
+                return category_dict[key]
+        
+        # Essayer toutes les catégories de la langue de secours
+        for cat, values in _translations[fallback_lang].items():
+            if isinstance(values, dict) and key in values:
+                return values[key]
+    
+    # Si la clé n'est toujours pas trouvée, retourner la clé elle-même avec un format distinct
+    # en environnement de développement pour identifier les textes non traduits
+    if os.environ.get("DATAFLOW_ENV") == "development":
+        return f"[{key}]"  # Aide visuelle pour repérer les textes non traduits
+    
+    # En production, simplement retourner la clé
     return key
 
 # Initialiser les traductions au chargement du module

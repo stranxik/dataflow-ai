@@ -753,49 +753,46 @@ def unified(
     api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API OpenAI (si non définie dans les variables d'environnement)"),
     skip_matching: bool = typer.Option(False, "--skip-matching", help="Ne pas effectuer le matching entre JIRA et Confluence"),
     language: Optional[str] = typer.Option(None, "--lang", help="Langue à utiliser (fr/en)"),
-    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress: bool = typer.Option(True, "--compress/--no-compress", help="Compresser les fichiers de sortie avec zstd et orjson (activé par défaut)"),
     compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
-    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés")
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
 ):
     """
-    Traitement unifié JIRA + Confluence.
-    Cette commande exécute le flux complet : extraction, division, transformation, matching et analyse LLM.
+    Flux unifié: traite JIRA + Confluence, fait le matching et prépare les données pour le LLM.
+    
+    Cette commande exécute un workflow complet pour traiter les fichiers JIRA et Confluence:
+    1. Traitement des fichiers JIRA pour extraction des données clés
+    2. Traitement des fichiers Confluence si fournis
+    3. Matching entre Confluence et JIRA (sauf si --skip-matching est activé)
+    4. Préparation des données pour enrichissement LLM
+    5. Compression des fichiers (activée par défaut)
     """
-    # Configuration des chemins
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Générer un timestamp pour le nom du dossier
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     
-    # Vérifier si le répertoire de sortie est spécifié
-    output_dir_str = str(output_dir) if output_dir else "output_unified"
+    # Obtenir le chemin absolu vers le répertoire racine du projet
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
-    # Préparer le chemin complet du répertoire de sortie
-    # Utiliser le dossier results comme base, à moins que le chemin soit absolu
-    if os.path.isabs(output_dir_str):
-        full_output_dir = output_dir_str
+    # Utiliser le dossier results comme base à la racine du projet
+    base_results_dir = os.path.join(project_root, "results")
+    os.makedirs(base_results_dir, exist_ok=True)
+    
+    # Gérer le répertoire de sortie
+    if output_dir:
+        # Si on a un dossier de sortie précis, l'utiliser avec le timestamp
+        full_output_dir = os.path.join(base_results_dir, f"{output_dir}_{timestamp}")
     else:
-        # Utiliser le dossier results à la racine du projet
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        results_dir = os.path.join(project_root, "results")
-        # S'assurer que le répertoire results existe
-        os.makedirs(results_dir, exist_ok=True)
-        full_output_dir = os.path.join(results_dir, output_dir_str)
+        # Créer un répertoire par défaut avec timestamp
+        full_output_dir = os.path.join(base_results_dir, f"{timestamp}-unified-process")
     
-    # Créer le répertoire de sortie s'il n'existe pas
-    os.makedirs(full_output_dir, exist_ok=True)
+    # Créer le répertoire
+    ensure_dir(full_output_dir)
+    print_info(f"Répertoire de sortie: {full_output_dir}")
     
-    # Récupérer les valeurs par défaut des options
-    min_score = float(str(min_match_score)) if min_match_score is not None else 0.5
-    
-    # Afficher un récapitulatif
-    console.print(Panel(
-        f"Traitement unifié JIRA + Confluence\n\n"
-        f"Fichiers JIRA : {', '.join(jira_files)}\n"
-        f"Fichiers Confluence : {', '.join(confluence_files)}\n"
-        f"Répertoire de sortie : {full_output_dir}\n",
-        title=t("unified_processing", "titles"),
-        expand=True
-    ))
-    
-    console.print(f"Exécution du flux unifié...")
+    # Définir la valeur par défaut pour min_match_score si non spécifiée
+    min_score = min_match_score or float(os.environ.get("MIN_MATCH_SCORE", "0.2"))
+    print_info(f"Score minimum pour les correspondances: {min_score}")
     
     # S'assurer que la langue est configurée
     if language:
@@ -834,12 +831,12 @@ def unified(
     if language:
         cmd.extend(["--language", str(language)])
     
-    # Ajouter les options de compression si demandées
-    if compress:
+    # Toujours ajouter les options de compression
+    # Même si compress est False dans les paramètres, on force l'activation
         cmd.append("--compress")
         cmd.extend(["--compress-level", str(compress_level)])
-        if not keep_originals:
-            cmd.append("--no-originals")
+    # Force keep_originals à True
+    cmd.append("--keep-originals")
     
     # Exécuter le script run_unified_analysis.py
     try:
@@ -866,12 +863,11 @@ def unified(
             print_success(f"Fichiers générés dans : {full_output_dir}")
             console.print(f"Arborescence globale générée dans : {os.path.join(full_output_dir, 'global_arborescence.txt')}")
             
-            # Afficher des informations sur la compression si applicable
-            if compress:
-                current_lang = get_current_language()
-                report_path = os.path.join(full_output_dir, f"compression_report_{current_lang}.txt")
-                if os.path.exists(report_path):
-                    console.print(f"[bold cyan]Rapport de compression généré dans : [/bold cyan]{report_path}")
+            # Afficher des informations sur la compression
+            current_lang = get_current_language()
+            report_path = os.path.join(full_output_dir, f"compression_report_{current_lang}.txt")
+            if os.path.exists(report_path):
+                console.print(f"[bold cyan]Rapport de compression généré dans : [/bold cyan]{report_path}")
             
             print_success("Traitement unifié terminé avec succès !")
         else:
@@ -1797,49 +1793,46 @@ def unified(
     api_key: Optional[str] = typer.Option(None, "--api-key", help="Clé API OpenAI (si non définie dans les variables d'environnement)"),
     skip_matching: bool = typer.Option(False, "--skip-matching", help="Ne pas effectuer le matching entre JIRA et Confluence"),
     language: Optional[str] = typer.Option(None, "--lang", help="Langue à utiliser (fr/en)"),
-    compress: bool = typer.Option(False, "--compress", help="Compresser les fichiers de sortie avec zstd et orjson"),
+    compress: bool = typer.Option(True, "--compress/--no-compress", help="Compresser les fichiers de sortie avec zstd et orjson (activé par défaut)"),
     compress_level: int = typer.Option(19, "--compress-level", help="Niveau de compression zstd (1-22)"),
-    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés")
+    keep_originals: bool = typer.Option(True, "--keep-originals/--no-originals", help="Conserver les fichiers JSON originaux en plus des compressés"),
 ):
     """
-    Traitement unifié JIRA + Confluence.
-    Cette commande exécute le flux complet : extraction, division, transformation, matching et analyse LLM.
+    Flux unifié: traite JIRA + Confluence, fait le matching et prépare les données pour le LLM.
+    
+    Cette commande exécute un workflow complet pour traiter les fichiers JIRA et Confluence:
+    1. Traitement des fichiers JIRA pour extraction des données clés
+    2. Traitement des fichiers Confluence si fournis
+    3. Matching entre Confluence et JIRA (sauf si --skip-matching est activé)
+    4. Préparation des données pour enrichissement LLM
+    5. Compression des fichiers (activée par défaut)
     """
-    # Configuration des chemins
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Générer un timestamp pour le nom du dossier
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     
-    # Vérifier si le répertoire de sortie est spécifié
-    output_dir_str = str(output_dir) if output_dir else "output_unified"
+    # Obtenir le chemin absolu vers le répertoire racine du projet
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
-    # Préparer le chemin complet du répertoire de sortie
-    # Utiliser le dossier results comme base, à moins que le chemin soit absolu
-    if os.path.isabs(output_dir_str):
-        full_output_dir = output_dir_str
+    # Utiliser le dossier results comme base à la racine du projet
+    base_results_dir = os.path.join(project_root, "results")
+    os.makedirs(base_results_dir, exist_ok=True)
+    
+    # Gérer le répertoire de sortie
+    if output_dir:
+        # Si on a un dossier de sortie précis, l'utiliser avec le timestamp
+        full_output_dir = os.path.join(base_results_dir, f"{output_dir}_{timestamp}")
     else:
-        # Utiliser le dossier results à la racine du projet
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        results_dir = os.path.join(project_root, "results")
-        # S'assurer que le répertoire results existe
-        os.makedirs(results_dir, exist_ok=True)
-        full_output_dir = os.path.join(results_dir, output_dir_str)
+        # Créer un répertoire par défaut avec timestamp
+        full_output_dir = os.path.join(base_results_dir, f"{timestamp}-unified-process")
     
-    # Créer le répertoire de sortie s'il n'existe pas
-    os.makedirs(full_output_dir, exist_ok=True)
+    # Créer le répertoire
+    ensure_dir(full_output_dir)
+    print_info(f"Répertoire de sortie: {full_output_dir}")
     
-    # Récupérer les valeurs par défaut des options
-    min_score = float(str(min_match_score)) if min_match_score is not None else 0.5
-    
-    # Afficher un récapitulatif
-    console.print(Panel(
-        f"Traitement unifié JIRA + Confluence\n\n"
-        f"Fichiers JIRA : {', '.join(jira_files)}\n"
-        f"Fichiers Confluence : {', '.join(confluence_files)}\n"
-        f"Répertoire de sortie : {full_output_dir}\n",
-        title=t("unified_processing", "titles"),
-        expand=True
-    ))
-    
-    console.print(f"Exécution du flux unifié...")
+    # Définir la valeur par défaut pour min_match_score si non spécifiée
+    min_score = min_match_score or float(os.environ.get("MIN_MATCH_SCORE", "0.2"))
+    print_info(f"Score minimum pour les correspondances: {min_score}")
     
     # S'assurer que la langue est configurée
     if language:
@@ -1878,12 +1871,12 @@ def unified(
     if language:
         cmd.extend(["--language", str(language)])
     
-    # Ajouter les options de compression si demandées
-    if compress:
-        cmd.append("--compress")
-        cmd.extend(["--compress-level", str(compress_level)])
-        if not keep_originals:
-            cmd.append("--no-originals")
+    # Toujours ajouter les options de compression
+    # Même si compress est False dans les paramètres, on force l'activation
+    cmd.append("--compress")
+    cmd.extend(["--compress-level", str(compress_level)])
+    # Force keep_originals à True
+    cmd.append("--keep-originals")
     
     # Exécuter le script run_unified_analysis.py
     try:
@@ -1910,12 +1903,11 @@ def unified(
             print_success(f"Fichiers générés dans : {full_output_dir}")
             console.print(f"Arborescence globale générée dans : {os.path.join(full_output_dir, 'global_arborescence.txt')}")
             
-            # Afficher des informations sur la compression si applicable
-            if compress:
-                current_lang = get_current_language()
-                report_path = os.path.join(full_output_dir, f"compression_report_{current_lang}.txt")
-                if os.path.exists(report_path):
-                    console.print(f"[bold cyan]Rapport de compression généré dans : [/bold cyan]{report_path}")
+            # Afficher des informations sur la compression
+            current_lang = get_current_language()
+            report_path = os.path.join(full_output_dir, f"compression_report_{current_lang}.txt")
+            if os.path.exists(report_path):
+                console.print(f"[bold cyan]Rapport de compression généré dans : [/bold cyan]{report_path}")
             
             print_success("Traitement unifié terminé avec succès !")
         else:

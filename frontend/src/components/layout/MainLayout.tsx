@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toaster';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
+import { HelpTooltip } from '@/components/ui/HelpTooltip';
 
 export default function MainLayout() {
   return (
@@ -11,6 +12,7 @@ export default function MainLayout() {
         <Outlet />
       </main>
       <Footer />
+      <HelpTooltip />
       <Toaster />
     </div>
   );

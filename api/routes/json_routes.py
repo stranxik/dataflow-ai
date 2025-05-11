@@ -208,7 +208,7 @@ async def clean_json(
 async def compress_json(
     file: UploadFile = File(...),
     compression_level: int = Form(19, description="Compression level (1-22)"),
-    keep_original: bool = Form(False, description="Keep original file"),
+    keep_original: bool = Form(True, description="Keep original file alongside compressed version"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     """
@@ -216,7 +216,7 @@ async def compress_json(
     
     - **file**: JSON file to compress
     - **compression_level**: Compression level (1-22)
-    - **keep_original**: Keep original file alongside compressed version
+    - **keep_original**: Keep original file alongside compressed version (default: True)
     """
     if not file.filename.lower().endswith('.json'):
         raise HTTPException(status_code=400, detail="File must be a JSON document")
@@ -227,6 +227,8 @@ async def compress_json(
     # Create temp directory for this job
     temp_dir = Path(f"/tmp/dataflow_temp/{job_id}")
     temp_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = temp_dir / "output"
+    output_dir.mkdir(exist_ok=True)
     
     # Save uploaded file
     input_file_path = temp_dir / f"input.json"
@@ -234,12 +236,10 @@ async def compress_json(
         f.write(await file.read())
     
     try:
-        # Prepare command
+        # Prepare command - Force keep_originals to always be True
         cmd = ["python", "-m", "cli.cli", "compress", str(temp_dir), 
-               "--level", str(compression_level)]
-        
-        if keep_original:
-            cmd.append("--keep-originals")
+               "--level", str(compression_level),
+               "--keep-originals"]  # Always keep originals regardless of frontend setting
         
         # Run the CLI command
         result = await run_cli_command(cmd)
@@ -249,11 +249,35 @@ async def compress_json(
         if not compressed_file:
             raise HTTPException(status_code=500, detail="Compression completed but no compressed file was generated")
         
-        # Return the file to the client
+        # Create a zip file containing both the original JSON and compressed file
+        import zipfile
+        zip_path = temp_dir / f"{file.filename.replace('.json', '')}_compressed.zip"
+        
+        with zipfile.ZipFile(zip_path, 'w') as zipf:
+            # Add compressed file to zip
+            zipf.write(compressed_file, arcname=f"{file.filename}.zst")
+            
+            # Add original JSON file (should always exist now that we force --keep-originals)
+            original_json = next(temp_dir.glob("*.json"), None)
+            if original_json:
+                zipf.write(original_json, arcname=file.filename)
+            
+            # Add compression report if it exists
+            report_files = list(temp_dir.glob("compression_report_*.txt"))
+            for report_file in report_files:
+                zipf.write(report_file, arcname=report_file.name)
+            
+            # Add human-readable text version if it exists
+            text_files = list(temp_dir.glob("*.txt"))
+            for text_file in text_files:
+                if not text_file.name.startswith("compression_report_"):
+                    zipf.write(text_file, arcname=text_file.name)
+        
+        # Return the zip file
         return FileResponse(
-            path=compressed_file,
-            filename=f"{file.filename}.zst",
-            media_type="application/zstd",
+            path=zip_path,
+            filename=f"{file.filename.replace('.json', '')}_compressed.zip",
+            media_type="application/zip",
             # Clean up after sending
             background=BackgroundTask(lambda: cleanup_files([temp_dir]))
         )

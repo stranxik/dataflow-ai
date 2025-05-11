@@ -7,12 +7,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { useDropzone } from 'react-dropzone';
 import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
 import { useLanguage } from '@/components/LanguageProvider';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 export default function LLMEnrichmentPage() {
   const { t } = useLanguage();
@@ -20,7 +14,6 @@ export default function LLMEnrichmentPage() {
   const [confluenceFiles, setConfluenceFiles] = useState<File[]>([]);
   const [mappingFiles, setMappingFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [compressOutput, setCompressOutput] = useState(true);
   const [minMatchScore, setMinMatchScore] = useState('0.5');
   const [useCustomMapping, setUseCustomMapping] = useState(false);
   const { toast } = useToast();
@@ -91,12 +84,15 @@ export default function LLMEnrichmentPage() {
 
     setIsProcessing(true);
     try {
-      const result = await unifiedProcess(jiraFiles, confluenceFiles, compressOutput);
+      // Check for API key before making request
+      const apiKey = (window as any).env?.VITE_API_KEY || import.meta.env?.VITE_API_KEY || '';
+      if (!apiKey) {
+        throw new Error('API key is missing. Please check your configuration.');
+      }
       
-      createDownloadLink(
-        result, 
-        `enriched_results.zip`
-      );
+      const result = await unifiedProcess(jiraFiles, confluenceFiles, true);
+      
+      createDownloadLink(result, 'enriched_results.zip');
       
       toast({
         title: t('processing_complete'),
@@ -261,110 +257,78 @@ export default function LLMEnrichmentPage() {
               </div>
               
               {/* Processing Options */}
-              <div>
+              <div className="p-4 bg-muted rounded-lg">
                 <h3 className="text-sm font-medium mb-3">{t('processing_options')}</h3>
                 
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="compress-output"
-                      checked={compressOutput}
-                      onChange={() => setCompressOutput(!compressOutput)}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    <label htmlFor="compress-output" className="text-sm">
-                      {t('compress_output')}
-                    </label>
-                  </div>
-                  
+                <div className="space-y-3">
+                  {/* Match score threshold */}
                   <div>
-                    <label htmlFor="min-match-score" className="block text-sm mb-1">
+                    <label htmlFor="min-match-score" className="text-sm block mb-1">
                       {t('min_match_score')}
                     </label>
-                    <input
-                      type="number"
+                    <select
                       id="min-match-score"
                       value={minMatchScore}
                       onChange={(e) => setMinMatchScore(e.target.value)}
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      className="w-24 p-1 border rounded-md bg-background"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {t('higher_values')}
-                    </p>
+                      className="w-full p-2 text-sm rounded-md border border-input bg-background"
+                    >
+                      <option value="0.1">0.1 - {t('more_matches_lower_quality')}</option>
+                      <option value="0.3">0.3 - {t('balanced')}</option>
+                      <option value="0.5">0.5 - {t('default')}</option>
+                      <option value="0.7">0.7 - {t('higher_quality_fewer_matches')}</option>
+                    </select>
                   </div>
                 </div>
               </div>
               
-              <div className="p-3 bg-primary/5 rounded-md">
-                <p className="text-sm text-muted-foreground">
-                  <strong>Note:</strong> {t('complete_workflow')}
-                </p>
-                <ul className="text-xs text-muted-foreground list-disc list-inside mt-1">
-                  <li>{t('process_files')}</li>
-                  <li>{t('enrich_content')}</li>
-                  <li>{t('establish_matches')}</li>
-                  <li>{t('generate_reports')}</li>
-                </ul>
+              <div className="flex justify-center pt-4">
+                <Button
+                  onClick={handleUnifiedProcessing}
+                  disabled={jiraFiles.length === 0 || isProcessing}
+                  className="w-full"
+                >
+                  {isProcessing ? (
+                    <React.Fragment>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t('processing')}...
+                    </React.Fragment>
+                  ) : (
+                    <React.Fragment>
+                      <Bot className="mr-2 h-4 w-4" />
+                      {t('start_unified_processing')}
+                    </React.Fragment>
+                  )}
+                </Button>
               </div>
               
-              <Button
-                onClick={handleUnifiedProcessing}
-                disabled={isProcessing || jiraFiles.length === 0}
-                className="w-full"
-              >
-                {isProcessing ? (
-                  <React.Fragment>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t('processing')}
-                  </React.Fragment>
-                ) : (
-                  t('run_unified')
-                )}
-              </Button>
+              {/* Information sur l'enrichissement LLM */}
+              <div className="mt-8 p-6 bg-muted/30 rounded-lg" key="llm-info-section">
+                <h3 className="text-xl font-semibold mb-4" key="llm-info-title">{t('about_llm_enrichment')}</h3>
+                <p className="mb-6 text-muted-foreground" key="llm-info-desc">{t('llm_enrichment_explanation')}</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6" key="llm-info-grid">
+                  <div className="bg-background p-4 rounded-lg" key="llm-benefits">
+                    <h4 className="font-medium mb-3" key="benefits-title">{t('benefits')}</h4>
+                    <ul className="space-y-2 list-disc pl-5" key="benefits-list">
+                      <li key="benefit-1">{t('llm_benefit_1')}</li>
+                      <li key="benefit-2">{t('llm_benefit_2')}</li>
+                      <li key="benefit-3">{t('llm_benefit_3')}</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-background p-4 rounded-lg" key="llm-limitations">
+                    <h4 className="font-medium mb-3" key="limitations-title">{t('limitations')}</h4>
+                    <ul className="space-y-2 list-disc pl-5" key="limitations-list">
+                      <li key="limitation-1">{t('llm_limitation_1')}</li>
+                      <li key="limitation-2">{t('llm_limitation_2')}</li>
+                      <li key="limitation-3">{t('llm_limitation_3')}</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
-      </div>
-      
-      <div className="mt-8 p-4 bg-primary-foreground rounded-lg">
-        <h2 className="text-lg font-semibold mb-2">{t('expected_output')}</h2>
-        <p className="text-sm text-muted-foreground mb-2">
-          {t('zip_file')}
-        </p>
-        <ul className="text-sm text-muted-foreground list-disc list-inside">
-          <li>{t('processed_jira_confluence')}</li>
-          <li>{t('matching_results')}</li>
-          <li>{t('llm_enriched_files')}</li>
-          <li>{t('full_directory_structure')}</li>
-          <li>{t('similar_to_demo')}</li>
-        </ul>
-      </div>
-      
-      {/* Help button in the bottom right corner */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="default" size="icon" className="h-14 w-14 shadow-lg bg-primary hover:bg-primary/90 transition-all">
-                <Bot className="h-6 w-6" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left" align="end" className="max-w-md p-4 bg-card border shadow-lg">
-              <div className="space-y-2">
-                <h4 className="font-semibold text-base">{t('help_tooltip')}</h4>
-                <p className="text-sm whitespace-pre-line">
-                  {t('language') === 'en' 
-                    ? "• Upload JSON files from Jira and/or Confluence\n• Links documents across platforms by matching content\n• Enriches data with AI analysis and categorization\n• Creates LLM-ready output for knowledge bases"
-                    : "• Importez des fichiers JSON de Jira et/ou Confluence\n• Établit des liens entre documents en comparant le contenu\n• Enrichit les données avec analyse et catégorisation IA\n• Crée une sortie compatible LLM pour bases de connaissances"}
-                </p>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
     </div>
   );

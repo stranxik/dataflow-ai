@@ -18,8 +18,8 @@ services:
       - API_PORT=8000
       - DEBUG=False
       - FRONTEND_ORIGINS=*
-      - API_KEY=${API_KEY:-df_api_7fa9e520c31d465bade83e92fb54a7dc}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-dummy-key}
+      - API_KEY=${API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - PYTHONPATH=/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
@@ -34,7 +34,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_KEY=${API_KEY:-df_api_7fa9e520c31d465bade83e92fb54a7dc}
+        - VITE_API_KEY=${API_KEY}
         - VITE_API_URL=/api
     container_name: dataflow-frontend
     restart: unless-stopped
@@ -43,7 +43,7 @@ services:
     depends_on:
       - api
     environment:
-      - VITE_API_KEY=${API_KEY:-df_api_7fa9e520c31d465bade83e92fb54a7dc}
+      - VITE_API_KEY=${API_KEY}
       - VITE_API_URL=/api
       - NGINX_HOST=localhost
       - NGINX_PORT=80
@@ -60,8 +60,8 @@ services:
     env_file:
       - .env
     environment:
-      - API_KEY=${API_KEY:-df_api_7fa9e520c31d465bade83e92fb54a7dc}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-dummy-key}
+      - API_KEY=${API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - PYTHONPATH=/app
     # Commande par défaut en mode interactif remplacée dans le docker-compose
     command: ["--help"]
