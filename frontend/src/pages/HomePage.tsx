@@ -1,19 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { FileText, Upload, Loader2, Shield, Wrench, Database, Bot, Terminal } from 'lucide-react';
+import { FileText, Upload, Loader2, Shield, Wrench, Database, Bot } from 'lucide-react';
 import { processPdf } from '@/api/apiService';
 import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { useLanguage } from '@/components/LanguageProvider';
-import { testPdfExtraction } from '@/api/testPdfExtraction';
+import { HelpTooltip } from '@/components/ui/HelpTooltip';
+import { MAX_PDF_SIZE_MB, MAX_PDF_SIZE_BYTES, MAX_IMAGES_ANALYSIS, DEFAULT_IMAGES_ANALYSIS, validatePdfSize } from '@/lib/config';
 
 export default function HomePage() {
   const { t } = useLanguage();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isTestingApi, setIsTestingApi] = useState(false);
-  const [maxImages, setMaxImages] = useState(10);
+  const [maxImages, setMaxImages] = useState(DEFAULT_IMAGES_ANALYSIS);
   const { toast } = useToast();
 
   // Easter egg pour la console
@@ -91,6 +91,16 @@ Explore our ecosystem at https://blaike.cc/ecosystem
     if (acceptedFiles.length > 0) {
       const file = acceptedFiles[0];
       if (isValidFileType(file, ['pdf'])) {
+        // Vérifier la taille du fichier
+        if (!validatePdfSize(file)) {
+          toast({
+            title: t('file_too_large'),
+            description: t('file_size_limit').replace('{size}', `${MAX_PDF_SIZE_MB}`),
+            variant: 'destructive',
+          });
+          return;
+        }
+        
         setSelectedFile(file);
         
         toast({
@@ -113,6 +123,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
       'application/pdf': ['.pdf'],
     },
     maxFiles: 1,
+    maxSize: MAX_PDF_SIZE_BYTES,
   });
 
   // Traitement du PDF avec téléchargement automatique
@@ -179,47 +190,14 @@ Explore our ecosystem at https://blaike.cc/ecosystem
       setIsProcessing(false);
     }
   };
-  
-  // Test de l'API
-  const handleTestApi = async () => {
-    if (!selectedFile) {
-      toast({
-        title: t('no_file_selected'),
-        description: t('select_file_first'),
-        variant: 'destructive',
-      });
-      return;
-    }
-    
-    setIsTestingApi(true);
-    
-    try {
-      const result = await testPdfExtraction(selectedFile);
-      
-      toast({
-        title: "Test API",
-        description: result,
-      });
-      
-    } catch (error) {
-      console.error("Test API failed:", error);
-      toast({
-        title: "Test API échoué",
-        description: error instanceof Error ? error.message : "Erreur inconnue",
-        variant: 'destructive',
-      });
-    } finally {
-      setIsTestingApi(false);
-    }
-  };
 
   return (
     <div className="py-10 px-4">
       <div className="text-center mb-12">
         <h1 className="text-5xl font-black tracking-tight mb-6 flex items-center justify-center flex-wrap">
           {t('pdf_analysis')}
-          <div className="relative inline-block ml-2 translate-y-[-24px]">
-            <span className="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-white text-primary dark:bg-background border border-primary rounded-full hover:animate-[wiggle_0.5s_ease-in-out_infinite] cursor-pointer transition-all hover:shadow-md duration-300">
+          <div className="relative inline-block ml-2 translate-y-[-22px]">
+            <span className="inline-flex items-center px-3 py-1 text-xs font-medium bg-white text-primary dark:bg-background border border-primary rounded-full hover:animate-[wiggle_0.5s_ease-in-out_infinite] cursor-pointer transition-all hover:shadow-lg shadow-md transform rotate-2 duration-300">
               GPT-4o
             </span>
           </div>
@@ -237,8 +215,8 @@ Explore our ecosystem at https://blaike.cc/ecosystem
             </label>
             <input
               type="number"
-              min="1"
-              max="100"
+              min="0"
+              max={MAX_IMAGES_ANALYSIS}
               value={maxImages}
               onChange={(e) => setMaxImages(Number(e.target.value))}
               className="w-24 p-2 border rounded-none bg-background text-center"
@@ -283,13 +261,13 @@ Explore our ecosystem at https://blaike.cc/ecosystem
                   {isDragActive ? t('drop_file_here') : t('upload_pdf')}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  PDF (max 50MB)
+                  PDF (max {MAX_PDF_SIZE_MB}MB)
                 </div>
               </div>
             )}
           </div>
           
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
+          <div className="flex justify-center">
             <Button 
               size="lg" 
               onClick={handleProcessPDF}
@@ -302,22 +280,6 @@ Explore our ecosystem at https://blaike.cc/ecosystem
                 <FileText className="h-4 w-4" />
               )}
               {isProcessing ? t('processing') : t('process_pdf')}
-            </Button>
-            
-            {/* Bouton Test API (uniquement visible en développement) */}
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={handleTestApi}
-              disabled={!selectedFile || isTestingApi}
-              className="gap-2"
-            >
-              {isTestingApi ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Terminal className="h-4 w-4" />
-              )}
-              Test API
             </Button>
           </div>
         </div>
@@ -368,6 +330,8 @@ Explore our ecosystem at https://blaike.cc/ecosystem
           </div>
         </div>
       </div>
+      
+      <HelpTooltip explanationKey="pdf_extraction_page_info" />
     </div>
   );
 } 

@@ -82,7 +82,7 @@ const translations: Record<Language, Record<string, string>> = {
     'pdf_analysis': 'Analysez vos PDF avec l\'IA',
     'extract_text': 'Extraction intelligente du texte et des images, plus qu\'un simple OCR pour vos agents IA',
     'max_images': 'Images maximum à analyser:',
-    'process_pdf': 'Traiter PDF,',
+    'process_pdf': 'Traiter PDF',
     'why_choose': 'Pourquoi choisir DataFlow AI ?',
     '100_private': '100% Privé',
     'data_never_persists': 'Vos données ne sont jamais conservées sur nos serveurs',
@@ -193,6 +193,10 @@ const translations: Record<Language, Record<string, string>> = {
     'organized_data_description': 'Les résultats sont structurés pour faciliter l\'analyse et l\'intégration dans d\'autres systèmes',
     'ai_analysis': 'Analyse IA',
     'ai_analysis_description': 'Les images sont analysées par GPT-4o pour en extraire le contexte et les informations pertinentes',
+    
+    // File upload errors
+    'file_too_large': 'Fichier trop volumineux',
+    'file_size_limit': 'La taille maximale de fichier autorisée est de {size} MB',
   },
   en: {
     // Navigation
@@ -253,7 +257,7 @@ const translations: Record<Language, Record<string, string>> = {
     
     // Home
     'pdf_analysis': 'Analyze PDFs with AI',
-    'extract_text': 'Extraction intelligente du texte et des images, plus qu\'un simple OCR pour vos agents IA',
+    'extract_text': 'Intelligent extraction of text and images, more than just OCR for your AI agents',
     'max_images': 'Maximum images to analyze:',
     'process_pdf': 'Process PDF',
     'why_choose': 'Why Choose DataFlow AI?',
@@ -366,6 +370,10 @@ const translations: Record<Language, Record<string, string>> = {
     'organized_data_description': 'Results are structured for easy analysis and integration with other systems',
     'ai_analysis': 'AI Analysis',
     'ai_analysis_description': 'Images are analyzed by GPT-4o to extract context and relevant information',
+    
+    // File upload errors
+    'file_too_large': 'File too large',
+    'file_size_limit': 'Maximum allowed file size is {size} MB',
   }
 };
 

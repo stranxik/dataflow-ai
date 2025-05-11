@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useDropzone } from 'react-dropzone';
 import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
 import { useLanguage } from '@/components/LanguageProvider';
+import { HelpTooltip } from '@/components/ui/HelpTooltip';
 
 export default function LLMEnrichmentPage() {
   const { t } = useLanguage();
@@ -330,6 +331,8 @@ export default function LLMEnrichmentPage() {
           </CardContent>
         </Card>
       </div>
+      
+      <HelpTooltip explanationKey="llm_enrichment_page_info" />
     </div>
   );
 } 

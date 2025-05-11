@@ -26,8 +26,8 @@ class PDFExtractionOptions(BaseModel):
     
     @validator('max_images')
     def validate_max_images(cls, v):
-        if v is not None and (v < 1 or v > 100):
-            raise ValueError("max_images must be between 1 and 100")
+        if v is not None and (v < 0 or v > 100):
+            raise ValueError("max_images must be between 0 and 100")
         return v
 
 class CompressionOptions(BaseModel):

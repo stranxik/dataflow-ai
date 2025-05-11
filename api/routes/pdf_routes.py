@@ -110,7 +110,7 @@ async def test_endpoint():
 @router.post("/extract-images", summary="Extract and analyze images from PDF")
 async def extract_images_from_pdf(
     file: UploadFile = File(...),
-    max_images: Optional[int] = Form(10, description="Maximum number of images to extract and analyze"),
+    max_images: Optional[int] = Form(int(os.environ.get("DEFAULT_IMAGES_ANALYSIS", 10)), description="Maximum number of images to extract and analyze"),
     format: Optional[str] = Form("json", description="Output format: 'json' for single JSON file or 'zip' for complete folder"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ):

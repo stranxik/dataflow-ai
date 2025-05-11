@@ -9,6 +9,7 @@ import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils
 import { useToast } from '@/components/ui/use-toast';
 import { useLanguage } from '@/components/LanguageProvider';
 import { Bot } from 'lucide-react';
+import { HelpTooltip } from '@/components/ui/HelpTooltip';
 
 export default function JSONProcessingPage() {
   const { t } = useLanguage();
@@ -315,6 +316,8 @@ export default function JSONProcessingPage() {
           )}
         </Button>
       </div>
+      
+      <HelpTooltip explanationKey="json_processing_page_info" />
     </div>
   );
 } 
