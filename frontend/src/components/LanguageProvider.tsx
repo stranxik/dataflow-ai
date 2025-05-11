@@ -135,6 +135,31 @@ const translations: Record<Language, Record<string, string>> = {
     // Help tooltip
     'help_tooltip': 'Comment ça marche ?',
     'pdf_extraction_explanation': 'Notre traitement PDF avancé :\n\n• Extrait le texte natif du PDF\n• Détecte et analyse les images intégrées avec GPT-4o\n• Génère un fichier JSON structuré\n• Inclut des descriptions détaillées des images\n• Préserve le contexte textuel autour des images',
+    
+    // PDF Results Modal
+    'file_processed_successfully': 'Fichier traité avec succès',
+    'your_extraction_is_ready': 'Votre extraction est prête à être téléchargée',
+    'complete_results': 'Résultats complets',
+    'zip_file_with_all_extracted_data': 'Fichier ZIP contenant toutes les données extraites',
+    'download': 'Télécharger',
+    'results_include_extracted_text_images_analyses': 'Les résultats incluent le texte extrait, les images analysées et les métadonnées',
+    'no_results_found': 'Aucun résultat trouvé pour ce document',
+    'close': 'Fermer',
+    'download_results': 'Télécharger les résultats',
+    'remove_file': 'Supprimer le fichier',
+    'drop_file_here': 'Déposez le fichier ici',
+    'upload_pdf': 'Télécharger un PDF',
+    
+    // How it works section
+    'how_it_works': 'Comment ça marche',
+    'secure_processing': 'Traitement sécurisé',
+    'secure_processing_description': 'Vos données sont traitées localement et ne sont jamais stockées sur des serveurs tiers',
+    'powerful_extraction': 'Extraction puissante',
+    'powerful_extraction_description': 'Notre technologie avancée extrait le texte et les images avec une précision exceptionnelle',
+    'organized_data': 'Données organisées',
+    'organized_data_description': 'Les résultats sont structurés pour faciliter l\'analyse et l\'intégration dans d\'autres systèmes',
+    'ai_analysis': 'Analyse IA',
+    'ai_analysis_description': 'Les images sont analysées par GPT-4o pour en extraire le contexte et les informations pertinentes',
   },
   en: {
     // Navigation
@@ -250,6 +275,31 @@ const translations: Record<Language, Record<string, string>> = {
     // Help tooltip
     'help_tooltip': 'How does it work?',
     'pdf_extraction_explanation': 'Our advanced PDF processing:\n\n• Extracts native PDF text\n• Detects and analyzes embedded images with GPT-4o\n• Generates a structured JSON file\n• Includes detailed image descriptions\n• Preserves textual context around images',
+    
+    // PDF Results Modal
+    'file_processed_successfully': 'File processed successfully',
+    'your_extraction_is_ready': 'Your extraction is ready to download',
+    'complete_results': 'Complete results',
+    'zip_file_with_all_extracted_data': 'ZIP file with all extracted data',
+    'download': 'Download',
+    'results_include_extracted_text_images_analyses': 'Results include extracted text, analyzed images, and metadata',
+    'no_results_found': 'No results found for this document',
+    'close': 'Close',
+    'download_results': 'Download results',
+    'remove_file': 'Remove file',
+    'drop_file_here': 'Drop file here',
+    'upload_pdf': 'Upload PDF',
+    
+    // How it works section
+    'how_it_works': 'How it works',
+    'secure_processing': 'Secure Processing',
+    'secure_processing_description': 'Your data is processed locally and never stored on third-party servers',
+    'powerful_extraction': 'Powerful Extraction',
+    'powerful_extraction_description': 'Our advanced technology extracts text and images with exceptional accuracy',
+    'organized_data': 'Organized Data',
+    'organized_data_description': 'Results are structured for easy analysis and integration with other systems',
+    'ai_analysis': 'AI Analysis',
+    'ai_analysis_description': 'Images are analyzed by GPT-4o to extract context and relevant information',
   }
 };
 

@@ -381,12 +381,16 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Extraction complète d'un PDF (texte + images analysées)")
     parser.add_argument("pdf_path", help="Chemin vers le fichier PDF")
+    parser.add_argument("--output-dir", dest="output", help="Chemin du répertoire de sortie")
     parser.add_argument("--max-images", type=int, default=10, help="Nombre maximum d'images à traiter")
     parser.add_argument("--timeout", type=int, default=30, help="Timeout pour l'appel API (secondes)")
     parser.add_argument("--language", choices=["fr", "en"], default="fr", help="Langue de description")
-    parser.add_argument("--output", help="Chemin du répertoire de sortie")
     parser.add_argument("--no-save-images", action="store_true", help="Ne pas sauvegarder les images en fichiers PNG")
     args = parser.parse_args()
+    
+    if not args.pdf_path:
+        print("Erreur: Aucun fichier PDF spécifié.")
+        exit(1)
     
     # Récupérer la clé API et le modèle
     api_key = os.environ.get("OPENAI_API_KEY")

@@ -22,6 +22,8 @@
     "@radix-ui/react-tooltip": "^1.2.6",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "file-saver": "^2.0.5",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.363.0",
     "next-themes": "^0.3.0",
     "react": "^18.2.0",

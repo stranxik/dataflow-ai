@@ -1,26 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { FileText, Upload, Check, Loader2, Shield, Wrench, Database, Bot } from 'lucide-react';
+import { FileText, Upload, Loader2, Shield, Wrench, Database, Bot, Terminal } from 'lucide-react';
 import { processPdf } from '@/api/apiService';
 import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { useLanguage } from '@/components/LanguageProvider';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { testPdfExtraction } from '@/api/testPdfExtraction';
 
 export default function HomePage() {
   const { t } = useLanguage();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isTestingApi, setIsTestingApi] = useState(false);
   const [maxImages, setMaxImages] = useState(10);
   const { toast } = useToast();
 
-  // Add the Blaike easter egg in the console
+  // Easter egg pour la console
   useEffect(() => {
     const blaikeLogo = `
 %c████████╗ ██████╗ ██████╗     ███████╗███████╗ ██████╗██████╗ ███████╗████████╗
@@ -37,7 +33,6 @@ export default function HomePage() {
 %cBBBBB   LLLLL  A     A III  K   K  EEEEE
     `;
 
-    // Console styling
     console.log(
       blaikeLogo,
       'color: #6d28d9; font-weight: bold;',
@@ -92,11 +87,12 @@ Explore our ecosystem at https://blaike.cc/ecosystem
     }, 500);
   }, []);
 
-  const onDrop = (acceptedFiles: File[]) => {
+  const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       const file = acceptedFiles[0];
       if (isValidFileType(file, ['pdf'])) {
         setSelectedFile(file);
+        
         toast({
           title: t('file_selected'),
           description: `${file.name} (${formatFileSize(file.size)})`,
@@ -109,7 +105,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
         });
       }
     }
-  };
+  }, [t, toast]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -119,6 +115,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
     maxFiles: 1,
   });
 
+  // Traitement du PDF avec téléchargement automatique
   const handleProcessPDF = async () => {
     if (!selectedFile) {
       toast({
@@ -132,13 +129,39 @@ Explore our ecosystem at https://blaike.cc/ecosystem
     setIsProcessing(true);
 
     try {
-      // Using 'complete' mode for the homepage
-      const result = await processPdf(selectedFile, 'complete', maxImages);
+      console.log(`Starting PDF processing: ${selectedFile.name}`);
       
-      // Create a download link for the processed file
+      const result = await processPdf(
+        selectedFile,
+        'complete',
+        maxImages,
+        undefined,
+        'zip'
+      );
+      
+      console.log(`PDF processing completed, blob received: ${result.size} bytes, type: ${result.type}`);
+      
+      // Vérifier la validité du blob retourné
+      if (result.size === 0) {
+        throw new Error('Empty response received from server');
+      }
+      
+      if (result.size < 1000 && result.type.includes('html')) {
+        const text = await result.text();
+        if (text.includes('error') || text.includes('Error')) {
+          throw new Error('Server returned an error page');
+        }
+      }
+      
+      // Déclencher le téléchargement directement
+      const zipBlob = (!result.type.includes('zip') && !result.type.includes('octet-stream'))
+        ? new Blob([result], { type: 'application/zip' })
+        : result;
+      
+      // Déclencher le téléchargement immédiatement
       createDownloadLink(
-        result, 
-        `${selectedFile.name.replace('.pdf', '')}_processed.json`
+        zipBlob,
+        `${selectedFile.name.replace('.pdf', '')}_analysis.zip`
       );
       
       toast({
@@ -154,6 +177,39 @@ Explore our ecosystem at https://blaike.cc/ecosystem
       });
     } finally {
       setIsProcessing(false);
+    }
+  };
+  
+  // Test de l'API
+  const handleTestApi = async () => {
+    if (!selectedFile) {
+      toast({
+        title: t('no_file_selected'),
+        description: t('select_file_first'),
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setIsTestingApi(true);
+    
+    try {
+      const result = await testPdfExtraction(selectedFile);
+      
+      toast({
+        title: "Test API",
+        description: result,
+      });
+      
+    } catch (error) {
+      console.error("Test API failed:", error);
+      toast({
+        title: "Test API échoué",
+        description: error instanceof Error ? error.message : "Erreur inconnue",
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTestingApi(false);
     }
   };
 
@@ -198,122 +254,119 @@ Explore our ecosystem at https://blaike.cc/ecosystem
             <input {...getInputProps()} />
             
             {selectedFile ? (
-              <div className="space-y-3">
-                <Check className="h-12 w-12 text-green-500 mx-auto" />
-                <p className="font-medium text-lg">{selectedFile.name}</p>
-                <p className="text-muted-foreground">
+              <div className="flex flex-col items-center gap-2">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <FileText className="h-6 w-6 text-primary" />
+                </div>
+                <div className="font-medium">{selectedFile.name}</div>
+                <div className="text-sm text-muted-foreground">
                   {formatFileSize(selectedFile.size)}
-                </p>
-                <Button
-                  variant="outline"
+                </div>
+                <Button 
+                  variant="outline" 
                   size="sm"
+                  className="mt-2"
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedFile(null);
                   }}
                 >
-                  {t('change_file')}
+                  {t('remove_file')}
                 </Button>
               </div>
             ) : (
-              <div className="space-y-4">
-                <div className="flex justify-center">
-                  {isDragActive ? (
-                    <Upload className="h-16 w-16 text-primary" />
-                  ) : (
-                    <FileText className="h-16 w-16 text-primary" />
-                  )}
+              <div className="flex flex-col items-center gap-2">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Upload className="h-6 w-6 text-primary" />
                 </div>
-                <p className="font-medium text-xl">
-                  {isDragActive
-                    ? t('drop_pdf_file')
-                    : t('drag_drop_pdf')}
-                </p>
-                <p className="text-muted-foreground">
-                  {t('or')} <span className="text-primary">{t('click_to_browse')}</span> {t('your_device')}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t('pdf_files_only')} ({t('max_50mb')})
-                </p>
+                <div className="font-medium">
+                  {isDragActive ? t('drop_file_here') : t('upload_pdf')}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  PDF (max 50MB)
+                </div>
               </div>
             )}
           </div>
           
-          <div className="flex justify-center">
-            <Button
+          <div className="flex flex-col sm:flex-row justify-center gap-4">
+            <Button 
+              size="lg" 
               onClick={handleProcessPDF}
               disabled={!selectedFile || isProcessing}
-              size="lg"
-              className="px-12 py-6 text-lg"
+              className="gap-2 min-w-[200px]"
             >
               {isProcessing ? (
-                <React.Fragment>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  {t('processing')}
-                </React.Fragment>
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                t('process_pdf')
+                <FileText className="h-4 w-4" />
               )}
+              {isProcessing ? t('processing') : t('process_pdf')}
+            </Button>
+            
+            {/* Bouton Test API (uniquement visible en développement) */}
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={handleTestApi}
+              disabled={!selectedFile || isTestingApi}
+              className="gap-2"
+            >
+              {isTestingApi ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Terminal className="h-4 w-4" />
+              )}
+              Test API
             </Button>
           </div>
         </div>
       </div>
 
-      <div className="mt-24 py-20 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-none">
-        <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-16">{t('why_choose')}</h2>
+      <div className="max-w-4xl mx-auto">
+        <h2 className="text-2xl font-bold mb-8 text-center">{t('how_it_works')}</h2>
+        
+        <div className="grid md:grid-cols-2 gap-8">
+          <div className="bg-card p-6 shadow-md rounded-none">
+            <div className="mb-4 flex items-center">
+              <div className="mr-3 h-10 w-10 rounded-none bg-primary/10 flex items-center justify-center">
+                <Shield className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="text-xl font-semibold">{t('secure_processing')}</h3>
+            </div>
+            <p className="text-muted-foreground">{t('secure_processing_description')}</p>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-12 gap-y-16">
-            <div className="flex flex-col items-center text-center">
-              <div className="bg-background rounded-none p-5 shadow-md mb-6 w-20 h-20 flex items-center justify-center">
-                <Shield className="h-10 w-10 text-primary" />
+          <div className="bg-card p-6 shadow-md rounded-none">
+            <div className="mb-4 flex items-center">
+              <div className="mr-3 h-10 w-10 rounded-none bg-primary/10 flex items-center justify-center">
+                <Wrench className="h-5 w-5 text-primary" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">{t('100_private')}</h3>
-              <p className="text-muted-foreground">
-                {t('data_never_persists')}
-              </p>
+              <h3 className="text-xl font-semibold">{t('powerful_extraction')}</h3>
             </div>
-            
-            <div className="flex flex-col items-center text-center">
-              <div className="bg-background rounded-none p-5 shadow-md mb-6 w-20 h-20 flex items-center justify-center">
-                <Wrench className="h-10 w-10 text-primary" />
+            <p className="text-muted-foreground">{t('powerful_extraction_description')}</p>
+          </div>
+          
+          <div className="bg-card p-6 shadow-md rounded-none">
+            <div className="mb-4 flex items-center">
+              <div className="mr-3 h-10 w-10 rounded-none bg-primary/10 flex items-center justify-center">
+                <Database className="h-5 w-5 text-primary" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">{t('powerful_tools')}</h3>
-              <p className="text-muted-foreground">
-                {t('battle_tested')}
-              </p>
+              <h3 className="text-xl font-semibold">{t('organized_data')}</h3>
             </div>
-            
-            <div className="flex flex-col items-center text-center">
-              <div className="bg-background rounded-none p-5 shadow-md mb-6 w-20 h-20 flex items-center justify-center">
-                <Database className="h-10 w-10 text-primary" />
+            <p className="text-muted-foreground">{t('organized_data_description')}</p>
+          </div>
+          
+          <div className="bg-card p-6 shadow-md rounded-none">
+            <div className="mb-4 flex items-center">
+              <div className="mr-3 h-10 w-10 rounded-none bg-primary/10 flex items-center justify-center">
+                <Bot className="h-5 w-5 text-primary" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">{t('rag_ready')}</h3>
-              <p className="text-muted-foreground">
-                {t('optimized_for_rag')}
-              </p>
+              <h3 className="text-xl font-semibold">{t('ai_analysis')}</h3>
             </div>
+            <p className="text-muted-foreground">{t('ai_analysis_description')}</p>
           </div>
         </div>
-      </div>
-      
-      {/* Bouton d'aide positionné en bas à droite */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="default" size="icon" className="h-14 w-14 shadow-lg bg-primary hover:bg-primary/90 transition-all">
-                <Bot className="h-6 w-6" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left" align="end" className="max-w-md p-4 bg-card border shadow-lg">
-              <div className="space-y-2">
-                <h4 className="font-semibold text-base">{t('help_tooltip')}</h4>
-                <p className="text-sm whitespace-pre-line">{t('pdf_extraction_explanation')}</p>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
     </div>
   );

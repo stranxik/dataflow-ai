@@ -57,6 +57,20 @@ app.include_router(json_routes.router, prefix="/api/json", tags=["JSON Processin
 app.include_router(llm_routes.router, prefix="/api/llm", tags=["LLM Enrichment"], dependencies=[require_api_key])
 app.include_router(settings_routes.router, prefix="/api/settings", tags=["Settings"], dependencies=[require_api_key])
 
+# Ajouter un endpoint de test sans authentification
+@app.get("/api/test", tags=["Testing"])
+async def api_test():
+    """
+    Test endpoint sans authentification
+    """
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "message": "DataFlow API is working correctly!",
+        "cwd": os.getcwd(),
+        "env_vars": {k: "***" if k.lower().endswith("key") else v[:10] + "..." for k, v in os.environ.items() if isinstance(v, str) and len(v) > 10}
+    }
+
 # Task storage - in production this should be replaced with a proper task queue
 tasks: Dict[str, Dict] = {}
 

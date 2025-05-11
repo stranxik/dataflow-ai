@@ -2455,10 +2455,12 @@ def extract_pdf_complete(
     language: str = typer.Option("fr", "--language", "-l", help="Langue de description (fr, en)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Répertoire de sortie pour les résultats"),
     no_save_images: bool = typer.Option(False, "--no-save-images", help="Ne pas sauvegarder les images en fichiers PNG"),
-    model: Optional[str] = typer.Option(None, "--model", help="Modèle OpenAI à utiliser (par défaut: VISION_LLM_MODEL)")
+    model: Optional[str] = typer.Option(None, "--model", help="Modèle OpenAI à utiliser (par défaut: VISION_LLM_MODEL)"),
+    create_zip: bool = typer.Option(False, "--create-zip", "-z", help="Créer un fichier ZIP avec tous les résultats")
 ):
     """
     Extrait le texte et les images d'un PDF. Analyse les images avec IA et génère un JSON unifié.
+    Peut également créer un fichier ZIP contenant tous les résultats si --create-zip est spécifié.
     """
     from extract.pdf_complete_extractor import PDFCompleteExtractor
     import os
@@ -2489,7 +2491,7 @@ def extract_pdf_complete(
     vision_model = model or os.environ.get("VISION_LLM_MODEL") or "gpt-4o"
     
     console.print(f"[bold]Extraction complète du PDF[/bold]: {pdf_path}")
-    console.print(f"[dim]Paramètres: max_images={max_images}, timeout={timeout}, language={language}, modèle={vision_model}[/dim]")
+    console.print(f"[dim]Paramètres: max_images={max_images}, timeout={timeout}, language={language}, modèle={vision_model}, create_zip={create_zip}[/dim]")
     
     # Initialiser l'extracteur complet
     extractor = PDFCompleteExtractor(
@@ -2511,6 +2513,42 @@ def extract_pdf_complete(
     console.print(f"  Images détectées: {result.get('nb_images_detectees', 0)}")
     console.print(f"  Images analysées: {result.get('nb_images_analysees', 0)}")
     console.print(f"  Résultats sauvegardés dans: {result['meta']['output_dir']}")
+    
+    # Créer un ZIP si demandé
+    if create_zip:
+        import zipfile
+        from datetime import datetime
+        
+        # Chemin du dossier de sortie
+        output_dir = result['meta']['output_dir']
+        
+        # Nom du fichier ZIP basé sur le nom du PDF et timestamp
+        pdf_name = os.path.splitext(os.path.basename(pdf_path))[0]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"{pdf_name}_complete_results_{timestamp}.zip"
+        
+        # Chemin du ZIP dans le même dossier que le dossier de sortie
+        zip_path = os.path.join(os.path.dirname(output_dir), zip_filename)
+        
+        console.print(f"\n[bold]Création du fichier ZIP[/bold]")
+        
+        # Créer le ZIP
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            files_added = 0
+            for file_path in Path(output_dir).glob('**/*'):
+                if file_path.is_file():
+                    # Utiliser un chemin relatif dans l'archive
+                    arcname = file_path.relative_to(output_dir)
+                    zip_file.write(file_path, arcname=str(arcname))
+                    files_added += 1
+        
+        console.print(f"  Fichier ZIP créé: [cyan]{zip_path}[/cyan]")
+        console.print(f"  Fichiers ajoutés: {files_added}")
+        
+        return {
+            **result,
+            "zip_file": zip_path
+        }
 
 def _run_interactive_extract_complete():
     """Interface interactive pour la commande extract-images complete."""
