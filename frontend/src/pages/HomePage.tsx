@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { FileText, Upload, Loader2, Shield, Wrench, Database, Bot } from 'lucide-react';
+import { FileText, Upload, Loader2, Shield, Wrench, Database, Bot, DollarSign } from 'lucide-react';
 import { processPdf } from '@/api/apiService';
 import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
@@ -226,14 +226,14 @@ Explore our ecosystem at https://blaike.cc/ecosystem
           <div
             {...getRootProps()}
             className={`border-2 border-dashed rounded-none p-10 text-center cursor-pointer transition-colors ${
-              isDragActive ? 'border-primary bg-primary/5' : 'border-border'
-            } ${selectedFile ? 'bg-primary/5' : ''}`}
+              isDragActive ? 'border-primary bg-[#ff220c]/5' : 'border-border'
+            } ${selectedFile ? 'bg-[#ff220c]/5' : ''}`}
           >
             <input {...getInputProps()} />
             
             {selectedFile ? (
               <div className="flex flex-col items-center gap-2">
-                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="h-12 w-12 rounded-full bg-[#ff220c]/10 flex items-center justify-center">
                   <FileText className="h-6 w-6 text-primary" />
                 </div>
                 <div className="font-medium">{selectedFile.name}</div>
@@ -254,7 +254,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2">
-                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="h-12 w-12 rounded-full bg-[#ff220c]/10 flex items-center justify-center">
                   <Upload className="h-6 w-6 text-primary" />
                 </div>
                 <div className="font-medium">
@@ -285,53 +285,129 @@ Explore our ecosystem at https://blaike.cc/ecosystem
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto">
-        <h2 className="text-2xl font-bold mb-8 text-center">{t('how_it_works')}</h2>
-        
-        <div className="grid md:grid-cols-2 gap-8">
-          <div className="bg-card p-6 shadow-md rounded-none">
-            <div className="mb-4 flex items-center">
-              <div className="mr-3 h-10 w-10 rounded-none bg-primary/10 flex items-center justify-center">
-                <Shield className="h-5 w-5 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold">{t('secure_processing')}</h3>
-            </div>
-            <p className="text-muted-foreground">{t('secure_processing_description')}</p>
-          </div>
+      <div className="py-16 bg-gray-50 dark:bg-gray-900/10 w-full my-20 -mx-4">
+        <div className="max-w-4xl mx-auto px-4">
+          <h2 className="text-2xl font-bold mb-10 text-center">{t('how_it_works')}</h2>
           
-          <div className="bg-card p-6 shadow-md rounded-none">
-            <div className="mb-4 flex items-center">
-              <div className="mr-3 h-10 w-10 rounded-none bg-primary/10 flex items-center justify-center">
-                <Wrench className="h-5 w-5 text-primary" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+            <div className="bg-card p-6 shadow-md rounded-none">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="h-10 w-10 rounded-none bg-[#ff220c]/10 flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold">{t('secure_processing')}</h3>
+                <p className="text-sm text-muted-foreground">{t('secure_processing_description')}</p>
               </div>
-              <h3 className="text-xl font-semibold">{t('powerful_extraction')}</h3>
             </div>
-            <p className="text-muted-foreground">{t('powerful_extraction_description')}</p>
-          </div>
-          
-          <div className="bg-card p-6 shadow-md rounded-none">
-            <div className="mb-4 flex items-center">
-              <div className="mr-3 h-10 w-10 rounded-none bg-primary/10 flex items-center justify-center">
-                <Database className="h-5 w-5 text-primary" />
+            
+            <div className="bg-card p-6 shadow-md rounded-none">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="h-10 w-10 rounded-none bg-[#ff220c]/10 flex items-center justify-center">
+                  <Wrench className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold">{t('powerful_extraction')}</h3>
+                <p className="text-sm text-muted-foreground">{t('powerful_extraction_description')}</p>
               </div>
-              <h3 className="text-xl font-semibold">{t('organized_data')}</h3>
             </div>
-            <p className="text-muted-foreground">{t('organized_data_description')}</p>
-          </div>
-          
-          <div className="bg-card p-6 shadow-md rounded-none">
-            <div className="mb-4 flex items-center">
-              <div className="mr-3 h-10 w-10 rounded-none bg-primary/10 flex items-center justify-center">
-                <Bot className="h-5 w-5 text-primary" />
+            
+            <div className="bg-card p-6 shadow-md rounded-none">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="h-10 w-10 rounded-none bg-[#ff220c]/10 flex items-center justify-center">
+                  <Database className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold">{t('organized_data')}</h3>
+                <p className="text-sm text-muted-foreground">{t('organized_data_description')}</p>
               </div>
-              <h3 className="text-xl font-semibold">{t('ai_analysis')}</h3>
             </div>
-            <p className="text-muted-foreground">{t('ai_analysis_description')}</p>
+            
+            <div className="bg-card p-6 shadow-md rounded-none">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="h-10 w-10 rounded-none bg-[#ff220c]/10 flex items-center justify-center">
+                  <Bot className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold">{t('ai_analysis')}</h3>
+                <p className="text-sm text-muted-foreground">{t('ai_analysis_description')}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
       
       <HelpTooltip explanationKey="pdf_extraction_page_info" />
+      
+      <div className="mt-24 max-w-4xl mx-auto">
+        <h2 className="text-2xl font-bold mb-10 text-center">
+          {t('why_our_image_extraction_is_different')}
+        </h2>
+        <p className="text-sm text-muted-foreground max-w-2xl mx-auto text-center mb-10">
+          {t('beyond_traditional_ocr_description')}
+        </p>
+
+        <div className="space-y-6">
+          {[
+            {
+              icon: Wrench,
+              title: t('beyond_traditional_ocr_title'),
+              description: t('beyond_traditional_ocr_description'),
+            },
+            {
+              icon: Database,
+              title: t('structured_data_extraction_title'),
+              description: t('structured_data_extraction_description'),
+            },
+            {
+              icon: Bot,
+              title: t('transform_your_technical_documents'),
+              description: t('technical_documentation_description'),
+            }
+          ].map(({ icon: Icon, title, description }, index) => (
+            <div key={index} className="bg-gradient-to-r from-[#ff220c]/5 to-transparent p-6 rounded-none border-l-4 border-[#ff220c]/30">
+              <div className="flex items-center">
+                <div className="mr-4 h-10 w-10 rounded-none bg-[#ff220c]/10 flex items-center justify-center">
+                  <Icon className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">{title}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">{description}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-24 mb-12">
+          <h2 className="text-2xl font-bold mb-10 text-center">{t('perfect_for_professionals')}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                title: t('engineering_title'),
+                description: t('engineering_description'),
+                icon: Wrench,
+              },
+              {
+                title: t('medical_research_title'),
+                description: t('medical_research_description'),
+                icon: DollarSign,
+              },
+              {
+                title: t('technical_documentation_title'),
+                description: t('technical_documentation_description'),
+                icon: Upload,
+              }
+            ].map(({ title, description, icon: Icon }, index) => (
+              <div key={index} className="bg-gradient-to-r from-[#ff220c]/10 to-[#ff220c]/5 p-6 rounded-none shadow-sm hover:shadow-md transition-all duration-300 border border-border">
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="h-10 w-10 rounded-none bg-[#ff220c]/10 flex items-center justify-center">
+                    <Icon className="h-5 w-5 text-primary" />
+                  </div>
+                  <h4 className="text-lg font-semibold">{title}</h4>
+                  <p className="text-sm text-muted-foreground">{description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 } 

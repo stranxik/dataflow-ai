@@ -16,10 +16,10 @@ export function HelpTooltip({ explanationKey, className }: HelpTooltipProps) {
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              className="bg-primary hover:bg-primary/90 text-primary-foreground p-2 rounded-none shadow-lg"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground p-3 rounded-none shadow-lg"
               aria-label={t('help_tooltip')}
             >
-              <Bot className="h-6 w-6" />
+              <Bot className="h-8 w-8" />
             </button>
           </TooltipTrigger>
           <TooltipContent

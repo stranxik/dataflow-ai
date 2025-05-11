@@ -159,7 +159,20 @@
       "compared_to_standard": "par rapport aux fichiers JSON standards",
       "compression_level_prompt": "Choisissez un niveau de compression",
       "keep_originals_prompt": "Conserver les fichiers JSON originaux?"
-    }
+    },
+    "why_our_image_extraction_is_different": "Bien plus qu'un simple OCR : Une analyse technique intelligente",
+    "beyond_traditional_ocr_title": "Au-delà de l'OCR traditionnel",
+    "beyond_traditional_ocr_description": "Notre solution transforme les documents techniques en données structurées et exploitables, en allant bien au-delà de la simple reconnaissance de texte.",
+    "structured_data_extraction_title": "Extraction de données structurées",
+    "structured_data_extraction_description": "Chaque image technique est analysée avec une précision d'expert, générant des données JSON normalisées et immédiatement utilisables.",
+    "perfect_for_professionals": "Parfait pour les professionnels de tous secteurs",
+    "engineering_title": "Ingénierie",
+    "engineering_description": "Analyse détaillée des schémas techniques, diagrammes de systèmes et plans industriels.",
+    "medical_research_title": "Recherche Médicale",
+    "medical_research_description": "Extraction précise des données à partir de radiographies, scanners et documents cliniques.",
+    "technical_documentation_title": "Documentation Technique",
+    "technical_documentation_description": "Transformation rapide de documents complexes en données exploitables.",
+    "transform_your_technical_documents": "Transformez vos documents techniques en intelligence actionnable"
   },
   "en": {
     "app_description": "JSON Processor for Llamendex",
@@ -321,6 +334,19 @@
       "compared_to_standard": "compared to standard JSON files",
       "compression_level_prompt": "Choose a compression level",
       "keep_originals_prompt": "Keep original JSON files?"
-    }
+    },
+    "why_our_image_extraction_is_different": "More Than OCR: Intelligent Technical Analysis",
+    "beyond_traditional_ocr_title": "Beyond Traditional OCR",
+    "beyond_traditional_ocr_description": "Our solution transforms technical documents into structured, actionable data, going far beyond simple text recognition.",
+    "structured_data_extraction_title": "Structured Data Extraction",
+    "structured_data_extraction_description": "Each technical image is analyzed with expert precision, generating normalized, immediately usable JSON data.",
+    "perfect_for_professionals": "Perfect for Professionals Across Industries",
+    "engineering_title": "Engineering",
+    "engineering_description": "Detailed analysis of technical diagrams, system schematics, and industrial plans.",
+    "medical_research_title": "Medical Research",
+    "medical_research_description": "Precise data extraction from X-rays, scans, and clinical documents.",
+    "technical_documentation_title": "Technical Documentation",
+    "technical_documentation_description": "Rapid transformation of complex documents into actionable insights.",
+    "transform_your_technical_documents": "Transform Your Technical Documents into Actionable Intelligence"
   }
 } 

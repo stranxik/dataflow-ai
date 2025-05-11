@@ -185,8 +185,8 @@ const translations: Record<Language, Record<string, string>> = {
     
     // How it works section
     'how_it_works': 'Comment ça marche',
-    'secure_processing': 'Traitement sécurisé',
-    'secure_processing_description': 'Vos données sont traitées localement et ne sont jamais stockées sur des serveurs tiers',
+    'secure_processing': 'Protection des données',
+    'secure_processing_description': 'Confidentialité garantie : vos données sont traitées localement et ne sont jamais conservées sur nos serveurs.',
     'powerful_extraction': 'Extraction puissante',
     'powerful_extraction_description': 'Notre technologie avancée extrait le texte et les images avec une précision exceptionnelle',
     'organized_data': 'Données organisées',
@@ -197,7 +197,22 @@ const translations: Record<Language, Record<string, string>> = {
     // File upload errors
     'file_too_large': 'Fichier trop volumineux',
     'file_size_limit': 'La taille maximale de fichier autorisée est de {size} MB',
-    'our_vision': 'Notre vision'
+    'our_vision': 'Notre vision',
+    
+    // Nouvelles traductions pour l'extraction d'images
+    'why_our_image_extraction_is_different': 'Une analyse technique avancée',
+    'beyond_traditional_ocr_title': 'Au-delà de l\'OCR',
+    'beyond_traditional_ocr_description': 'Notre technologie transforme les documents techniques en données structurées, dépassant les limites de la simple reconnaissance de caractères.',
+    'structured_data_extraction_title': 'Données structurées',
+    'structured_data_extraction_description': 'Chaque image est analysée avec précision, générant des données JSON exploitables immédiatement.',
+    'perfect_for_professionals': 'Des applications dans tous les secteurs',
+    'engineering_title': 'Ingénierie',
+    'engineering_description': 'Analyse précise des schémas techniques et diagrammes industriels.',
+    'medical_research_title': 'Finance et Assurance',
+    'medical_research_description': 'Extraction automatisée des données depuis les rapports financiers et documents contractuels.',
+    'technical_documentation_title': 'Documentation Technique',
+    'technical_documentation_description': 'Transformation efficace de documents complexes en données exploitables.',
+    'transform_your_technical_documents': 'Valorisation des documents'
   },
   en: {
     // Navigation
@@ -363,8 +378,8 @@ const translations: Record<Language, Record<string, string>> = {
     
     // How it works section
     'how_it_works': 'How it works',
-    'secure_processing': 'Secure Processing',
-    'secure_processing_description': 'Your data is processed locally and never stored on third-party servers',
+    'secure_processing': 'Data Protection',
+    'secure_processing_description': 'Privacy guaranteed: your data is processed locally and never stored on our servers.',
     'powerful_extraction': 'Powerful Extraction',
     'powerful_extraction_description': 'Our advanced technology extracts text and images with exceptional accuracy',
     'organized_data': 'Organized Data',
@@ -375,7 +390,22 @@ const translations: Record<Language, Record<string, string>> = {
     // File upload errors
     'file_too_large': 'File too large',
     'file_size_limit': 'Maximum allowed file size is {size} MB',
-    'our_vision': 'Our vision'
+    'our_vision': 'Our vision',
+    
+    // Nouvelles traductions pour l'extraction d'images
+    'why_our_image_extraction_is_different': 'Advanced Technical Analysis',
+    'beyond_traditional_ocr_title': 'Beyond OCR',
+    'beyond_traditional_ocr_description': 'Our technology transforms technical documents into structured data, exceeding the limits of simple character recognition.',
+    'structured_data_extraction_title': 'Structured Data',
+    'structured_data_extraction_description': 'Each image is analyzed with precision, generating immediately usable JSON data.',
+    'perfect_for_professionals': 'Applications Across Industries',
+    'engineering_title': 'Engineering',
+    'engineering_description': 'Accurate analysis of technical diagrams and industrial schematics.',
+    'medical_research_title': 'Finance and Insurance',
+    'medical_research_description': 'Automated extraction of data from financial reports and contractual documents.',
+    'technical_documentation_title': 'Technical Documentation',
+    'technical_documentation_description': 'Efficient transformation of complex documents into actionable data.',
+    'transform_your_technical_documents': 'Document Enhancement'
   }
 };
 
