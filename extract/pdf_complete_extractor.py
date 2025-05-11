@@ -80,14 +80,14 @@ class PDFCompleteExtractor:
             ]
         }
     
-    def _get_surrounding_text(self, page, img_bbox, max_chars=500) -> str:
+    def _get_surrounding_text(self, page, img_bbox, max_chars=None) -> str:
         """
         Extrait le texte environnant une image dans un document PDF.
         
         Args:
             page: Page du document PDF
             img_bbox: Rectangle délimitant l'image
-            max_chars: Nombre maximum de caractères à extraire
+            max_chars: Nombre maximum de caractères à extraire (None = pas de limite)
             
         Returns:
             Texte extrait autour de l'image
@@ -117,19 +117,11 @@ class PDFCompleteExtractor:
             # Trier les blocs par distance
             blocks_with_distance.sort(key=lambda x: x[1])
             
-            # Prendre les blocs les plus proches jusqu'à atteindre max_chars
+            # Prendre les blocs les plus proches
             surrounding_text = ""
-            chars_count = 0
             for block, _ in blocks_with_distance:
                 text = block[4]
-                if chars_count + len(text) <= max_chars:
-                    surrounding_text += text + " "
-                    chars_count += len(text)
-                else:
-                    # Ajouter une partie du texte pour atteindre max_chars
-                    remaining = max_chars - chars_count
-                    surrounding_text += text[:remaining] + "..."
-                    break
+                surrounding_text += text + " "
             
             return surrounding_text.strip()
         except Exception as e:
@@ -404,7 +396,7 @@ class PDFCompleteExtractor:
                 for page in result['pages']:
                     f.write(f"## Page {page['page_number']}\n\n")
                     
-                    # Extraire le texte principal de la page
+                    # Extraire le texte principal de la page SANS LIMITATION
                     f.write(f"### Texte\n\n")
                     f.write(f"{page['text']}\n\n")
                     
@@ -420,8 +412,11 @@ class PDFCompleteExtractor:
                                 f.write(f"Fichier: {img['file_path']}\n")
                             f.write(f"Dimensions: {img['width']}x{img['height']}\n")
                             
+                            # Écrire le texte environnant SANS LIMITATION
                             if 'surrounding_text' in img and img['surrounding_text']:
-                                f.write(f"Contexte: {img['surrounding_text']}\n\n")
+                                surrounding_text = img['surrounding_text']
+                                console.print(f"[bold yellow]Longueur du texte environnant: {len(surrounding_text)} caractères[/bold yellow]")
+                                f.write(f"Contexte: {surrounding_text}\n\n")
                             
                             if 'description_ai' in img and img['description_ai']:
                                 f.write(f"Description: {img['description_ai']}\n\n")
