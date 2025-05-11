@@ -357,12 +357,17 @@ class PDFCompleteExtractor:
             with open(original_json_path, 'w', encoding='utf-8') as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)
             
+            # 5. Créer un rapport texte lisible par l'homme
+            report_path = os.path.join(output_dir, f"{result_id}_report.txt")
+            self._create_human_readable_report(unified_result, report_path)
+            
             console.print(f"\n[bold green]Extraction complète terminée[/bold green]")
             console.print(f"  • Pages extraites: [bold]{len(result['pages'])}[/bold]")
             console.print(f"  • Images détectées: [bold]{result['nb_images_detectees']}[/bold]")
             console.print(f"  • Images analysées: [bold]{result['nb_images_analysees']}[/bold]")
             console.print(f"  • Fichier JSON unifié: [bold]{unified_json_path}[/bold]")
             console.print(f"  • Fichier JSON détaillé: [bold]{original_json_path}[/bold]")
+            console.print(f"  • Rapport texte lisible: [bold]{report_path}[/bold]")
             
             return result
             
@@ -371,6 +376,66 @@ class PDFCompleteExtractor:
             import traceback
             console.print(traceback.format_exc())
             return result
+
+    def _create_human_readable_report(self, result: dict, output_path: str):
+        """
+        Crée un rapport lisible pour les humains à partir des résultats d'extraction.
+        
+        Args:
+            result: Résultat unifié de l'extraction
+            output_path: Chemin du fichier de sortie
+        """
+        try:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                # En-tête du rapport
+                f.write(f"# Rapport d'extraction complète du PDF\n\n")
+                f.write(f"Fichier: {result['meta']['filename']}\n")
+                f.write(f"Date d'extraction: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(result['meta']['timestamp']/1000))}\n")
+                f.write(f"Langue: {result['meta']['language']}\n")
+                f.write(f"Modèle utilisé: {result['meta']['model']}\n\n")
+                
+                # Statistiques globales
+                f.write(f"## Statistiques\n\n")
+                f.write(f"Pages: {result['stats']['pages_count']}\n")
+                f.write(f"Images détectées: {result['stats']['images_detected']}\n")
+                f.write(f"Images analysées: {result['stats']['images_analyzed']}\n\n")
+                
+                # Contenu de chaque page
+                for page in result['pages']:
+                    f.write(f"## Page {page['page_number']}\n\n")
+                    
+                    # Extraire le texte principal de la page
+                    f.write(f"### Texte\n\n")
+                    f.write(f"{page['text']}\n\n")
+                    
+                    # Extraire les descriptions d'images pour cette page
+                    image_elements = [elem for elem in page['elements'] if elem['type'] == 'image']
+                    
+                    if image_elements:
+                        f.write(f"### Images ({len(image_elements)})\n\n")
+                        
+                        for i, img in enumerate(image_elements):
+                            f.write(f"#### Image {i+1}\n\n")
+                            if 'file_path' in img and img['file_path']:
+                                f.write(f"Fichier: {img['file_path']}\n")
+                            f.write(f"Dimensions: {img['width']}x{img['height']}\n")
+                            
+                            if 'surrounding_text' in img and img['surrounding_text']:
+                                f.write(f"Contexte: {img['surrounding_text']}\n\n")
+                            
+                            if 'description_ai' in img and img['description_ai']:
+                                f.write(f"Description: {img['description_ai']}\n\n")
+                            
+                            f.write("---\n\n")
+                    
+                    f.write("\n")
+                
+                f.write("Fin du rapport\n")
+                
+            return output_path
+        except Exception as e:
+            console.print(f"[bold red]Erreur lors de la création du rapport: {str(e)}[/bold red]")
+            return None
 
 if __name__ == "__main__":
     import argparse

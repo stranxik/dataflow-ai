@@ -25,7 +25,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Navigation
     'home': 'Accueil',
     'json_processing': 'Traitement JSON',
-    'unified_processing_nav': 'Traitement Unifié',
+    'unified_processing_nav': 'Traitement unifié',
     'switch_to_light': 'Passer en mode clair',
     'switch_to_dark': 'Passer en mode sombre',
     
@@ -113,7 +113,7 @@ const translations: Record<Language, Record<string, string>> = {
     'json_tip_3': 'La détection automatique identifie les structures JIRA et Confluence',
     
     // Unified Processing
-    'unified_processing_title': 'Traitement Unifié',
+    'unified_processing_title': 'Traitement unifié',
     'jira_confluence': 'JIRA & Confluence',
     'jira_confluence_description': 'Fusionnez et enrichissez vos fichiers JIRA et Confluence automatiquement',
     'required': 'requis',
@@ -197,12 +197,13 @@ const translations: Record<Language, Record<string, string>> = {
     // File upload errors
     'file_too_large': 'Fichier trop volumineux',
     'file_size_limit': 'La taille maximale de fichier autorisée est de {size} MB',
+    'our_vision': 'Notre vision'
   },
   en: {
     // Navigation
     'home': 'Home',
     'json_processing': 'JSON Processing',
-    'unified_processing_nav': 'Unified Processing',
+    'unified_processing_nav': 'Unified processing',
     'switch_to_light': 'Switch to Light Mode',
     'switch_to_dark': 'Switch to Dark Mode',
     
@@ -290,7 +291,7 @@ const translations: Record<Language, Record<string, string>> = {
     'json_tip_3': 'Automatic detection identifies JIRA and Confluence structures',
     
     // Unified Processing
-    'unified_processing_title': 'Unified Processing',
+    'unified_processing_title': 'Unified processing',
     'jira_confluence': 'JIRA & Confluence',
     'jira_confluence_description': 'Merge and enrich your JIRA and Confluence files automatically',
     'required': 'required',
@@ -374,6 +375,7 @@ const translations: Record<Language, Record<string, string>> = {
     // File upload errors
     'file_too_large': 'File too large',
     'file_size_limit': 'Maximum allowed file size is {size} MB',
+    'our_vision': 'Our vision'
   }
 };
 

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Database, Cpu, Menu, X, Globe, Github } from 'lucide-react';
+import { Database, Cpu, Menu, X, Globe, Github, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/ThemeProvider';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -34,13 +34,17 @@ export default function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-4">
-            <Link to="/json-processing" className="flex items-center px-3 py-2 rounded-md hover:bg-accent text-foreground">
+            <Link to="/json-processing" className="flex items-center px-3 py-2 hover:bg-accent text-foreground">
               <Database className="mr-2 h-4 w-4" />
               <span>{t('json_processing')}</span>
             </Link>
-            <Link to="/llm-enrichment" className="flex items-center px-3 py-2 rounded-md hover:bg-accent text-foreground">
+            <Link to="/llm-enrichment" className="flex items-center px-3 py-2 hover:bg-accent text-foreground">
               <Cpu className="mr-2 h-4 w-4" />
               <span>{t('unified_processing_nav')}</span>
+            </Link>
+            <Link to="/vision" className="flex items-center px-3 py-2 hover:bg-accent text-foreground">
+              <Eye className="mr-2 h-4 w-4" />
+              <span>{t('our_vision')}</span>
             </Link>
             <Button 
               variant="outline" 
@@ -87,7 +91,7 @@ export default function Navbar() {
           <div className="md:hidden pt-4 pb-2 space-y-2">
             <Link 
               to="/json-processing" 
-              className="flex items-center px-3 py-2 rounded-md hover:bg-accent text-foreground w-full"
+              className="flex items-center px-3 py-2 hover:bg-accent text-foreground w-full"
               onClick={() => setIsMenuOpen(false)}
             >
               <Database className="mr-2 h-4 w-4" />
@@ -95,11 +99,19 @@ export default function Navbar() {
             </Link>
             <Link 
               to="/llm-enrichment" 
-              className="flex items-center px-3 py-2 rounded-md hover:bg-accent text-foreground w-full"
+              className="flex items-center px-3 py-2 hover:bg-accent text-foreground w-full"
               onClick={() => setIsMenuOpen(false)}
             >
               <Cpu className="mr-2 h-4 w-4" />
               <span>{t('unified_processing_nav')}</span>
+            </Link>
+            <Link 
+              to="/vision" 
+              className="flex items-center px-3 py-2 hover:bg-accent text-foreground w-full"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              <span>{t('our_vision')}</span>
             </Link>
             <Button 
               variant="outline" 
