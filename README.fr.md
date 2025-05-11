@@ -9,7 +9,7 @@
 
 DataFlow AI est une solution complète pour traiter, analyser et transformer des fichiers JSON et des documents PDF afin de les préparer pour les systèmes d'IA, le RAG (Retrieval Augmented Generation) et les bases de connaissances.
 
-![Vue d'ensemble de DataFlow AI](documentation/images/dataflow_overview.png)
+![Vue d'ensemble de DataFlow AI](documentation/images/fr/dataflow_overview.png)
 
 ## 🚀 Fonctionnalités principales
 
@@ -35,7 +35,7 @@ docker-compose up -d
 
 3. Utilisez l'interface intuitive par glisser-déposer pour traiter vos fichiers
 
-![Interface Web](documentation/images/homepage.png)
+![Interface Web](documentation/images/fr/homepage.png)
 
 ### Utilisation de la CLI interactive
 
@@ -67,7 +67,7 @@ python -m cli.cli extract-images complete fichier.pdf --max-images 10
 - **Rapports détaillés** : Génère automatiquement des résumés complets
 - **Sortie flexible** : Optimisée pour les systèmes RAG et les applications d'IA
 
-![Traitement JSON](documentation/images/json.png)
+![Traitement JSON](documentation/images/fr/json.png)
 
 ## ⚙️ Installation
 
@@ -121,7 +121,7 @@ npm install
 npm run dev
 ```
 
-> 📘 **Note** : Consultez le [guide d'installation complet](documentation/installation.md) pour des instructions détaillées.
+> 📘 **Note** : Consultez le [guide d'installation complet](documentation/installation.fr.md) pour des instructions détaillées.
 
 ## 📚 Documentation
 
@@ -134,7 +134,7 @@ Une documentation complète est disponible dans le dossier `/documentation` :
 - **[Traitement JSON](documentation/extract/)** : Fonctionnalités de traitement JSON
 - **[Sécurité](documentation/security/)** : Fonctionnalités de sécurité des données
 
-![Intégration JIRA et Confluence](documentation/images/jira_confluence.png)
+![Intégration JIRA et Confluence](documentation/images/fr/jira_confluence.png)
 
 ## 🔒 Sécurité
 

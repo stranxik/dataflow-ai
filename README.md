@@ -9,7 +9,7 @@
 
 DataFlow AI is a complete solution for processing, analyzing, and transforming JSON files and PDF documents to prepare them for AI systems, RAG (Retrieval Augmented Generation), and knowledge bases.
 
-![DataFlow AI Overview](documentation/images/dataflow_overview.png)
+![DataFlow AI Overview](documentation/images/en/dataflow_overview.png)
 
 ## 🚀 Key Features
 
@@ -35,7 +35,7 @@ docker-compose up -d
 
 3. Use the intuitive drag-and-drop interface to process your files
 
-![Web Interface](documentation/images/homepage.png)
+![Web Interface](documentation/images/en/homepage.png)
 
 ### Using the Interactive CLI
 
@@ -67,7 +67,7 @@ python -m cli.cli extract-images complete file.pdf --max-images 10
 - **Detailed Reports**: Automatically generates comprehensive summaries
 - **Flexible Output**: Optimized for RAG systems and AI applications
 
-![JSON Processing](documentation/images/json.png)
+![JSON Processing](documentation/images/en/json.png)
 
 ## ⚙️ Installation
 
@@ -121,7 +121,7 @@ npm install
 npm run dev
 ```
 
-> 📘 **Note**: See the [complete installation guide](documentation/installation.md) for detailed instructions.
+> 📘 **Note**: See the [complete installation guide](documentation/installation.en.md) for detailed instructions.
 
 ## 📚 Documentation
 
@@ -134,7 +134,7 @@ Comprehensive documentation is available in the `/documentation` folder:
 - **[JSON Processing](documentation/extract/)**: JSON handling features
 - **[Security](documentation/security/)**: Data security features
 
-![JIRA and Confluence Integration](documentation/images/jira_confluence.png)
+![JIRA and Confluence Integration](documentation/images/en/jira_confluence.png)
 
 ## 🔒 Security
 
