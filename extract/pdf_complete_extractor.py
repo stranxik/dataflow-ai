@@ -350,7 +350,7 @@ class PDFCompleteExtractor:
                 json.dump(result, f, ensure_ascii=False, indent=2)
             
             # 5. Créer un rapport texte lisible par l'homme
-            report_path = os.path.join(output_dir, f"{result_id}_report.txt")
+            report_path = os.path.join(output_dir, f"{result_id}_report.md")
             self._create_human_readable_report(unified_result, report_path)
             
             console.print(f"\n[bold green]Extraction complète terminée[/bold green]")
