@@ -49,6 +49,14 @@ python -m cli.cli interactive
 python -m cli.cli extract-images complete fichier.pdf --max-images 10
 ```
 
+La CLI interactive offre une expérience guidée avec :
+- Sélection de fichiers et dossiers via un navigateur interactif
+- Accompagnement étape par étape pour toutes les opérations
+- Résumés clairs avant chaque action
+- Notifications détaillées à la fin de chaque processus
+
+![Mode Interactif CLI](documentation/images/fr/cli_interactive.png)
+
 ## 📋 Référence rapide
 
 | Tâche | Interface Web | Commande CLI |
@@ -57,6 +65,20 @@ python -m cli.cli extract-images complete fichier.pdf --max-images 10
 | **Traiter un JSON** | Onglet Traitement JSON | `python -m cli.cli process fichier.json --llm` |
 | **Correspondance JIRA & Confluence** | Onglet Traitement unifié | `python -m cli.cli unified jira.json --confluence conf.json` |
 | **Nettoyer les données sensibles** | Onglet Traitement JSON | `python -m cli.cli clean fichier.json` |
+
+## 🧰 Outils disponibles
+
+| Outil | Description | Web | CLI |
+|------|-------------|-----|-----|
+| **Extraction PDF** | Extraire du texte et analyser des images à partir de fichiers PDF | ✅ | ✅ |
+| **Traitement JSON** | Traiter et structurer des données JSON | ✅ | ✅ |
+| **Correspondance JIRA/Confluence** | Faire correspondre et enrichir les données entre sources | ✅ | ✅ |
+| **Nettoyage de données** | Supprimer les informations sensibles | ✅ | ✅ |
+| **Découpage en morceaux** | Diviser les grands fichiers en parties gérables | ✅ | ✅ |
+| **Enrichissement LLM** | Améliorer les données avec l'analyse IA | ✅ | ✅ |
+| **Compression** | Optimiser la taille des fichiers | ✅ | ✅ |
+| **Traitement par lots** | Traiter plusieurs fichiers à la fois | ✅ | ✅ |
+| **Assistant interactif** | Flux de travail guidé | ❌ | ✅ |
 
 ## 🔍 Pourquoi DataFlow AI ?
 
@@ -160,4 +182,4 @@ docker-compose run cli interactive
 
 ## 📜 Licence
 
-Ce projet est distribué sous licence MIT. 
+Ce projet est distribué sous licence MIT.

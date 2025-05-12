@@ -49,6 +49,14 @@ python -m cli.cli interactive
 python -m cli.cli extract-images complete file.pdf --max-images 10
 ```
 
+The interactive CLI provides a guided experience with:
+- File and folder selection through an interactive browser
+- Step-by-step guidance for all operations
+- Clear summaries before each action
+- Detailed notifications at the end of each process
+
+![CLI Interactive Mode](documentation/images/en/cli_interactive.png)
+
 ## 📋 Quick Reference
 
 | Task | Web Interface | CLI Command |
@@ -57,6 +65,20 @@ python -m cli.cli extract-images complete file.pdf --max-images 10
 | **Process JSON** | JSON Processing tab | `python -m cli.cli process file.json --llm` |
 | **Match JIRA & Confluence** | Unified Processing tab | `python -m cli.cli unified jira.json --confluence conf.json` |
 | **Clean Sensitive Data** | JSON Processing tab | `python -m cli.cli clean file.json` |
+
+## 🧰 Available Tools
+
+| Tool | Description | Web | CLI |
+|------|-------------|-----|-----|
+| **PDF Extraction** | Extract text and analyze images from PDF files | ✅ | ✅ |
+| **JSON Processing** | Process and structure JSON data | ✅ | ✅ |
+| **JIRA/Confluence Matching** | Match and enrich data between sources | ✅ | ✅ |
+| **Data Cleaning** | Remove sensitive information | ✅ | ✅ |
+| **Chunking** | Split large files into manageable pieces | ✅ | ✅ |
+| **LLM Enrichment** | Enhance data with AI analysis | ✅ | ✅ |
+| **Compression** | Optimize file size | ✅ | ✅ |
+| **Batch Processing** | Process multiple files at once | ✅ | ✅ |
+| **Interactive Assistant** | Guided workflow | ❌ | ✅ |
 
 ## 🔍 Why DataFlow AI?
 
