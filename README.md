@@ -1,6 +1,6 @@
 # DataFlow AI – Intelligent Data Processing for AI and RAG Systems
 
-![Version](https://img.shields.io/badge/version-1.0-blue) ![Python](https://img.shields.io/badge/Python-3.12-green) ![License](https://img.shields.io/badge/license-MIT-orange)
+![Version](https://img.shields.io/badge/version-1.0-blue) ![Python](https://img.shields.io/badge/Python-3.12-green) [![License: Polyform-SBL](https://img.shields.io/badge/license-Polyform_SBL-blue.svg)](LICENSE)
 
 > 🌐 [Version française disponible ici](README.fr.md)
 > 📚 **Complete documentation available in the [`/documentation`](documentation/) folder**
@@ -182,4 +182,6 @@ docker-compose run cli interactive
 
 ## 📜 License
 
-This project is distributed under the MIT license.
+This project is distributed under the Polyform Small Business License 1.0.0.
+
+For full license details, see the [LICENSE](LICENSE) file.
