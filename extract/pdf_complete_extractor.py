@@ -37,9 +37,20 @@ class PDFCompleteExtractor:
             model: Modèle OpenAI à utiliser
             save_images: Si True, les images extraites sont sauvegardées en fichiers PNG
         """
+        # Essayer d'obtenir la clé API depuis les variables d'environnement si non fournie
+        self.openai_api_key = openai_api_key or os.environ.get("OPENAI_API_KEY")
+        
+        if not self.openai_api_key:
+            console.print("[bold yellow]⚠️ Attention: Aucune clé API OpenAI fournie ou trouvée dans les variables d'environnement.[/bold yellow]")
+            console.print("[yellow]Les images seront extraites mais pas analysées.[/yellow]")
+        else:
+            # Masquer la clé dans les logs pour des raisons de sécurité
+            visible_part = self.openai_api_key[:5] + "..." + self.openai_api_key[-4:] if self.openai_api_key else "None"
+            console.print(f"[green]✓[/green] Clé API OpenAI configurée: {visible_part}")
+        
         # Initialiser le descripteur d'images
         self.image_describer = PDFImageDescriber(
-            openai_api_key=openai_api_key,
+            openai_api_key=self.openai_api_key,
             max_images=max_images,
             timeout=timeout,
             language=language,
@@ -50,7 +61,14 @@ class PDFCompleteExtractor:
         self.max_images = max_images
         self.save_images = save_images
         self.language = language
-        self.openai_api_key = openai_api_key
+        
+        # Afficher les informations de configuration
+        console.print(f"[bold]Configuration d'extraction PDF:[/bold]")
+        console.print(f"  • Langue: [bold]{language}[/bold]")
+        console.print(f"  • Modèle: [bold]{self.image_describer.model}[/bold]")
+        console.print(f"  • Nombre max. d'images: [bold]{max_images}[/bold]")
+        console.print(f"  • Timeout API: [bold]{timeout}s[/bold]")
+        console.print(f"  • Sauvegarde des images: [bold]{'Oui' if save_images else 'Non'}[/bold]")
     
     def extract_text_from_page(self, page) -> Dict[str, Any]:
         """
@@ -151,6 +169,12 @@ class PDFCompleteExtractor:
         # Créer le répertoire de sortie s'il n'existe pas
         os.makedirs(output_dir, exist_ok=True)
         
+        # Log des informations pour le débogage
+        console.print(f"[bold]Configuration:[/bold]")
+        console.print(f"  • OpenAI API key présente: [{'green' if self.openai_api_key else 'red'}]{'Oui' if self.openai_api_key else 'Non'}[/{'green' if self.openai_api_key else 'red'}]")
+        console.print(f"  • Modèle OpenAI: [bold]{self.image_describer.model}[/bold]")
+        console.print(f"  • Nombre maximum d'images: [bold]{self.max_images}[/bold]")
+        
         # Initialiser le résultat
         result = {
             "meta": {
@@ -164,7 +188,12 @@ class PDFCompleteExtractor:
             "pages": [],
             "images": [],
             "nb_images_detectees": 0,
-            "nb_images_analysees": 0
+            "nb_images_analysees": 0,
+            "configuration": {
+                "openai_api_key_present": bool(self.openai_api_key),
+                "model": self.image_describer.model,
+                "max_images": self.max_images
+            }
         }
         
         try:
@@ -249,14 +278,33 @@ class PDFCompleteExtractor:
                         
                         # Obtenir la description de l'image via l'API
                         console.print(f"  [bold]Analyse de l'image {img_idx+1} (page {page_num+1})...[/bold]")
-                        description = self.image_describer._get_image_description(img_b64, surrounding_text)
                         
-                        if description:
-                            console.print(f"  [green]✓[/green] Description obtenue")
-                            result["nb_images_analysees"] += 1
+                        if not self.openai_api_key:
+                            console.print(f"  [yellow]⚠️ Pas de clé API OpenAI, l'image ne sera pas analysée[/yellow]")
+                            description = "Aucune analyse d'image (clé API non configurée)"
                         else:
-                            console.print(f"  [red]✗[/red] Échec de l'obtention de la description")
-                            description = "Erreur lors de la description de l'image"
+                            try:
+                                console.print(f"  [dim]Envoi à l'API OpenAI - Image {len(img_b64)//1000}K caractères, modèle {self.image_describer.model}[/dim]")
+                                description = self.image_describer._get_image_description(img_b64, surrounding_text)
+                                
+                                if description:
+                                    console.print(f"  [green]✓[/green] Description obtenue: {len(description)} caractères")
+                                    # Vérifier si la description contient un message d'erreur
+                                    if description.startswith("Erreur"):
+                                        console.print(f"  [yellow]⚠️ L'API a retourné une erreur: {description[:100]}...[/yellow]")
+                                    else:
+                                        result["nb_images_analysees"] += 1
+                                        console.print(f"  [green]✓[/green] Analyse réussie")
+                                else:
+                                    console.print(f"  [red]✗[/red] Échec de l'obtention de la description (réponse vide)")
+                                    description = "Erreur lors de la description de l'image: réponse vide"
+                            except Exception as e:
+                                console.print(f"  [red]✗[/red] Exception lors de l'appel à l'API: {str(e)}")
+                                # Enregistrer les détails de l'erreur pour débogage
+                                console.print(f"  [red]Détails: {type(e).__name__}[/red]")
+                                import traceback
+                                console.print(f"  [dim]{traceback.format_exc()}[/dim]")
+                                description = f"Erreur lors de l'analyse: {str(e)}"
                         
                         # Ajouter l'image au résultat
                         image_info = {

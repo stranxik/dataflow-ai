@@ -130,6 +130,20 @@ class PDFImageDescriber:
         Returns:
             Description de l'image ou None en cas d'erreur
         """
+        # Vérifier que la clé API est configurée
+        if not self.api_key:
+            console.print("[bold red]Erreur: Pas de clé API OpenAI configurée[/bold red]")
+            return None
+        
+        # Vérifier que l'image en base64 est valide
+        if not image_b64 or len(image_b64) < 100:  # Une image en base64 valide devrait être plus longue
+            console.print("[bold red]Erreur: Image en base64 invalide ou vide[/bold red]")
+            return None
+        
+        console.print(f"[dim]Préparation de la requête API pour une image de {len(image_b64)} caractères en base64[/dim]")
+        console.print(f"[dim]Modèle utilisé: {self.model}[/dim]")
+        console.print(f"[dim]Texte environnant: {len(surrounding_text)} caractères[/dim]")
+        
         # Ajuster le prompt selon la langue
         if self.language == "fr":
             system_prompt = """Tu es un expert technique multidomaine, spécialisé dans l'analyse visuelle approfondie de documents techniques complexes, travaillant pour une équipe d'ingénieurs. 
@@ -208,7 +222,7 @@ Langage technique, sans jargon inutile.
 - Représentation tabulaire implicite : tableaux visuels, alignements, colonnes ou grilles
 Tu travailles pour une équipe d'ingénieurs spécialisés. Ton analyse servira à une prise de décision technique, elle doit donc être fiable, concise et directement exploitable.
 Le JSON sera utilisé dans un système automatisé. Chaque champ doit être simple, stable, réutilisable sans retraitement. Pas de texte libre, sauf dans `insights`.
-Toutes les unités doivent être explicites, séparées, et homogènes. Ex : `"length": {"value": 5, "unit": "m"}`. Pas d'unités concaténées dans les valeurs.
+Toutes les unités doivent être explicites, séparées, et homogènes. Pour les unités, utilise un format comme: "length": {{"value": 5, "unit": "m"}}. Evite de concaténer les unités dans les valeurs.
 Si des entités métier spécifiques apparaissent (ex : références, numéros de pièces, identifiants uniques), les extraire sous forme normalisée.
 CONSIGNES COMPLÉMENTAIRES :
 
@@ -294,7 +308,7 @@ Technical language, no unnecessary jargon.
 - Implicit tabular representation: visual tables, alignments, columns or grids
 You are working for a team of specialized engineers. Your analysis will serve technical decision-making, so it must be reliable, concise, and directly usable.
 The JSON will be used in an automated system. Each field must be simple, stable, reusable without reprocessing. No free text, except in `insights`.
-All units must be explicit, separated, and homogeneous. Ex: `"length": {"value": 5, "unit": "m"}`. No concatenated units in values.
+All units must be explicit, separated, and homogeneous. For units, use a format like: "length": {{"value": 5, "unit": "m"}}. Avoid concatenating units in values.
 If specific business entities appear (e.g., references, part numbers, unique identifiers), extract them in a normalized form.
 ADDITIONAL GUIDELINES:
 
@@ -340,22 +354,83 @@ ADDITIONAL GUIDELINES:
         }
 
         try:
+            console.print(f"[dim]Envoi de la requête à l'API OpenAI ({self.api_url})...[/dim]")
+            
+            # Ajouter un log de la taille totale de la payload
+            payload_size = len(str(payload)) / 1024  # Taille approximative en KB
+            console.print(f"[dim]Taille de la payload: environ {payload_size:.2f} KB[/dim]")
+            
+            # Ajouter un log de vérification des premiers caractères de la clé API (masqués)
+            api_key_prefix = self.api_key[:4] + "..." if self.api_key else "None"
+            api_key_length = len(self.api_key) if self.api_key else 0
+            console.print(f"[dim]Utilisation de la clé API: {api_key_prefix} (longueur: {api_key_length})[/dim]")
+            
+            start_time = time.time()
             response = requests.post(
                 self.api_url,
                 headers=headers,
                 json=payload,
                 timeout=self.timeout
             )
+            end_time = time.time()
+            
+            duration = end_time - start_time
+            console.print(f"[dim]Requête API terminée en {duration:.2f} secondes[/dim]")
             
             if response.status_code == 200:
                 result = response.json()
                 description = result["choices"][0]["message"]["content"]
-                return description
+                console.print(f"[green]Succès: Description obtenue ({len(description)} caractères)[/green]")
+                
+                # Valider que la réponse est bien au format JSON
+                try:
+                    # Pour gérer les cas où il y aurait du texte avant ou après le JSON
+                    import json
+                    import re
+                    
+                    # Essayer d'extraire un JSON valide de la réponse
+                    json_match = re.search(r'(\{.*\})', description, re.DOTALL)
+                    if json_match:
+                        json_str = json_match.group(1)
+                        # Valider que c'est un JSON valide
+                        json_obj = json.loads(json_str)
+                        # Si valide, retourner seulement la partie JSON
+                        return json_str
+                    
+                    # Si aucun JSON n'a été trouvé ou n'est valide, retourner la réponse brute
+                    return description
+                except Exception as e:
+                    console.print(f"[yellow]Avertissement: La réponse n'est pas un JSON valide. Utilisation du texte brut.[/yellow]")
+                    console.print(f"[dim]Erreur de parsing JSON: {str(e)}[/dim]")
+                    # Retourner le texte brut plutôt qu'une erreur
+                    return f"Analyse textuelle (JSON invalide) : {description[:500]}..."
+                
             else:
-                self.logger.error(f"Erreur API OpenAI: {response.status_code} - {response.text}")
+                console.print(f"[bold red]Erreur API OpenAI: Code {response.status_code}[/bold red]")
+                console.print(f"[red]Détails: {response.text}[/red]")
+                
+                # Codes d'erreur spécifiques
+                if response.status_code == 401:
+                    console.print("[bold red]Authentification échouée: Vérifiez votre clé API OpenAI[/bold red]")
+                elif response.status_code == 429:
+                    console.print("[bold red]Rate limit dépassé: Attendez avant de réessayer[/bold red]")
+                elif response.status_code == 400:
+                    console.print("[bold red]Requête invalide: Vérifiez le format de l'image ou la taille des données[/bold red]")
+                
                 return None
+        except requests.exceptions.Timeout:
+            console.print(f"[bold red]Timeout: L'API n'a pas répondu dans les {self.timeout} secondes[/bold red]")
+            return None
+        except requests.exceptions.ConnectionError:
+            console.print("[bold red]Erreur de connexion: Impossible de se connecter à l'API OpenAI[/bold red]")
+            return None
+        except ValueError as e:
+            console.print(f"[bold red]Erreur de formatage: {str(e)}[/bold red]")
+            return f"Erreur de formatage: {str(e)}"
         except Exception as e:
-            self.logger.error(f"Erreur lors de l'appel à l'API OpenAI: {e}")
+            console.print(f"[bold red]Erreur lors de l'appel à l'API OpenAI: {e}[/bold red]")
+            import traceback
+            console.print(f"[red]{traceback.format_exc()}[/red]")
             return None
 
     def save_image_to_file(self, image_data, output_dir, filename):
