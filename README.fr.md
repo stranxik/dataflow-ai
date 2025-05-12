@@ -101,8 +101,8 @@ La façon la plus simple de démarrer avec l'API et l'interface web :
 
 ```bash
 # Cloner le dépôt
-git clone https://github.com/stranxik/json_parser.git
-cd json_parser
+git clone https://github.com/stranxik/dataflow-ai.git
+cd dataflow-ai
 
 # Créer les fichiers d'environnement
 cp .env.example .env
@@ -179,6 +179,15 @@ docker-compose up -d
 # Exécuter des commandes CLI dans Docker
 docker-compose run cli interactive
 ```
+
+## 🇫🇷 Soutenir le projet
+
+DataFlow-AI est un projet libre et ambitieux. Si vous l'utilisez et souhaitez soutenir son développement, vous pouvez faire un don via Ko-fi.  
+Cela nous aide à maintenir le projet, à ajouter de nouvelles fonctionnalités et à répondre à vos retours plus rapidement.
+
+[![Soutenir via Ko-fi](https://img.shields.io/badge/☕%20Soutenir%20via%20Ko--fi-orange?style=for-the-badge)](https://ko-fi.com/stranxik)
+
+Merci pour votre soutien, même symbolique 🙏
 
 ## 📜 Licence
 

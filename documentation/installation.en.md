@@ -34,8 +34,8 @@ Installation with Docker is the simplest method and ensures a consistent environ
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/stranxik/json_parser.git
-cd json_parser
+git clone https://github.com/stranxik/dataflow-ai.git
+cd dataflow-ai
 ```
 
 ### 2. Configure Environment Variables
@@ -89,8 +89,8 @@ Manual installation offers more control and is recommended for development envir
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/stranxik/json_parser.git
-cd json_parser
+git clone https://github.com/stranxik/dataflow-ai.git
+cd dataflow-ai
 ```
 
 ### 2. Configure Backend Environment
