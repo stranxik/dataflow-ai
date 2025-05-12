@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Loader2, Link as LinkIcon, FileJson, Bot } from 'lucide-react';
+import { useState } from 'react';
+import { Loader2, Link as LinkIcon, FileJson, Bot, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { unifiedProcess } from '@/api/apiService';
@@ -146,10 +146,20 @@ export default function LLMEnrichmentPage() {
                 <h3 className="text-sm font-medium mb-2">{t('jira_files')} ({t('required')})</h3>
                 <div
                   {...getJiraRootProps()}
-                  className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-primary/5"
+                  className="border-2 border-dashed rounded-none p-6 text-center cursor-pointer transition-colors hover:bg-[#ff220c]/5"
                 >
                   <input {...getJiraInputProps()} />
-                  <p className="text-sm">{t('drop_files')}</p>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="h-12 w-12 rounded-full bg-[#ff220c]/10 flex items-center justify-center">
+                      <Upload className="h-6 w-6 text-primary" />
+                    </div>
+                    <div className="font-medium">
+                      {t('drop_files')}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      JSON {t('files_only')}
+                    </div>
+                  </div>
                 </div>
                 
                 {jiraFiles.length > 0 && (
@@ -179,10 +189,20 @@ export default function LLMEnrichmentPage() {
                 <h3 className="text-sm font-medium mb-2">{t('confluence_files')} ({t('optional')})</h3>
                 <div
                   {...getConfluenceRootProps()}
-                  className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-primary/5"
+                  className="border-2 border-dashed rounded-none p-6 text-center cursor-pointer transition-colors hover:bg-[#ff220c]/5"
                 >
                   <input {...getConfluenceInputProps()} />
-                  <p className="text-sm">{t('drop_files')}</p>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="h-12 w-12 rounded-full bg-[#ff220c]/10 flex items-center justify-center">
+                      <Upload className="h-6 w-6 text-primary" />
+                    </div>
+                    <div className="font-medium">
+                      {t('drop_files')}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      JSON {t('files_only')}
+                    </div>
+                  </div>
                 </div>
                 
                 {confluenceFiles.length > 0 && (
@@ -226,11 +246,20 @@ export default function LLMEnrichmentPage() {
                   <div>
                     <div
                       {...getMappingRootProps()}
-                      className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-primary/5"
+                      className="border-2 border-dashed rounded-none p-6 text-center cursor-pointer transition-colors hover:bg-[#ff220c]/5"
                     >
                       <input {...getMappingInputProps()} />
-                      <FileJson className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm">{t('drop_files')}</p>
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="h-12 w-12 rounded-full bg-[#ff220c]/10 flex items-center justify-center">
+                          <FileJson className="h-6 w-6 text-primary" />
+                        </div>
+                        <div className="font-medium">
+                          {t('drop_files')}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          JSON {t('files_only')}
+                        </div>
+                      </div>
                     </div>
                     
                     {mappingFiles.length > 0 && (
@@ -284,21 +313,17 @@ export default function LLMEnrichmentPage() {
               
               <div className="flex justify-center pt-4">
                 <Button
+                  size="lg"
                   onClick={handleUnifiedProcessing}
                   disabled={jiraFiles.length === 0 || isProcessing}
-                  className="w-full"
+                  className="gap-2 min-w-[200px]"
                 >
                   {isProcessing ? (
-                    <React.Fragment>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {t('processing')}...
-                    </React.Fragment>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <React.Fragment>
-                      <Bot className="mr-2 h-4 w-4" />
-                      {t('start_unified_processing')}
-                    </React.Fragment>
+                    <Bot className="h-4 w-4" />
                   )}
+                  {isProcessing ? t('processing') : t('start_unified_processing')}
                 </Button>
               </div>
               

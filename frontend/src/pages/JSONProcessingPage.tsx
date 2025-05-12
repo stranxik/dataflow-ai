@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Database, Check, Loader2, Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -254,65 +254,70 @@ export default function JSONProcessingPage() {
         </TabsContent>
       </Tabs>
       
-      <div className={`mt-6 p-6 border-2 border-dashed rounded-lg ${isDragActive ? 'border-primary' : 'border-muted-foreground/25'}`} {...getRootProps()}>
+      <div
+        {...getRootProps()}
+        className={`border-2 border-dashed rounded-none p-10 text-center cursor-pointer transition-colors ${
+          isDragActive ? 'border-primary bg-[#ff220c]/5' : 'border-border'
+        } ${selectedFile ? 'bg-[#ff220c]/5' : ''}`}
+      >
         <input {...getInputProps()} />
-        <div className="text-center">
-          <Database className="mx-auto h-10 w-10 text-muted-foreground mb-4" />
-          <p className="text-sm text-muted-foreground mb-2">
-            {isDragActive ? t('drop_the_file_here') : t('drag_drop_json')}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t('or_click_to_select')}
-          </p>
-        </div>
+        
+        {selectedFile ? (
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-12 w-12 rounded-full bg-[#ff220c]/10 flex items-center justify-center">
+              <Database className="h-6 w-6 text-primary" />
+            </div>
+            <div className="font-medium">{selectedFile.name}</div>
+            <div className="text-sm text-muted-foreground">
+              {formatFileSize(selectedFile.size)}
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="mt-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedFile(null);
+              }}
+            >
+              {t('remove_file')}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-12 w-12 rounded-full bg-[#ff220c]/10 flex items-center justify-center">
+              <Database className="h-6 w-6 text-primary" />
+            </div>
+            <div className="font-medium">
+              {isDragActive ? t('drop_the_file_here') : t('drag_drop_json')}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              JSON {t('files_only')}
+            </div>
+          </div>
+        )}
       </div>
-      
-      {selectedFile && (
-        <div className="mt-4 p-4 border rounded-md">
-          <p className="text-sm font-medium">
-            {t('selected_file')}: <span className="text-primary">{selectedFile.name}</span> ({formatFileSize(selectedFile.size)})
-          </p>
-        </div>
-      )}
       
       <div className="mt-6 flex justify-center">
         <Button
+          size="lg"
           onClick={handleProcessJSON}
           disabled={!selectedFile || isProcessing}
-          className="min-w-[200px]"
+          className="gap-2 min-w-[200px]"
         >
           {isProcessing ? (
-            <React.Fragment>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t('processing')}...
-            </React.Fragment>
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <React.Fragment>
-              {processingMode === 'process' && (
-                <React.Fragment>
-                  <Bot className="mr-2 h-4 w-4" />
-                  {t('process_file')}
-                </React.Fragment>
-              )}
-              {processingMode === 'clean' && (
-                <React.Fragment>
-                  <Check className="mr-2 h-4 w-4" />
-                  {t('clean_file')}
-                </React.Fragment>
-              )}
-              {processingMode === 'compress' && (
-                <React.Fragment>
-                  <Database className="mr-2 h-4 w-4" />
-                  {t('compress_file')}
-                </React.Fragment>
-              )}
-              {processingMode === 'chunks' && (
-                <React.Fragment>
-                  <Scissors className="mr-2 h-4 w-4" />
-                  {t('split_file')}
-                </React.Fragment>
-              )}
-            </React.Fragment>
+            processingMode === 'process' ? <Bot className="h-4 w-4" /> :
+            processingMode === 'clean' ? <Check className="h-4 w-4" /> :
+            processingMode === 'compress' ? <Database className="h-4 w-4" /> :
+            <Scissors className="h-4 w-4" />
+          )}
+          {isProcessing ? t('processing') : (
+            processingMode === 'process' ? t('process_file') :
+            processingMode === 'clean' ? t('clean_file') :
+            processingMode === 'compress' ? t('compress_file') :
+            t('split_file')
           )}
         </Button>
       </div>

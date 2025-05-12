@@ -11,7 +11,7 @@ from pathlib import Path
 
 # Configuration
 API_URL = "http://localhost:8000/api/pdf/extract-images"
-API_KEY = "df_api_7fa9e520c31d465bade83e92fb54a7dc"
+API_KEY = os.getenv("API_KEY")
 DEFAULT_PDF = "files/1744005520250-10-11.pdf"  # Chemin par défaut du PDF à tester
 OUTPUT_DIR = "test_api_results"  # Répertoire où sauvegarder les résultats
 
