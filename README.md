@@ -118,8 +118,8 @@ For more control or development purposes:
 
 ```bash
 # Clone and access the repository
-git clone https://github.com/stranxik/json_parser.git
-cd json_parser
+git clone https://github.com/stranxik/dataflow-ai.git
+cd dataflow-ai
 
 # Create a virtual environment with Python 3.12
 python3.12 -m venv venv

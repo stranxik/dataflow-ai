@@ -118,8 +118,8 @@ Pour plus de contrôle ou à des fins de développement :
 
 ```bash
 # Cloner et accéder au dépôt
-git clone https://github.com/stranxik/json_parser.git
-cd json_parser
+git clone https://github.com/stranxik/dataflow-ai.git
+cd dataflow-ai
 
 # Créer un environnement virtuel avec Python 3.12
 python3.12 -m venv venv
