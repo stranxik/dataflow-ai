@@ -162,12 +162,12 @@ const translations: Record<Language, Record<string, string>> = {
     
     // Help tooltip
     'help_tooltip': 'Comment ça marche ?',
-    'pdf_extraction_explanation': 'Notre traitement PDF avancé :\n\n• Extrait le texte natif du PDF\n• Détecte et analyse les images intégrées avec GPT-4o\n• Génère un fichier JSON structuré\n• Inclut des descriptions détaillées des images\n• Préserve le contexte textuel autour des images',
+    'pdf_extraction_explanation': 'Notre traitement PDF avancé :\n\n• Extrait le texte natif du PDF\n• Détecte et analyse les images intégrées avec GPT-4.1\n• Génère un fichier JSON structuré\n• Inclut des descriptions détaillées des images\n• Préserve le contexte textuel autour des images',
     
     // Page-specific help texts
     'json_processing_page_info': 'Ce module traite intelligemment vos fichiers JSON en:\n\n• Détectant automatiquement la structure des données\n• Préservant l\'organisation originale pendant le traitement\n• Utilisant l\'enrichissement IA pour améliorer le contexte\n• Permettant le nettoyage des données sensibles\n• Optimisant les fichiers avec compression avancée\n• Divisant les gros fichiers en parties plus gérables',
     'llm_enrichment_page_info': 'Ce module unifie et enrichit vos données JIRA et Confluence en:\n\n• Établissant des correspondances entre tickets et pages\n• Enrichissant le contenu avec analyse IA\n• Extrayant automatiquement mots-clés et entités\n• Générant des résumés concis de chaque élément\n• Créant une structure unifiée pour RAG\n• Produisant un rapport détaillé des correspondances',
-    'pdf_extraction_page_info': 'Notre extracteur PDF avancé combine:\n\n• Extraction native du texte brut du PDF\n• Détection et extraction des images intégrées\n• Analyse AI des images avec GPT-4o\n• Conservation de la structure originale du texte\n• Génération d\'un JSON unifié texte + analyses d\'images\n• Préservation du contexte textuel autour des images',
+    'pdf_extraction_page_info': 'Notre extracteur PDF avancé combine:\n\n• Extraction native du texte brut du PDF\n• Détection et extraction des images intégrées\n• Analyse IA des images avec GPT-4.1\n• Conservation de la structure originale du texte\n• Génération d\'un JSON unifié texte + analyses d\'images\n• Préservation du contexte textuel autour des images',
     
     // PDF Results Modal
     'file_processed_successfully': 'Fichier traité avec succès',
@@ -192,7 +192,7 @@ const translations: Record<Language, Record<string, string>> = {
     'organized_data': 'Données organisées',
     'organized_data_description': 'Les résultats sont structurés pour faciliter l\'analyse et l\'intégration dans d\'autres systèmes',
     'ai_analysis': 'Analyse IA',
-    'ai_analysis_description': 'Les images sont analysées par GPT-4o pour en extraire le contexte et les informations pertinentes',
+    'ai_analysis_description': 'Les images sont analysées par GPT-4.1 pour en extraire le contexte et les informations pertinentes',
     
     // File upload errors
     'file_too_large': 'Fichier trop volumineux',
@@ -355,12 +355,12 @@ const translations: Record<Language, Record<string, string>> = {
     
     // Help tooltip
     'help_tooltip': 'How does it work?',
-    'pdf_extraction_explanation': 'Our advanced PDF processing:\n\n• Extracts native PDF text\n• Detects and analyzes embedded images with GPT-4o\n• Generates a structured JSON file\n• Includes detailed image descriptions\n• Preserves textual context around images',
+    'pdf_extraction_explanation': 'Our advanced PDF processing:\n\n• Extracts native PDF text\n• Detects and analyzes embedded images with GPT-4.1\n• Generates a structured JSON file\n• Includes detailed image descriptions\n• Preserves textual context around images',
     
     // Page-specific help texts
     'json_processing_page_info': 'This module intelligently processes your JSON files by:\n\n• Automatically detecting data structure\n• Preserving original organization during processing\n• Using AI enrichment to improve context\n• Enabling sensitive data cleaning\n• Optimizing files with advanced compression\n• Splitting large files into manageable parts',
     'llm_enrichment_page_info': 'This module unifies and enriches your JIRA and Confluence data by:\n\n• Establishing matches between tickets and pages\n• Enriching content with AI analysis\n• Automatically extracting keywords and entities\n• Generating concise summaries of each item\n• Creating a unified structure for RAG\n• Producing a detailed matching report',
-    'pdf_extraction_page_info': 'Our advanced PDF extractor combines:\n\n• Native extraction of raw PDF text\n• Detection and extraction of embedded images\n• AI analysis of images with GPT-4o\n• Preservation of original text structure\n• Generation of unified JSON with text + image analyses\n• Preservation of textual context around images',
+    'pdf_extraction_page_info': 'Our advanced PDF extractor combines:\n\n• Native extraction of raw PDF text\n• Detection and extraction of embedded images\n• AI analysis of images with GPT-4.1\n• Preservation of original text structure\n• Generation of unified JSON with text + image analyses\n• Preservation of textual context around images',
     
     // PDF Results Modal
     'file_processed_successfully': 'File processed successfully',
@@ -385,7 +385,7 @@ const translations: Record<Language, Record<string, string>> = {
     'organized_data': 'Organized Data',
     'organized_data_description': 'Results are structured for easy analysis and integration with other systems',
     'ai_analysis': 'AI Analysis',
-    'ai_analysis_description': 'Images are analyzed by GPT-4o to extract context and relevant information',
+    'ai_analysis_description': 'Images are analyzed by GPT-4.1 to extract context and relevant information',
     
     // File upload errors
     'file_too_large': 'File too large',

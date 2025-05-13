@@ -11,7 +11,7 @@ L'API DataFlow AI est une interface de programmation RESTful construite avec Fas
 - **Uvicorn** - Serveur ASGI performant pour exécuter l'application
 - **PyMuPDF (Fitz)** - Bibliothèque pour l'analyse de documents PDF
 - **Outlines** - Framework d'intégration LLM avec génération structurée
-- **GPT-4o** - Pour l'analyse avancée des images et du texte
+- **GPT-4.1** - Pour l'analyse avancée des images et du texte
 - **Docker** - Conteneurisation (optionnelle)
 
 ## Structure du projet

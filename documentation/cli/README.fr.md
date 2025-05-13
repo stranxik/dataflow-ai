@@ -180,4 +180,8 @@ Pour ajouter de nouveaux types de fichiers :
 
 ## 📜 Licence
 
-Ce projet est distribué sous licence MIT. 
+Ce projet est distribué sous la Polyform Small Business License 1.0.0.
+
+[![License: Polyform-SBL](https://img.shields.io/badge/license-Polyform_SBL-blue.svg)](LICENSE)
+
+Pour les détails complets de la licence, consultez le fichier [LICENSE](LICENSE).

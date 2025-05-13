@@ -39,7 +39,7 @@ frontend/
 
 ## Key Features
 
-- **PDF Processing** - Advanced text and image extraction with GPT-4o analysis
+- **PDF Processing** - Advanced text and image extraction with GPT-4.1 analysis
 - **JSON Processing** - Cleaning, compression, and chunking of JSON files
 - **Unified Processing** - JIRA and Confluence integration with automatic matching
 - **Responsive Design** - Interface works on all devices

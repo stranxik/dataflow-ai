@@ -13,7 +13,7 @@ DataFlow AI est une solution complète pour traiter, analyser et transformer des
 
 ## 🚀 Fonctionnalités principales
 
-- **Traitement intelligent de PDF** : Extraction de texte et analyse d'images avec GPT-4o
+- **Traitement intelligent de PDF** : Extraction de texte et analyse d'images avec GPT-4.1
 - **Traitement JSON** : Détection automatique de structure, nettoyage et optimisation
 - **Traitement unifié** : Mise en correspondance et enrichissement des fichiers JIRA et Confluence
 - **Accès flexible** : Utilisation via l'interface web ou la CLI

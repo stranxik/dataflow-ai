@@ -26,7 +26,7 @@ Cette approche ciblée évite de transformer toutes les pages en images, ce qui 
 
 - **Extraction native du texte** avec PyMuPDF (fitz)
 - **Détection et extraction ciblée des images** intégrées
-- **Analyse des images via modèles multimodaux** (OpenAI GPT-4o)
+- **Analyse des images via modèles multimodaux** (OpenAI GPT-4.1)
 - **Récupération du texte environnant** les images pour contextualisation
 - **JSON unifié** combinant texte et analyses d'images
 - **Reconstruction structurée** de chaque page avec ses éléments
@@ -47,7 +47,7 @@ L'approche d'extraction se déroule en plusieurs étapes précises:
 - Identification des coordonnées de l'image sur la page
 
 ### 3. Analyse IA des images uniquement
-- Analyse sémantique des images via l'API OpenAI (GPT-4o)
+- Analyse sémantique des images via l'API OpenAI (GPT-4.1)
 - Contextualisation avec le texte environnant extrait autour de chaque image
 - Description détaillée incluant le type d'image, son contenu et sa signification
 
@@ -138,7 +138,7 @@ results/nom_pdf_timestamp/
     "filename": "document.pdf",
     "timestamp": 1234567890123,
     "language": "fr",
-    "model": "gpt-4o"
+    "model": "gpt-4.1"
   },
   "pages": [
     {
@@ -175,14 +175,14 @@ results/nom_pdf_timestamp/
 
 ### Configuration du modèle Vision
 
-Par défaut, le système utilise le modèle défini dans la variable d'environnement `VISION_LLM_MODEL` (ou `gpt-4o` si non défini). Vous pouvez spécifier un modèle différent:
+Par défaut, le système utilise le modèle défini dans la variable d'environnement `VISION_LLM_MODEL` (ou `gpt-4.1` si non défini). Vous pouvez spécifier un modèle différent:
 
 ```bash
 # Dans .env
-VISION_LLM_MODEL=gpt-4o
+VISION_LLM_MODEL=gpt-4.1
 
 # Ou via CLI
-python -m cli.cli extract-images complete fichier.pdf --model gpt-4o
+python -m cli.cli extract-images complete fichier.pdf --model gpt-4.1
 ```
 
 ### Prompts personnalisés

@@ -189,7 +189,7 @@ OPENAI_API_KEY=votre_clé_api_openai
 ### 3. Modèles utilisés
 
 DataFlow AI utilise différents modèles selon les fonctionnalités:
-- `gpt-4o` pour l'analyse d'images dans les PDFs
+- `gpt-4.1` pour l'analyse d'images dans les PDFs
 - `gpt-4-turbo` pour l'enrichissement des données JSON
 - `gpt-3.5-turbo` comme fallback pour certaines tâches moins complexes
 
@@ -215,53 +215,20 @@ VITE_DEFAULT_IMAGES_ANALYSIS=10
 
 ## Vérification de l'installation
 
-Pour vérifier que tous les composants fonctionnent correctement:
+Pour vérifier que l'installation est correcte, suivez ces étapes:
 
-### 1. Tester l'API
-
-```bash
-curl http://localhost:8000/api/pdf/test -H "X-API-Key: votre_clé_api_sécurisée"
-```
-
-Vous devriez recevoir une réponse JSON indiquant que l'API fonctionne.
-
-### 2. Vérifier l'intégration d'Outlines
-
-```bash
-python -m tests.test_outlines_integration
-```
-
-### 3. Tester la CLI
-
-```bash
-python -m cli.cli test
-```
+1. Ouvrez votre navigateur et accédez à l'URL http://localhost:80
+2. Vérifiez que l'interface frontend est correctement chargée
+3. Testez les fonctionnalités de DataFlow AI
 
 ## Résolution des problèmes courants
 
-### L'API ne démarre pas
+Si vous rencontrez des problèmes lors de l'installation ou de la configuration de DataFlow AI, voici quelques étapes pour les résoudre:
 
-- Vérifiez que le port 8000 n'est pas déjà utilisé
-- Vérifiez que toutes les dépendances sont installées
-- Consultez les logs: `docker-compose logs api`
+1. **Vérifier les logs**: Consultez les logs de Docker et les fichiers journaux pour identifier les éventuels problèmes.
+2. **Vérifier les permissions**: Assurez-vous que les utilisateurs ont les permissions nécessaires pour accéder aux fichiers et aux services.
+3. **Vérifier les configurations**: Assurez-vous que toutes les configurations sont correctes et que les variables d'environnement sont bien définies.
+4. **Vérifier les dépendances**: Assurez-vous que toutes les dépendances sont installées et que les versions sont compatibles.
+5. **Vérifier les erreurs**: Si des erreurs apparaissent, consultez les messages d'erreur pour obtenir des indications sur la cause du problème.
 
-### Erreurs d'authentification
-
-- Vérifiez que la même clé API est configurée dans `.env` et `frontend/.env`
-- Assurez-vous que les requêtes incluent bien l'en-tête `X-API-Key`
-
-### Problèmes avec Outlines
-
-- Vérifiez que vous utilisez Python 3.12 spécifiquement
-- Si l'installation échoue, essayez: `pip install outlines==0.2.3`
-
-### Erreurs de traitement des fichiers PDF
-
-- Assurez-vous que la clé API OpenAI est valide
-- Vérifiez que le fichier PDF n'est pas corrompu ou protégé
-
-### Problèmes Docker
-
-- Essayez de reconstruire les images: `docker-compose build --no-cache`
-- Vérifiez l'espace disque disponible
-- Consultez les logs: `docker-compose logs` 
+Si vous rencontrez des problèmes persistants, n'hésitez pas à consulter la documentation officielle ou à contacter le support technique.

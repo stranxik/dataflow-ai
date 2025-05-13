@@ -198,7 +198,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
           {t('pdf_analysis')}
           <div className="relative inline-block ml-2 translate-y-[-22px]">
             <span className="inline-flex items-center px-3 py-1 text-xs font-medium bg-white text-primary dark:bg-background border border-primary rounded-full hover:animate-[wiggle_0.5s_ease-in-out_infinite] cursor-pointer transition-all hover:shadow-lg shadow-md transform rotate-2 duration-300">
-              GPT-4o
+              GPT-4.1
             </span>
           </div>
         </h1>

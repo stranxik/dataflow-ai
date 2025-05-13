@@ -189,7 +189,7 @@ OPENAI_API_KEY=your_openai_api_key
 ### 3. Models Used
 
 DataFlow AI uses different models depending on the features:
-- `gpt-4o` for image analysis in PDFs
+- `gpt-4.1` for image analysis in PDFs
 - `gpt-4-turbo` for JSON data enrichment
 - `gpt-3.5-turbo` as a fallback for some less complex tasks
 

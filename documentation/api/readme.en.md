@@ -11,7 +11,7 @@ The DataFlow AI API is a RESTful programming interface built with FastAPI. It pr
 - **Uvicorn** - High-performance ASGI server for running the application
 - **PyMuPDF (Fitz)** - Library for PDF document analysis
 - **Outlines** - LLM integration framework with structured generation
-- **GPT-4o** - For advanced image and text analysis
+- **GPT-4.1** - For advanced image and text analysis
 - **Docker** - Containerization (optional)
 
 ## Project Structure

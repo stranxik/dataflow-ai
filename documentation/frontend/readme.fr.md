@@ -39,7 +39,7 @@ frontend/
 
 ## Fonctionnalités principales
 
-- **Traitement de PDF** - Extraction avancée de texte et d'images avec analyse GPT-4o
+- **Traitement de PDF** - Extraction avancée de texte et d'images avec analyse GPT-4.1
 - **Traitement JSON** - Nettoyage, compression et découpage de fichiers JSON
 - **Traitement Unifié** - Intégration JIRA et Confluence avec correspondance automatique
 - **Design adaptable** - Interface responsive fonctionnant sur tous les appareils

@@ -165,7 +165,8 @@ Compétences spécifiques :
 - Extraction normalisée d'entités métier
 - Génération de JSON structuré pour systèmes automatisés
 - Interprétation visuelle détaillée des images photographiques et médicales
-- Extraction des caractéristiques visuelles critiques et des informations contextuelles"""
+- Extraction des caractéristiques visuelles critiques et des informations contextuelles
+- Détection d'erreurs ou anomalies dans les documents techniques"""
 
             user_prompt = f"""Contexte : texte autour de l'image :
 "{surrounding_text}"
@@ -202,26 +203,33 @@ INSTRUCTIONS PRINCIPALES :
    - Écarts aux pratiques habituelles
    - Conformité technique
 
-6. Rendu JSON IMPÉRATIF
+6. IMPORTANT - Détection d'erreurs
+   - Identifie TOUTE erreur ou anomalie dans le document (syntaxe, structure, cohérence)
+   - Pour du code ou JSON, signale les erreurs de syntax mais décris quand même EXACTEMENT ce que tu vois
+   - N'essaie PAS de corriger l'erreur dans la description principale - signale-la dans le champ "errors"
+
+7. Rendu JSON IMPÉRATIF
    Structure :
    - `type`: Type précis
    - `domain`: Domaine technique
    - `complexity`: Niveau
-   - `data`: Données techniques
+   - `data`: Données techniques exactes telles que visibles dans l'image
    - `metadata`: Informations complémentaires
    - `insights`: Observations techniques
+   - `errors`: Liste des erreurs ou anomalies détectées (vide si aucune)
 
 CONSIGNES FINALES :
 - JSON PARFAIT et EXPLOITABLE
 - Aucun texte superflu
 - RÉPONSE UNIQUEMENT au format JSON
+- Représentation FIDÈLE de ce que tu vois, même s'il y a des erreurs dans le document original
 
 Langage technique, sans jargon inutile.
 
 - Hiérarchie visuelle et structure logique : sections, blocs, regroupements
 - Représentation tabulaire implicite : tableaux visuels, alignements, colonnes ou grilles
 Tu travailles pour une équipe d'ingénieurs spécialisés. Ton analyse servira à une prise de décision technique, elle doit donc être fiable, concise et directement exploitable.
-Le JSON sera utilisé dans un système automatisé. Chaque champ doit être simple, stable, réutilisable sans retraitement. Pas de texte libre, sauf dans `insights`.
+Le JSON sera utilisé dans un système automatisé. Chaque champ doit être simple, stable, réutilisable sans retraitement. Pas de texte libre, sauf dans `insights` et `errors`.
 Toutes les unités doivent être explicites, séparées, et homogènes. Pour les unités, utilise un format comme: "length": {{"value": 5, "unit": "m"}}. Evite de concaténer les unités dans les valeurs.
 Si des entités métier spécifiques apparaissent (ex : références, numéros de pièces, identifiants uniques), les extraire sous forme normalisée.
 CONSIGNES COMPLÉMENTAIRES :
@@ -230,7 +238,8 @@ CONSIGNES COMPLÉMENTAIRES :
 - Chaque valeur doit être normalisée. Les unités doivent être explicites, séparées des valeurs.
 - Extraire toute hiérarchie visuelle ou logique détectée (titres, regroupements, légendes, tableaux).
 - Si des entités métier spécifiques apparaissent (codes, composants, références), les inclure dans `data` ou `metadata`.
-- AUCUN COMMENTAIRE HORS JSON."""
+- AUCUN COMMENTAIRE HORS JSON.
+- NE CORRIGE PAS les erreurs que tu pourrais voir dans les documents techniques - décris-les exactement comme tu les vois dans le champ `data` et signale-les dans le champ `errors`."""
         else:  # English version
             system_prompt = """You are a multi-domain technical expert specialized in in-depth visual analysis of complex technical documents, working for a team of specialized engineers.
 
@@ -251,7 +260,8 @@ Specific competencies:
 - Normalized extraction of business entities
 - Generation of structured JSON for automated systems
 - Detailed visual interpretation of photographic and medical images
-- Extraction of critical visual features and contextual information"""
+- Extraction of critical visual features and contextual information
+- Detection of errors or anomalies in technical documents"""
 
             user_prompt = f"""Context: text surrounding the image:
 "{surrounding_text}"
@@ -288,26 +298,33 @@ KEY INSTRUCTIONS:
    - Deviations from common practices
    - Technical compliance
 
-6. MANDATORY JSON Rendering
+6. IMPORTANT - Error Detection
+   - Identify ANY errors or anomalies in the document (syntax, structure, consistency)
+   - For code or JSON, report syntax errors but EXACTLY describe what you see
+   - DO NOT try to fix the error in the main description - report it in the "errors" field
+
+7. MANDATORY JSON Rendering
    Structure:
    - `type`: Precise type
    - `domain`: Technical domain
    - `complexity`: Level
-   - `data`: Technical data
+   - `data`: Exact technical data as visible in the image
    - `metadata`: Additional information
    - `insights`: Technical observations
+   - `errors`: List of detected errors or anomalies (empty if none)
 
 FINAL GUIDELINES:
 - PERFECT and USABLE JSON
 - No superfluous text
 - RESPONSE IN JSON FORMAT ONLY
+- FAITHFUL representation of what you see, even if there are errors in the original document
 
 Technical language, no unnecessary jargon.
 
 - Visual hierarchy and logical structure: sections, blocks, groupings
 - Implicit tabular representation: visual tables, alignments, columns or grids
 You are working for a team of specialized engineers. Your analysis will serve technical decision-making, so it must be reliable, concise, and directly usable.
-The JSON will be used in an automated system. Each field must be simple, stable, reusable without reprocessing. No free text, except in `insights`.
+The JSON will be used in an automated system. Each field must be simple, stable, reusable without reprocessing. No free text, except in `insights` and `errors`.
 All units must be explicit, separated, and homogeneous. For units, use a format like: "length": {{"value": 5, "unit": "m"}}. Avoid concatenating units in values.
 If specific business entities appear (e.g., references, part numbers, unique identifiers), extract them in a normalized form.
 ADDITIONAL GUIDELINES:
@@ -316,7 +333,8 @@ ADDITIONAL GUIDELINES:
 - Each value must be normalized. Units must be explicit, separated from values.
 - Extract any visual or logical hierarchy detected (titles, groupings, legends, tables).
 - If specific business entities appear (codes, components, references), include them in `data` or `metadata`.
-- NO COMMENTS OUTSIDE JSON."""
+- NO COMMENTS OUTSIDE JSON.
+- DO NOT CORRECT errors you might see in technical documents - describe them exactly as you see them in the `data` field and report them in the `errors` field."""
 
         # Préparer les messages pour l'API
         messages = [

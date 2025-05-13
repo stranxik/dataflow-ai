@@ -1,19 +1,54 @@
-Polyform Small Business License 1.0.0
+# Polyform Small Business License 1.0.0
 
 Copyright (c) 2025 Thibault Souris
 
-Permission is hereby granted, free of charge, to any individual or legal entity, excluding those described in the "Excluded Use" section, to use, copy, modify, and distribute this software and its documentation (the “Software”), subject to the following conditions:
+---
 
-### Use Limitation
-You may not use the Software if you are an organization with more than 100 total users OR with more than €1,000,000 in annual revenue OR if the Software is used as part of a revenue-generating product or service without express permission.
+## Permission
+This license grants, free of charge, to any individual or legal entity (the "User"), except for those specified in the "Excluded Use" section, the right to use, copy, modify, and distribute the software and its documentation (the "Software"), subject to the following conditions:
 
-### Excluded Use
-The Software may not be used by any company that:
-- Provides a competing SaaS product or service.
-- Has more than €1,000,000 in annual revenue.
-- Is backed by venture capital funding, private equity, or corporate parent.
+---
 
-For a commercial license, contact: contact@blaike.cc
+## Usage Conditions
+1. **Usage Limitation**  
+   The Software may not be used by the User if:
+   - The organization has more than 100 total users, or
+   - The organization generates more than €1,000,000 in annual revenue, or
+   - The Software is used as part of a revenue-generating product or service, without obtaining prior express permission.
 
-### Disclaimer
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND...
+2. **Commercial License**  
+   If the User wishes to use the Software in a commercial context (such as a revenue-generating company), a specific commercial license must be obtained. For more details or to negotiate a commercial license, please contact: contact@blaike.cc.
+
+---
+
+## Excluded Use
+The Software may not be used by any company or organization that:
+- Provides a competing product or service to the Software, or
+- Generates more than €1,000,000 in annual revenue, or
+- Is funded by venture capital (VC), private equity (PE), or is owned by a corporate parent with external funding or investments.
+
+---
+
+## Commercial Use
+If the Software is to be used for commercial purposes, the User must acquire a commercial license. For this, the User can contact Blaike at the following email: contact@blaike.cc. The conditions for the commercial license will be specified in a separate, negotiated contract.
+
+---
+
+## Disclaimer
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR ERROR-FREE OPERATION. THE USER USES THE SOFTWARE AT THEIR OWN RISK AND IS SOLELY RESPONSIBLE FOR ANY DIRECT, INDIRECT, OR INCIDENTAL DAMAGES ARISING FROM THE USE OF THE SOFTWARE.
+
+---
+
+## Contributions
+If the User contributes to the Software (e.g., by providing bug fixes, additions, or enhancements), they agree that such contributions will be subject to the same license and will become the property of the copyright holder (Thibault Souris), unless otherwise specified. Contributions may be included in future versions of the Software.
+
+---
+
+## License Revisions
+The Software's publisher (Thibault Souris) reserves the right to revise or modify this license at any time. Any modified version will be published as an update to this license and will take effect from the date of publication.
+
+---
+
+## Other Conditions
+- **Intellectual Property**: The Software and its documentation are protected by copyright. No other form of intellectual property rights is granted by this license, except for the rights expressly granted herein.
+- **Unauthorized Use**: Any unauthorized use of the Software, in violation of the terms of this license, will result in the immediate termination of the rights granted by this license.

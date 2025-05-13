@@ -26,7 +26,7 @@ This targeted approach avoids transforming all pages into images, preserving the
 
 - **Native text extraction** with PyMuPDF (fitz)
 - **Targeted detection and extraction of embedded images**
-- **Image analysis via multimodal models** (OpenAI GPT-4o)
+- **Image analysis via multimodal models** (OpenAI GPT-4.1)
 - **Retrieval of surrounding text** for image contextualization
 - **Unified JSON** combining text and image analyses
 - **Structured reconstruction** of each page with its elements
@@ -47,7 +47,7 @@ The extraction approach takes place in several precise steps:
 - Identification of image coordinates on the page
 
 ### 3. AI Analysis of Images Only
-- Semantic analysis of images via OpenAI API (GPT-4o)
+- Semantic analysis of images via OpenAI API (GPT-4.1)
 - Contextualization with surrounding text extracted around each image
 - Detailed description including image type, content, and significance
 
@@ -138,7 +138,7 @@ results/pdf_name_timestamp/
     "filename": "document.pdf",
     "timestamp": 1234567890123,
     "language": "en",
-    "model": "gpt-4o"
+    "model": "gpt-4.1"
   },
   "pages": [
     {
@@ -175,14 +175,14 @@ results/pdf_name_timestamp/
 
 ### Vision Model Configuration
 
-By default, the system uses the model defined in the `VISION_LLM_MODEL` environment variable (or `gpt-4o` if not defined). You can specify a different model:
+By default, the system uses the model defined in the `VISION_LLM_MODEL` environment variable (or `gpt-4.1` if not defined). You can specify a different model:
 
 ```bash
 # In .env
-VISION_LLM_MODEL=gpt-4o
+VISION_LLM_MODEL=gpt-4.1
 
 # Or via CLI
-python -m cli.cli extract-images complete file.pdf --model gpt-4o
+python -m cli.cli extract-images complete file.pdf --model gpt-4.1
 ```
 
 ### Custom Prompts
