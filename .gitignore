@@ -90,7 +90,7 @@ Thumbs.db
 tests/test_data/test_data.json
 **/*test_data*.json
 /tests/
-
+/tests/test_clean_sensitive_data.py
 
 # Fichiers spécifiques contenant des données sensibles
 files/CARTAN_jira.json

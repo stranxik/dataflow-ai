@@ -6,21 +6,47 @@ import os
 import uuid
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+import sys
+import json
+import logging
+import aiofiles
+import asyncio
+import io
 
 from fastapi import APIRouter, File, UploadFile, BackgroundTasks, HTTPException, Form, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
 from api.services.subprocess_service import run_cli_command
 from api.services.temp_file_service import create_temp_file, cleanup_files
+
+# Configure logger
+logger = logging.getLogger("json_routes")
+
+# Function to clean up temporary files
+async def cleanup_temp_files(directory: Path):
+    """
+    Clean up temporary files and directories after processing
+    
+    Args:
+        directory: Directory to clean up
+    """
+    if directory.exists():
+        try:
+            # Use shutil to remove the directory and all its contents
+            import shutil
+            shutil.rmtree(directory)
+            logger.info(f"Cleaned up temporary directory: {directory}")
+        except Exception as e:
+            logger.error(f"Error cleaning up temporary directory {directory}: {e}")
 
 router = APIRouter()
 
 @router.post("/process", summary="Process a JSON file")
 async def process_json(
     file: UploadFile = File(...),
-    llm_enrichment: bool = Form(False, description="Enable LLM enrichment"),
-    preserve_source: bool = Form(False, description="Preserve source structure"),
+    llm_enrichment: bool = Form(True, description="Enable LLM enrichment"),
+    preserve_source: bool = Form(True, description="Preserve source structure"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     """
@@ -33,55 +59,101 @@ async def process_json(
     if not file.filename.lower().endswith('.json'):
         raise HTTPException(status_code=400, detail="File must be a JSON document")
     
+    logger.info(f"Démarrage du traitement JSON: {file.filename}")
+    logger.info(f"Paramètres: llm_enrichment={llm_enrichment}, preserve_source={preserve_source}")
+    
     # Create a unique ID for this job
     job_id = str(uuid.uuid4())
     
     # Create temp directory for this job
     temp_dir = Path(f"/tmp/dataflow_temp/{job_id}")
     temp_dir.mkdir(parents=True, exist_ok=True)
-    output_dir = temp_dir / "output"
-    output_dir.mkdir(exist_ok=True)
     
-    # Save uploaded file
-    input_file_path = temp_dir / f"input.json"
-    with open(input_file_path, "wb") as f:
-        f.write(await file.read())
+    # Save uploaded file to temp directory
+    input_path = temp_dir / file.filename
+    output_path = temp_dir / f"{Path(file.filename).stem}_processed.json"
     
-    # Output file path
-    output_file_path = output_dir / f"processed_{file.filename}"
-    
+    async with aiofiles.open(input_path, 'wb') as f:
+        content = await file.read()
+        await f.write(content)
+
     try:
-        # Prepare command
-        cmd = ["python", "-m", "cli.cli", "process", str(input_file_path), 
-               "--output", str(output_file_path)]
+        # Call CLI script through subprocess (better isolation)
+        # Note: Pour json-process, input_path est un argument positionnel, pas une option
+        cmd = [
+            "python", "-m", "cli.cli",
+            "json-process",
+            str(input_path),       # Input comme argument positionnel
+            "--output", str(output_path)
+        ]
         
-        # Add options based on form parameters
+        # Add parameters with explicit values
         if llm_enrichment:
-            cmd.append("--llm")
+            cmd.append("--llm-enrichment")
+            logger.info("Enrichissement LLM activé pour le traitement")
+        else:
+            cmd.append("--no-llm-enrichment")
+            logger.info("Enrichissement LLM désactivé pour le traitement")
         
         if preserve_source:
             cmd.append("--preserve-source")
+            logger.info("Préservation de la structure source activée")
+        else:
+            cmd.append("--no-preserve-source")
+            logger.info("Préservation de la structure source désactivée")
         
-        # Run the CLI command
-        result = await run_cli_command(cmd)
+        logger.info(f"Exécution de la commande: {' '.join(cmd)}")
         
-        # Verify output file exists
-        if not output_file_path.exists():
-            raise HTTPException(status_code=500, detail="Processing completed but no output file was generated")
+        # Execute the command
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
         
-        # Return the file to the client
-        return FileResponse(
-            path=output_file_path,
-            filename=f"processed_{file.filename}",
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            logger.error(f"Erreur lors du traitement JSON: {stderr.decode()}")
+            raise HTTPException(status_code=500, detail=f"Error processing JSON: {stderr.decode()}")
+        
+        logger.info(f"Traitement JSON terminé avec succès: {stdout.decode()}")
+        
+        # Check if output file exists
+        if not output_path.exists():
+            raise HTTPException(status_code=500, detail="Output file was not generated")
+        
+        # Read the output file
+        async with aiofiles.open(output_path, 'rb') as f:
+            result = await f.read()
+        
+        # Schedule cleanup of temp files
+        background_tasks.add_task(cleanup_temp_files, temp_dir)
+        
+        logger.info(f"Fichier JSON traité disponible: {output_path} (taille: {len(result)} octets)")
+        
+        return StreamingResponse(
+            io.BytesIO(result),
             media_type="application/json",
-            # Clean up after sending
-            background=BackgroundTask(lambda: cleanup_files([temp_dir]))
+            headers={
+                "Content-Disposition": f"attachment; filename={Path(file.filename).stem}_processed.json"
+            }
         )
         
     except Exception as e:
-        # Clean up in case of error
-        cleanup_files([temp_dir])
-        raise HTTPException(status_code=500, detail=f"Error processing JSON: {str(e)}")
+        logger.error(f"Exception during JSON processing: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        # Schedule cleanup of temp files even on error
+        background_tasks.add_task(cleanup_temp_files, temp_dir)
+        
+        # For debugging, check if stderr was populated
+        error_msg = str(e)
+        if hasattr(e, 'stderr') and e.stderr:
+            error_msg += f"\nDetails: {e.stderr.decode()}"
+            
+        raise HTTPException(status_code=500, detail=f"Error processing JSON: {error_msg}")
 
 @router.post("/chunks", summary="Split a large JSON file into chunks")
 async def split_json_chunks(
@@ -177,76 +249,53 @@ async def clean_json(
         f.write(await file.read())
     
     try:
-        # Import the clean_sensitive_data module directly
-        try:
-            from tools.clean_sensitive_data import clean_json_file
-            import logging
-            
-            # Configure logging
-            logger = logging.getLogger("json_routes")
-            logger.info(f"Processing JSON file: {file.filename}, job_id: {job_id}")
-            logger.info(f"Recursive mode: {recursive}")
-            
-            # Call the function directly instead of using subprocess
-            success = clean_json_file(
-                input_file=input_file_path, 
-                output_file=output_file_path,
-                recursive=recursive,
-                generate_report=False
-            )
-            
-            if not success:
-                raise HTTPException(status_code=500, detail="JSON cleaning failed")
-                
-            # Verify output file exists
-            if not output_file_path.exists():
-                raise HTTPException(status_code=500, detail="Cleaning completed but no output file was generated")
-            
-            # Return the file to the client
-            return FileResponse(
-                path=output_file_path,
-                filename=f"cleaned_{file.filename}",
-                media_type="application/json",
-                # Clean up after sending
-                background=BackgroundTask(lambda: cleanup_files([temp_dir]))
-            )
-            
-        except ImportError:
-            # Fall back to CLI if direct import fails
-            logger.warning("Could not import clean_json_file directly, falling back to CLI")
-            
-            # Prepare command
-            cmd = ["python", "-m", "cli.cli", "clean", str(input_file_path), 
-                "--output", str(output_file_path)]
-            
-            if recursive:
-                cmd.append("--recursive")
-            
-            # Run the CLI command
-            result = await run_cli_command(cmd)
-            
-            if result["return_code"] != 0:
-                raise HTTPException(status_code=500, detail=f"JSON cleaning failed: {result['stderr']}")
-            
-            # Verify output file exists
-            if not output_file_path.exists():
-                raise HTTPException(status_code=500, detail="Cleaning completed but no output file was generated")
-            
-            # Return the file to the client
-            return FileResponse(
-                path=output_file_path,
-                filename=f"cleaned_{file.filename}",
-                media_type="application/json",
-                # Clean up after sending
-                background=BackgroundTask(lambda: cleanup_files([temp_dir]))
-            )
+        import logging
+        logger = logging.getLogger("json_routes")
+        logger.info(f"Processing JSON file: {file.filename}, job_id: {job_id}")
+        logger.info(f"Recursive mode: {recursive}")
+        
+        # Appeler directement le script clean_sensitive_data.py au lieu de passer par cli.py
+        script_path = os.path.join(os.getcwd(), "tools", "clean_sensitive_data.py")
+        
+        if not os.path.exists(script_path):
+            logger.error(f"Script not found at {script_path}")
+            raise HTTPException(status_code=500, detail=f"Cleaning script not found")
+        
+        # Préparation de la commande pour appeler directement le script
+        cmd = [sys.executable, script_path, str(input_file_path), 
+              "--output", str(output_file_path)]
+        
+        if recursive:
+            cmd.append("--recursive")
+        
+        # Exécution de la commande
+        result = await run_cli_command(cmd)
+        
+        if result["return_code"] != 0:
+            logger.error(f"JSON cleaning failed: {result['stderr']}")
+            raise HTTPException(status_code=500, detail=f"JSON cleaning failed: {result['stderr']}")
+        
+        # Verify output file exists
+        if not output_file_path.exists():
+            logger.error("Cleaning completed but no output file was generated")
+            raise HTTPException(status_code=500, detail="Cleaning completed but no output file was generated")
+        
+        # Return the file to the client
+        return FileResponse(
+            path=output_file_path,
+            filename=f"cleaned_{file.filename}",
+            media_type="application/json",
+            # Clean up after sending
+            background=BackgroundTask(lambda: cleanup_files([temp_dir]))
+        )
         
     except Exception as e:
+        logger.error(f"Error cleaning JSON: {str(e)}")
         # Clean up in case of error
         cleanup_files([temp_dir])
         raise HTTPException(status_code=500, detail=f"Error cleaning JSON: {str(e)}")
 
-@router.post("/compress", summary="Compress JSON file")
+@router.post("/compress", summary="Compress JSON file or decompress ZST file")
 async def compress_json(
     file: UploadFile = File(...),
     compression_level: int = Form(19, description="Compression level (1-22)"),
@@ -254,14 +303,18 @@ async def compress_json(
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     """
-    Compress a JSON file using zstandard.
+    Compress a JSON file using zstandard or decompress a ZST file.
     
-    - **file**: JSON file to compress
-    - **compression_level**: Compression level (1-22)
+    - **file**: JSON file to compress or ZST file to decompress
+    - **compression_level**: Compression level (1-22) - only used for compression
     - **keep_original**: Keep original file alongside compressed version (default: True)
     """
-    if not file.filename.lower().endswith('.json'):
-        raise HTTPException(status_code=400, detail="File must be a JSON document")
+    # Check if this is a compression or decompression operation
+    is_compression = file.filename.lower().endswith('.json')
+    is_decompression = file.filename.lower().endswith('.zst')
+    
+    if not (is_compression or is_decompression):
+        raise HTTPException(status_code=400, detail="File must be a JSON document or a ZST compressed file")
     
     # Create a unique ID for this job
     job_id = str(uuid.uuid4())
@@ -273,61 +326,156 @@ async def compress_json(
     output_dir.mkdir(exist_ok=True)
     
     # Save uploaded file
-    input_file_path = temp_dir / f"input.json"
+    input_file_path = temp_dir / f"input{'.json' if is_compression else '.zst'}"
     with open(input_file_path, "wb") as f:
         f.write(await file.read())
     
     try:
-        # Prepare command - Force keep_originals to always be True
-        cmd = ["python", "-m", "cli.cli", "compress", str(temp_dir), 
-               "--level", str(compression_level),
-               "--keep-originals"]  # Always keep originals regardless of frontend setting
+        if is_compression:
+            # Utiliser le module zstandard directement pour avoir le format correct
+            try:
+                import zstandard as zstd
+                import json
+                import logging
+                
+                logger = logging.getLogger("json_routes")
+                logger.info(f"Compressing JSON file with compression level {compression_level}")
+                
+                # Lire le fichier JSON
+                with open(input_file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # Créer le fichier de sortie compressé avec la bonne extension
+                compressed_file_path = temp_dir / f"{file.filename}.zst"
+                
+                # Sérialiser en JSON et compresser directement
+                json_str = json.dumps(data)
+                compressor = zstd.ZstdCompressor(level=compression_level)
+                
+                with open(compressed_file_path, 'wb') as f:
+                    compressed_data = compressor.compress(json_str.encode('utf-8'))
+                    f.write(compressed_data)
+                
+                # Retourner le fichier compressé
+                return FileResponse(
+                    path=compressed_file_path,
+                    filename=f"{file.filename}.zst",
+                    media_type="application/zstd",
+                    background=BackgroundTask(lambda: cleanup_files([temp_dir]))
+                )
+                
+            except Exception as e:
+                logger = logging.getLogger("json_routes")
+                logger.error(f"Error compressing file: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise HTTPException(status_code=500, detail=f"Error compressing file: {str(e)}")
         
-        # Run the CLI command
-        result = await run_cli_command(cmd)
-        
-        # Find the compressed file
-        compressed_file = next(temp_dir.glob("*.zst"), None)
-        if not compressed_file:
-            raise HTTPException(status_code=500, detail="Compression completed but no compressed file was generated")
-        
-        # Create a zip file containing both the original JSON and compressed file
-        import zipfile
-        zip_path = temp_dir / f"{file.filename.replace('.json', '')}_compressed.zip"
-        
-        with zipfile.ZipFile(zip_path, 'w') as zipf:
-            # Add compressed file to zip
-            zipf.write(compressed_file, arcname=f"{file.filename}.zst")
+        else:  # Decompression
+            # Préparer le fichier de sortie
+            original_filename = file.filename.replace('.zst', '')
+            output_json_path = temp_dir / original_filename
+
+            # Décompresser le fichier
+            try:
+                import zstandard as zstd
+                import zipfile
+                import logging
+                import json  # Importer json pour vérifier la validité du fichier décompressé
+                
+                logger = logging.getLogger("json_routes")
+                logger.info(f"Decompressing file: {file.filename}")
+                
+                # Vérifier si c'est un fichier ZIP ou ZST en examinant la signature
+                with open(input_file_path, 'rb') as test_file:
+                    header = test_file.read(4)
+                    # Rewind to beginning of file
+                    test_file.seek(0)
+                
+                # Si c'est un fichier ZIP (signature PK\x03\x04 = 504b0304 en hex)
+                if header.startswith(b'PK\x03\x04'):
+                    logger.info("Detected ZIP file with .zst extension. Decompressing as ZIP file.")
+                    
+                    # Traiter comme un fichier ZIP
+                    try:
+                        with zipfile.ZipFile(input_file_path, 'r') as zip_ref:
+                            # Lister les fichiers dans le ZIP
+                            json_files = [f for f in zip_ref.namelist() if f.lower().endswith('.json')]
+                            
+                            if not json_files:
+                                raise ValueError("Le fichier ZIP ne contient pas de fichiers JSON.")
+                            
+                            # Extraire le premier fichier JSON trouvé
+                            zip_ref.extract(json_files[0], path=temp_dir)
+                            extracted_path = temp_dir / json_files[0]
+                            
+                            # Renommer le fichier extrait si nécessaire
+                            if str(extracted_path) != str(output_json_path):
+                                import shutil
+                                shutil.move(extracted_path, output_json_path)
+                    
+                    except zipfile.BadZipFile:
+                        raise ValueError("Le fichier n'est ni un ZIP valide ni un fichier ZST.")
+                
+                # Sinon, essayer de le décompresser comme un fichier ZST (signature 0x28 0xB5 0x2F 0xFD)
+                else:
+                    logger.info("Processing as Zstandard file.")
+                    try:
+                        # Signature magique de Zstandard: 0x28 0xB5 0x2F 0xFD
+                        if header.startswith(b'\x28\xB5\x2F\xFD'):
+                            logger.info("Detected valid Zstandard signature.")
+                        
+                        with open(input_file_path, 'rb') as compressed_file:
+                            with open(output_json_path, 'wb') as decompressed_file:
+                                dctx = zstd.ZstdDecompressor()
+                                dctx.copy_stream(compressed_file, decompressed_file)
+                    except Exception as ze:
+                        raise ValueError(f"Erreur lors de la décompression du fichier ZST: {str(ze)}")
+                        
+                # Vérifier que le fichier JSON est valide
+                try:
+                    with open(output_json_path, 'r', encoding='utf-8') as f:
+                        json.load(f)
+                        logger.info(f"Successfully validated JSON in {output_json_path}")
+                except json.JSONDecodeError as je:
+                    logger.error(f"Invalid JSON after decompression: {str(je)}")
+                    raise ValueError(f"Le fichier décompressé n'est pas un fichier JSON valide: {str(je)}")
+                        
+            except Exception as e:
+                # Capturer et logger l'erreur
+                import logging
+                logger = logging.getLogger("json_routes")
+                logger.error(f"Error decompressing file: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise HTTPException(status_code=500, detail=f"Error decompressing file: {str(e)}")
             
-            # Add original JSON file (should always exist now that we force --keep-originals)
-            original_json = next(temp_dir.glob("*.json"), None)
-            if original_json:
-                zipf.write(original_json, arcname=file.filename)
+            # Vérifier que le fichier décompressé existe
+            if not output_json_path.exists():
+                raise HTTPException(status_code=500, detail="Decompression failed, no output file was generated")
             
-            # Add compression report if it exists
-            report_files = list(temp_dir.glob("compression_report_*.txt"))
-            for report_file in report_files:
-                zipf.write(report_file, arcname=report_file.name)
+            # Log file size and stats
+            logger.info(f"Decompressed file size: {os.path.getsize(output_json_path)} bytes")
+            logger.info(f"Returning file: {output_json_path} as {original_filename}")
+                
+            # Retourner le fichier JSON décompressé avec le bon type MIME
+            return FileResponse(
+                path=output_json_path,
+                filename=original_filename,
+                media_type="application/json",
+                # Clean up after sending
+                background=BackgroundTask(lambda: cleanup_files([temp_dir]))
+            )
             
-            # Add human-readable text version if it exists
-            text_files = list(temp_dir.glob("*.txt"))
-            for text_file in text_files:
-                if not text_file.name.startswith("compression_report_"):
-                    zipf.write(text_file, arcname=text_file.name)
-        
-        # Return the zip file
-        return FileResponse(
-            path=zip_path,
-            filename=f"{file.filename.replace('.json', '')}_compressed.zip",
-            media_type="application/zip",
-            # Clean up after sending
-            background=BackgroundTask(lambda: cleanup_files([temp_dir]))
-        )
-        
     except Exception as e:
         # Clean up in case of error
         cleanup_files([temp_dir])
-        raise HTTPException(status_code=500, detail=f"Error compressing JSON: {str(e)}")
+        import logging
+        logger = logging.getLogger("json_routes")
+        logger.error(f"Error in compress_json endpoint: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error {'compressing' if is_compression else 'decompressing'} file: {str(e)}")
 
 @router.post("/match", summary="Find matches between JIRA and Confluence files")
 async def match_json_files(

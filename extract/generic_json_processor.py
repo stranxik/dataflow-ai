@@ -14,6 +14,7 @@ from typing import Dict, Any, List, Union, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
 import shutil
+import time
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -579,6 +580,7 @@ class GenericJsonProcessor:
         self.llm_model = llm_model
         self.preserve_source = preserve_source
         self.generate_llm_reports = generate_llm_reports and generate_llm_summary is not None
+        self.logger = logger
     
     def load_file(self, file_path):
         """
@@ -765,239 +767,109 @@ class GenericJsonProcessor:
         Returns:
             dict: Données traitées
         """
+        # 1. Extraction des éléments
+        original_structure = data.get("original_format", "unknown")
         items = self.extract_items(data)
         
-        # Limiter le nombre d'éléments si demandé
-        if max_items and len(items) > max_items:
-            logger.info(f"Limitation à {max_items} éléments (sur {len(items)})")
+        # Cas spécial : si aucun élément n'est trouvé mais que nous avons des données
+        # créer un élément "conteneur" pour le document entier
+        if not items and isinstance(data, dict):
+            # Pour les petits objets JSON simples, considérer l'objet entier comme un élément
+            items = [{"content": data, "id": "doc_1", "type": "document"}]
+        
+        # 2. Normalisation : Limiter le nombre d'éléments si demandé
+        if max_items is not None and len(items) > max_items:
+            self.logger.warning(f"Limitation à {max_items} éléments sur {len(items)}")
             items = items[:max_items]
         
-        # Transformer les éléments si des mappings sont définis
-        processed_items = items
-        if self.field_mappings:
-            processed_items = self._transform_items(items)
+        # 3. Structuration : Créer une structure standardisée avec les éléments
+        processed_data = {
+            "meta": {
+                "processed_at": int(time.time()),
+                "original_structure": original_structure,
+                "processor_version": self.__class__.__name__,
+                "elements_count": len(items),
+                "llm_enrichment": self.use_llm_fallback,
+                "preserve_source": self.preserve_source
+            },
+            root_key: items
+        }
         
-        # Extraire des mots-clés si demandé
-        if self.extract_keywords:
-            processed_items = self._extract_keywords_from_items(processed_items)
-        
-        # Créer les métadonnées
-        metadata = {
-            "source_file": data.get("metadata", {}).get("source_file", "unknown"),
-            "processed_at": datetime.now().isoformat(),
-            "processor_version": "1.0",
-            "items_count": len(processed_items),
-            "stats": {
-                "total_items": len(items),
-                "processed_items": len(processed_items)
+        # 4. Conservation de la structure d'origine si demandé
+        if self.preserve_source and isinstance(data, dict):
+            # Stocker la structure originale dans un champ séparé pour référence
+            processed_data["_source_structure"] = {
+                "format": original_structure,
+                "keys": list(data.keys()) if hasattr(data, "keys") else []
             }
-        }
         
-        # Assembler les données finales
-        result = {
-            root_key: processed_items,
-            "metadata": metadata
-        }
-        
-        return result
-    
-    def _transform_items(self, items):
-        """
-        Transforme les éléments selon les mappings définis
-        
-        Args:
-            items: Liste d'éléments à transformer
+        # 5. Enrichissement LLM si activé
+        if self.use_llm_fallback and "items" in processed_data and len(processed_data["items"]) > 0:
+            self.logger.info(f"Début d'enrichissement LLM sur {len(processed_data['items'])} éléments")
             
-        Returns:
-            Liste d'éléments transformés
-        """
-        # Simple implémentation, à compléter selon les besoins spécifiques
-        transformed = []
-        for item in items:
-            new_item = {}
-            for target_key, source_path in self.field_mappings.items():
-                # Gestion simple des chemins plats
-                if isinstance(source_path, str) and source_path in item:
-                    new_item[target_key] = item[source_path]
-                # Gestion des objets imbriqués
-                elif isinstance(source_path, dict) and "field" in source_path:
-                    field = source_path["field"]
-                    if field in item:
-                        # Appliquer une transformation si spécifiée
-                        if "transform" in source_path:
-                            transform = source_path["transform"]
-                            if transform == "clean_text":
-                                new_item[target_key] = self._clean_text(item[field])
-                            # Ajouter d'autres transformations selon les besoins
-                        else:
-                            new_item[target_key] = item[field]
+            # Nouvelle façon d'appeler l'enrichissement LLM
+            try:
+                # Importer la fonction process_with_llm depuis cli/cli.py
+                from cli.cli import process_with_llm
+                
+                # Vérifier que l'API key est disponible
+                api_key = os.environ.get("OPENAI_API_KEY")
+                if not api_key:
+                    self.logger.warning("Clé API OpenAI non trouvée dans les variables d'environnement")
+                    return processed_data
+                
+                # Loguer les informations sur le modèle utilisé
+                model = self.llm_model or os.environ.get("DEFAULT_LLM_MODEL", "gpt-4o")
+                self.logger.info(f"Utilisation du modèle LLM: {model}")
+                
+                # Enrichir les données avec le LLM
+                enriched_data = process_with_llm(processed_data, model=model, api_key=api_key)
+                
+                # Vérifier si l'enrichissement a réussi
+                has_enrichment = False
+                if "items" in enriched_data and len(enriched_data["items"]) > 0:
+                    for item in enriched_data["items"][:5]:  # Vérifier les 5 premiers éléments
+                        if "analysis" in item and "llm" in item["analysis"]:
+                            has_enrichment = True
+                            self.logger.info("Enrichissement LLM détecté dans le résultat")
+                            
+                            # Ajouter un résumé global dans les métadonnées
+                            if "meta" not in enriched_data:
+                                enriched_data["meta"] = {}
+                            
+                            if "llm_summary" not in enriched_data["meta"]:
+                                # Extraire les informations des analyses LLM pour créer un résumé global
+                                keywords_set = set()
+                                content_types = set()
+                                
+                                for item in enriched_data["items"]:
+                                    if "analysis" in item and "llm" in item["analysis"]:
+                                        llm_data = item["analysis"]["llm"]
+                                        if "keywords" in llm_data:
+                                            keywords_set.update(llm_data["keywords"])
+                                        if "content_type" in llm_data:
+                                            content_types.add(llm_data["content_type"])
+                                
+                                enriched_data["meta"]["llm_summary"] = {
+                                    "keywords": list(keywords_set)[:10],  # Limiter à 10 mots-clés
+                                    "content_types": list(content_types),
+                                    "model_used": model,
+                                    "enrichment_time": int(time.time())
+                                }
+                            
+                            break
+                
+                if not has_enrichment:
+                    self.logger.warning("Aucun enrichissement LLM n'a été détecté après le traitement")
+                
+                return enriched_data
             
-            # Si aucun mapping n'a été appliqué, conserver l'élément original
-            if not new_item and self.detect_fields:
-                new_item = self._detect_and_map_fields(item)
-            elif not new_item:
-                new_item = item
-            
-            transformed.append(new_item)
-        
-        return transformed
-    
-    def _detect_and_map_fields(self, item):
-        """
-        Détecte et mappe automatiquement les champs communs
-        
-        Args:
-            item: Élément à analyser
-            
-        Returns:
-            Élément avec champs mappés
-        """
-        result = {}
-        
-        # Détecter le champ ID (key, id, _id, etc.)
-        for id_field in ["key", "id", "_id", "uuid", "identifier"]:
-            if id_field in item:
-                result["id"] = item[id_field]
-                break
-        
-        # Détecter le champ titre (title, summary, name, etc.)
-        for title_field in ["title", "summary", "name", "header", "subject"]:
-            if title_field in item:
-                result["title"] = item[title_field]
-                break
-        
-        # Détecter le contenu (content, body, text, description, etc.)
-        content = {}
-        for content_field in ["content", "body", "text", "description", "markdown"]:
-            if content_field in item:
-                if isinstance(item[content_field], dict):
-                    content = item[content_field]
-                else:
-                    content["text"] = item[content_field]
-                break
-        
-        if content:
-            result["content"] = content
-        
-        # Détecter les métadonnées (created_at, updated_at, author, etc.)
-        metadata = {}
-        date_fields = {
-            "created_at": ["created", "created_at", "createdAt", "date_created"],
-            "updated_at": ["updated", "updated_at", "updatedAt", "modified", "lastModified"]
-        }
-        
-        author_fields = ["author", "creator", "created_by", "createdBy", "reporter"]
-        
-        for meta_key, field_names in date_fields.items():
-            for field in field_names:
-                if field in item:
-                    metadata[meta_key] = item[field]
-                    break
-        
-        for field in author_fields:
-            if field in item:
-                metadata["created_by"] = item[field]
-                break
-        
-        if metadata:
-            result["metadata"] = metadata
-        
-        # Si aucun champ clé n'a été trouvé, retourner l'élément original
-        if not result or (len(result) == 1 and "metadata" in result):
-            return item
-        
-        # Copier les champs restants qui n'ont pas été mappés
-        for key, value in item.items():
-            if key not in ["key", "id", "_id", "uuid", "identifier", 
-                          "title", "summary", "name", "header", "subject",
-                          "content", "body", "text", "description", "markdown"] + \
-                         date_fields["created_at"] + date_fields["updated_at"] + author_fields:
-                if key not in result:
-                    result[key] = value
-        
-        return result
-    
-    def _extract_keywords_from_items(self, items):
-        """
-        Extrait des mots-clés du contenu des éléments
-        
-        Args:
-            items: Liste d'éléments
-            
-        Returns:
-            Liste d'éléments enrichis avec des mots-clés
-        """
-        import re
-        from collections import Counter
-        
-        # Liste des mots vides (stop words) en français
-        stop_words = set([
-            "le", "la", "les", "un", "une", "des", "et", "est", "il", "elle", "nous", "vous", 
-            "ils", "elles", "son", "sa", "ses", "leur", "leurs", "ce", "cette", "ces", "que", 
-            "qui", "quoi", "dont", "où", "quand", "comment", "pourquoi", "avec", "sans", "pour", 
-            "par", "dans", "sur", "sous", "de", "du", "au", "aux", "à", "en", "vers", "chez"
-        ])
-        
-        enhanced_items = []
-        for item in items:
-            # Récupérer le texte depuis différents champs possibles
-            text = ""
-            if "content" in item:
-                if isinstance(item["content"], dict):
-                    for k, v in item["content"].items():
-                        if isinstance(v, str):
-                            text += v + " "
-                elif isinstance(item["content"], str):
-                    text += item["content"] + " "
-            
-            if "title" in item and isinstance(item["title"], str):
-                text += item["title"] + " "
-            
-            if "description" in item and isinstance(item["description"], str):
-                text += item["description"] + " "
-            
-            # Extraire les mots
-            words = re.findall(r'\b\w{3,}\b', text.lower())
-            
-            # Filtrer les mots vides
-            filtered_words = [w for w in words if w not in stop_words]
-            
-            # Compter les occurrences
-            word_counts = Counter(filtered_words)
-            
-            # Sélectionner les mots-clés les plus fréquents (max 10)
-            keywords = [word for word, count in word_counts.most_common(10)]
-            
-            # Ajouter les mots-clés à l'élément
-            if "analysis" not in item:
-                item["analysis"] = {}
-            
-            item["analysis"]["keywords"] = keywords
-            enhanced_items.append(item)
-        
-        return enhanced_items
-    
-    def _clean_text(self, text):
-        """
-        Nettoie le texte (supprime les balises HTML, etc.)
-        
-        Args:
-            text: Texte à nettoyer
-            
-        Returns:
-            Texte nettoyé
-        """
-        if not text or not isinstance(text, str):
-            return ""
-        
-        # Supprimer les balises HTML (implémentation simple)
-        import re
-        clean = re.sub(r'<[^>]+>', '', text)
-        
-        # Normaliser les espaces
-        clean = re.sub(r'\s+', ' ', clean).strip()
-        
-        return clean
+            except ImportError:
+                self.logger.error("Impossible d'importer process_with_llm depuis cli.cli, enrichissement ignoré")
+            except Exception as e:
+                self.logger.exception(f"Erreur lors de l'enrichissement LLM: {e}")
+                
+        return processed_data
     
     def analyze_structure(self, file_path, output_dir, output_filename=None):
         """

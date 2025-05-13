@@ -28,6 +28,8 @@
       "select_file_process": "Sélectionnez le fichier JSON à traiter:",
       "select_file_chunks": "Sélectionnez le fichier JSON volumineux à découper:",
       "select_dir_compress": "Sélectionnez le répertoire ou fichier JSON à compresser:",
+      "select_file_decompress": "Sélectionnez le fichier ZST à décompresser:",
+      "output_file_json": "Fichier JSON de sortie (vide = même nom sans extension .zst)",
       "select_jira_file": "Sélectionnez le fichier JIRA traité:",
       "select_confluence_file": "Sélectionnez le fichier Confluence traité:",
       "select_file_pdf": "Sélectionnez le fichier PDF à analyser :"
@@ -43,7 +45,8 @@
       "launch_matching": "Lancer le matching ?",
       "launch_unified": "Lancer le traitement unifié ?",
       "launch_cleaning": "Lancer le nettoyage?",
-      "launch_compression": "Lancer la compression et l'optimisation?"
+      "launch_compression": "Lancer la compression et l'optimisation?",
+      "launch_decompression": "Lancer la décompression?"
     },
     "options": {
       "no_mapping": "Sans mapping (détection automatique)",
@@ -65,7 +68,8 @@
       "compress": "Compresser et optimiser les fichiers JSON",
       "describe_images": "Décrire les images d'un PDF (describe-images)",
       "change_language": "Changer de langue",
-      "quit": "Quitter"
+      "quit": "Quitter",
+      "decompress": "Décompresser un fichier ZST en JSON"
     },
     "panels": {
       "interactive_title": "Mode Interactif - JSON Processor",
@@ -106,7 +110,13 @@
       "llm_assist": "Assistance LLM :",
       "mapping": "Mapping :",
       "auto_detection": "Auto-détection",
-      "selection_jira_confluence": "Sélection des fichiers JIRA et Confluence"
+      "selection_jira_confluence": "Sélection des fichiers JIRA et Confluence",
+      "decompression_desc": "Décompresse un fichier ZST pour restaurer le contenu JSON original",
+      "decompressing_file": "Décompression du fichier ZST",
+      "file_decompressed_success": "Fichier décompressé avec succès",
+      "original_file": "Taille du fichier original",
+      "decompressed_file": "Taille du fichier décompressé",
+      "decompression_ratio": "Ratio de décompression"
     },
     "errors": {
       "missing_tool": "Module tools non trouvé. Pas de correction des chemins en doublon.",
@@ -158,7 +168,13 @@
       "report_available": "Rapport disponible dans",
       "compared_to_standard": "par rapport aux fichiers JSON standards",
       "compression_level_prompt": "Choisissez un niveau de compression",
-      "keep_originals_prompt": "Conserver les fichiers JSON originaux?"
+      "keep_originals_prompt": "Conserver les fichiers JSON originaux?",
+      "decompression_desc": "Décompresse un fichier ZST pour restaurer le contenu JSON original",
+      "decompressing_file": "Décompression du fichier ZST",
+      "file_decompressed_success": "Fichier décompressé avec succès",
+      "original_file": "Taille du fichier original",
+      "decompressed_file": "Taille du fichier décompressé",
+      "decompression_ratio": "Ratio de décompression"
     },
     "why_our_image_extraction_is_different": "Bien plus qu'un simple OCR : Une analyse technique intelligente",
     "beyond_traditional_ocr_title": "Au-delà de l'OCR traditionnel",
@@ -203,6 +219,8 @@
       "select_file_process": "Select the JSON file to process:",
       "select_file_chunks": "Select the large JSON file to split:",
       "select_dir_compress": "Select the directory or JSON file to compress:",
+      "select_file_decompress": "Select the ZST file to decompress:",
+      "output_file_json": "Output JSON file (empty = same name without .zst extension)",
       "select_jira_file": "Select the processed JIRA file:",
       "select_confluence_file": "Select the processed Confluence file:",
       "select_file_pdf": "Select the PDF file to analyze:"
@@ -218,7 +236,8 @@
       "launch_matching": "Start matching?",
       "launch_unified": "Start unified processing?",
       "launch_cleaning": "Start cleaning?",
-      "launch_compression": "Start compression and optimization?"
+      "launch_compression": "Start compression and optimization?",
+      "launch_decompression": "Start decompression?"
     },
     "options": {
       "no_mapping": "No mapping (automatic detection)",
@@ -240,7 +259,8 @@
       "compress": "Compress and optimize JSON files",
       "describe_images": "Describe images in a PDF (describe-images)",
       "change_language": "Change language",
-      "quit": "Quit"
+      "quit": "Quit",
+      "decompress": "Decompress a ZST file to JSON"
     },
     "panels": {
       "interactive_title": "Interactive Mode - JSON Processor",
@@ -281,7 +301,13 @@
       "llm_assist": "LLM assistance:",
       "mapping": "Mapping:",
       "auto_detection": "Auto-detection",
-      "selection_jira_confluence": "Selection of JIRA and Confluence files"
+      "selection_jira_confluence": "Selection of JIRA and Confluence files",
+      "decompression_desc": "Decompress a ZST file to restore the original JSON content",
+      "decompressing_file": "Decompressing ZST file",
+      "file_decompressed_success": "File decompressed successfully",
+      "original_file": "Original file size",
+      "decompressed_file": "Decompressed file size",
+      "decompression_ratio": "Decompression ratio"
     },
     "errors": {
       "missing_tool": "Tools module not found. No correction of duplicate paths.",
@@ -333,7 +359,13 @@
       "report_available": "Report available at",
       "compared_to_standard": "compared to standard JSON files",
       "compression_level_prompt": "Choose a compression level",
-      "keep_originals_prompt": "Keep original JSON files?"
+      "keep_originals_prompt": "Keep original JSON files?",
+      "decompression_desc": "Decompress a ZST file to restore the original JSON content",
+      "decompressing_file": "Decompressing ZST file",
+      "file_decompressed_success": "File decompressed successfully",
+      "original_file": "Original file size",
+      "decompressed_file": "Decompressed file size",
+      "decompression_ratio": "Decompression ratio"
     },
     "why_our_image_extraction_is_different": "More Than OCR: Intelligent Technical Analysis",
     "beyond_traditional_ocr_title": "Beyond Traditional OCR",

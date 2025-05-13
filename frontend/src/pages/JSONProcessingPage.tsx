@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { processJson, cleanJson, compressJson } from '@/api/apiService';
-import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
+import { formatFileSize,createDownloadLink } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { useLanguage } from '@/components/LanguageProvider';
 import { Bot } from 'lucide-react';
@@ -21,10 +21,22 @@ export default function JSONProcessingPage() {
   const [itemsPerFile, setItemsPerFile] = useState(500);
   const { toast } = useToast();
 
+  // Add new state to track if file is JSON or ZST
+  const [isZstFile, setIsZstFile] = useState(false);
+
   const onDrop = (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       const file = acceptedFiles[0];
-      if (isValidFileType(file, ['json'])) {
+      // Check if file is a JSON or ZST file
+      if (file.name.toLowerCase().endsWith('.json')) {
+        setIsZstFile(false);
+        setSelectedFile(file);
+        toast({
+          title: t('file_selected'),
+          description: `${file.name} (${formatFileSize(file.size)})`,
+        });
+      } else if (file.name.toLowerCase().endsWith('.zst')) {
+        setIsZstFile(true);
         setSelectedFile(file);
         toast({
           title: t('file_selected'),
@@ -33,7 +45,7 @@ export default function JSONProcessingPage() {
       } else {
         toast({
           title: t('invalid_file_type'),
-          description: t('select_json_file'),
+          description: t('select_json_or_zst_file'),
           variant: 'destructive',
         });
       }
@@ -44,6 +56,8 @@ export default function JSONProcessingPage() {
     onDrop,
     accept: {
       'application/json': ['.json'],
+      'application/zstd': ['.zst'],
+      'application/octet-stream': ['.zst'],
     },
     maxFiles: 1,
   });
@@ -75,8 +89,52 @@ export default function JSONProcessingPage() {
           filename = `${selectedFile.name.replace('.json', '')}_cleaned.json`;
           break;
         case 'compress':
-          result = await compressJson(selectedFile, compressionLevel, false);
-          filename = `${selectedFile.name.replace('.json', '')}_compressed.zst`;
+          try {
+            result = await compressJson(selectedFile, compressionLevel, false);
+            // Change filename depending on if we're compressing or decompressing
+            if (isZstFile) {
+              // For decompression, return the original JSON filename
+              filename = selectedFile.name.replace('.zst', '');
+            } else {
+              // For compression, use the original filename logic
+              filename = `${selectedFile.name.replace('.json', '')}_compressed.zst`;
+            }
+          } catch (error) {
+            console.error('Error compressing/decompressing file:', error);
+            let errorMessage = 'Unknown error occurred';
+            
+            // Try to extract the error message from the API response
+            if (error instanceof Error) {
+              // Check if it's a network error or an API error
+              if (error.message.includes('500')) {
+                try {
+                  // If we have more detailed error info, extract it
+                  const match = error.message.match(/detail":"([^"]+)"/);
+                  if (match && match[1]) {
+                    errorMessage = match[1];
+                  } else {
+                    errorMessage = isZstFile ? 
+                      t('error_decompressing') : 
+                      t('error_compressing');
+                  }
+                } catch (e) {
+                  errorMessage = isZstFile ? 
+                    t('error_decompressing') : 
+                    t('error_compressing');
+                }
+              } else {
+                errorMessage = error.message;
+              }
+            }
+            
+            toast({
+              title: isZstFile ? t('decompression_failed') : t('compression_failed'),
+              description: errorMessage,
+              variant: 'destructive',
+            });
+            setIsProcessing(false);
+            return;
+          }
           break;
         case 'chunks':
           // Call API to split JSON file
@@ -106,13 +164,31 @@ export default function JSONProcessingPage() {
       
       toast({
         title: t('processing_complete'),
-        description: t('your_json_file_has_been_processed_successfully'),
+        description: isZstFile ? 
+          t('your_json_file_has_been_decompressed_successfully') :
+          (processingMode === 'compress' ? 
+            t('your_json_file_has_been_compressed_successfully') : 
+            t('your_json_file_has_been_processed_successfully')),
       });
     } catch (error) {
-      console.error('Error processing JSON:', error);
+      console.error(`Error processing JSON (${processingMode}):`, error);
+      let errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      
+      // Try to extract API error message if present
+      if (typeof errorMessage === 'string' && errorMessage.includes('detail')) {
+        try {
+          const detail = JSON.parse(errorMessage.substring(errorMessage.indexOf('{')));
+          if (detail.detail) {
+            errorMessage = detail.detail;
+          }
+        } catch (e) {
+          // If parsing fails, keep the original message
+        }
+      }
+      
       toast({
         title: t('processing_failed'),
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -120,15 +196,25 @@ export default function JSONProcessingPage() {
     }
   };
 
+  // Function to reset file on tab change
+  const handleTabChange = (value: string) => {
+    setProcessingMode(value as any);
+    // Reset the file selection if switching to/from compress tab
+    if (value === 'compress' || processingMode === 'compress') {
+      setSelectedFile(null);
+      setIsZstFile(false);
+    }
+  };
+
   return (
     <div className="container mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold mb-6">{t('json_processing_title')}</h1>
       
-      <Tabs defaultValue="process" onValueChange={(value) => setProcessingMode(value as any)}>
+      <Tabs defaultValue="process" onValueChange={handleTabChange}>
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="process">{t('process_json')}</TabsTrigger>
           <TabsTrigger value="clean">{t('clean_data')}</TabsTrigger>
-          <TabsTrigger value="compress">{t('compress')}</TabsTrigger>
+          <TabsTrigger value="compress">{t('compress_decompress')}</TabsTrigger>
           <TabsTrigger value="chunks">{t('split_chunks')}</TabsTrigger>
         </TabsList>
         
@@ -186,33 +272,35 @@ export default function JSONProcessingPage() {
         <TabsContent value="compress">
           <Card>
             <CardHeader>
-              <CardTitle>{t('compress_json')}</CardTitle>
+              <CardTitle>{isZstFile ? t('decompress_zst') : t('compress_json')}</CardTitle>
               <CardDescription>
-                {t('optimize_json_files')}
+                {isZstFile ? t('restore_json_files') : t('optimize_json_files')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <p className="mb-4 text-sm text-muted-foreground">
-                {t('compress_json_description')}
+                {isZstFile ? t('decompress_zst_description') : t('compress_json_description')}
               </p>
               
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">
-                  {t('compression_level')}
-                </label>
-                <select
-                  value={compressionLevel}
-                  onChange={(e) => setCompressionLevel(Number(e.target.value))}
-                  className="w-full p-2 border rounded-md bg-background"
-                >
-                  <option value="15">15 - {t('fast')}</option>
-                  <option value="19">19 - {t('balanced')}</option>
-                  <option value="22">22 - {t('maximum')}</option>
-                </select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {t('higher_compression_slower')}
-                </p>
-              </div>
+              {!isZstFile && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">
+                    {t('compression_level')}
+                  </label>
+                  <select
+                    value={compressionLevel}
+                    onChange={(e) => setCompressionLevel(Number(e.target.value))}
+                    className="w-full p-2 border rounded-md bg-background"
+                  >
+                    <option value="15">15 - {t('fast')}</option>
+                    <option value="19">19 - {t('balanced')}</option>
+                    <option value="22">22 - {t('maximum')}</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t('higher_compression_slower')}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -278,6 +366,7 @@ export default function JSONProcessingPage() {
               onClick={(e) => {
                 e.stopPropagation();
                 setSelectedFile(null);
+                setIsZstFile(false);
               }}
             >
               {t('remove_file')}
@@ -289,10 +378,10 @@ export default function JSONProcessingPage() {
               <Database className="h-6 w-6 text-primary" />
             </div>
             <div className="font-medium">
-              {isDragActive ? t('drop_the_file_here') : t('drag_drop_json')}
+              {isDragActive ? t('drop_the_file_here') : processingMode === 'compress' ? t('drag_drop_json_or_zst') : t('drag_drop_json')}
             </div>
             <div className="text-sm text-muted-foreground">
-              JSON {t('files_only')}
+              {processingMode === 'compress' ? t('json_zst_files_only') : t('json_files_only')}
             </div>
           </div>
         )}
@@ -316,7 +405,7 @@ export default function JSONProcessingPage() {
           {isProcessing ? t('processing') : (
             processingMode === 'process' ? t('process_file') :
             processingMode === 'clean' ? t('clean_file') :
-            processingMode === 'compress' ? t('compress_file') :
+            processingMode === 'compress' ? (isZstFile ? t('decompress_file') : t('compress_file')) :
             t('split_file')
           )}
         </Button>

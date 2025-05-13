@@ -288,11 +288,15 @@ class PDFCompleteExtractor:
                                 description = self.image_describer._get_image_description(img_b64, surrounding_text)
                                 
                                 if description:
-                                    console.print(f"  [green]✓[/green] Description obtenue: {len(description)} caractères")
-                                    # Vérifier si la description contient un message d'erreur
-                                    if description.startswith("Erreur"):
-                                        console.print(f"  [yellow]⚠️ L'API a retourné une erreur: {description[:100]}...[/yellow]")
+                                    # Déterminer si la description est un message d'erreur
+                                    error_prefixes = ["Erreur", "Error", "Aucune analyse", "Timeout"]
+                                    is_error = any(description.startswith(prefix) for prefix in error_prefixes)
+                                    
+                                    if is_error:
+                                        console.print(f"  [yellow]⚠️ L'analyse a échoué: {description[:100]}...[/yellow]")
                                     else:
+                                        console.print(f"  [green]✓[/green] Description obtenue: {len(description)} caractères")
+                                        # Incrémenter le compteur d'images analysées uniquement si ce n'est pas une erreur
                                         result["nb_images_analysees"] += 1
                                         console.print(f"  [green]✓[/green] Analyse réussie")
                                 else:

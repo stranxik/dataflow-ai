@@ -44,6 +44,22 @@ except ImportError:
         return "fr"
     TRANSLATIONS_LOADED = False
 
+# Importer format_size depuis le module de compression
+try:
+    from extract.compress_utils import _format_size as format_size
+except ImportError:
+    # Définir la fonction format_size localement si l'import échoue
+    def format_size(size_bytes: int) -> str:
+        """Formate une taille en bytes en format lisible."""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes/1024:.1f} KB"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes/(1024*1024):.1f} MB"
+        else:
+            return f"{size_bytes/(1024*1024*1024):.1f} GB"
+
 # Charger les variables d'environnement
 dotenv.load_dotenv()
 
@@ -303,6 +319,15 @@ def process_with_llm(content: Dict[str, Any], model: str = None, api_key: str = 
         if not api_key:
             console.print("[bold red]Erreur: Clé API OpenAI manquante. Définissez la variable d'environnement OPENAI_API_KEY ou utilisez l'option --api-key.[/bold red]")
             return content
+        
+        # S'assurer que les métadonnées existent
+        if "meta" not in content:
+            content["meta"] = {}
+            
+        # Ajouter les informations d'enrichissement LLM aux métadonnées
+        content["meta"]["llm_enrichment"] = True
+        content["meta"]["llm_model"] = model
+        content["meta"]["llm_enrichment_time"] = int(time.time())
             
         client = OpenAI(api_key=api_key)
         
@@ -315,6 +340,11 @@ def process_with_llm(content: Dict[str, Any], model: str = None, api_key: str = 
                 TimeElapsedColumn(),
             ) as progress:
                 task = progress.add_task(f"[cyan]Analyse LLM avec {model}...", total=len(content["items"]))
+                
+                # Variables pour collecter les données d'enrichissement
+                all_keywords = set()
+                all_content_types = set()
+                all_summaries = []
                 
                 for item in content["items"]:
                     # Extraire le contenu textuel pour l'analyse
@@ -364,6 +394,14 @@ def process_with_llm(content: Dict[str, Any], model: str = None, api_key: str = 
                             
                             item["analysis"]["llm"] = llm_analysis
                             
+                            # Collecter les données pour le résumé global
+                            if "keywords" in llm_analysis:
+                                all_keywords.update(llm_analysis["keywords"])
+                            if "content_type" in llm_analysis:
+                                all_content_types.add(llm_analysis["content_type"])
+                            if "summary" in llm_analysis:
+                                all_summaries.append(llm_analysis["summary"])
+                            
                             # Ajouter ou fusionner les mots-clés
                             if "keywords" in llm_analysis:
                                 if "keywords" not in item["analysis"]:
@@ -379,11 +417,35 @@ def process_with_llm(content: Dict[str, Any], model: str = None, api_key: str = 
                             item["analysis"]["llm_raw"] = response.choices[0].message.content
                     
                     progress.update(task, advance=1)
+                
+                # Ajouter le résumé global aux métadonnées
+                content["meta"]["llm_summary"] = {
+                    "keywords": list(all_keywords)[:15],  # Limiter à 15 mots-clés
+                    "content_types": list(all_content_types),
+                    "summaries_count": len(all_summaries),
+                    "model_used": model,
+                    "enrichment_time": int(time.time())
+                }
+        
+        # Si aucun élément n'a été traité, ajouter quand même un résumé vide dans les métadonnées
+        if "llm_summary" not in content["meta"]:
+            content["meta"]["llm_summary"] = {
+                "keywords": [],
+                "content_types": [],
+                "summaries_count": 0,
+                "model_used": model,
+                "enrichment_time": int(time.time()),
+                "note": "Aucun contenu textuel n'a pu être analysé"
+            }
         
         return content
     
     except Exception as e:
         console.print(f"[bold red]Erreur lors de l'analyse LLM: {e}[/bold red]")
+        # Ajouter l'erreur aux métadonnées
+        if "meta" not in content:
+            content["meta"] = {}
+        content["meta"]["llm_error"] = str(e)
         return content
 
 @app.command()
@@ -833,8 +895,8 @@ def unified(
     
     # Toujours ajouter les options de compression
     # Même si compress est False dans les paramètres, on force l'activation
-        cmd.append("--compress")
-        cmd.extend(["--compress-level", str(compress_level)])
+    cmd.append("--compress")
+    cmd.extend(["--compress-level", str(compress_level)])
     # Force keep_originals à True
     cmd.append("--keep-originals")
     
@@ -1008,76 +1070,78 @@ def interactive(
     language: str = typer.Option(None, "--lang", "-l", help="Langue de l'interface (fr/en)")
 ):
     """
-    Mode entièrement interactif qui guide l'utilisateur à travers toutes les étapes.
-    
-    Ce mode permet de choisir le type d'opération à effectuer et guide
-    l'utilisateur à travers toutes les options de manière conviviale.
+    Mode entièrement interactif pour le traitement des fichiers JSON.
+    Guide l'utilisateur à travers les différentes fonctionnalités.
     """
+    # Définir la langue si spécifiée
     if language:
         set_language(language)
-        
+    
+    # Afficher un en-tête
+    print_header()
+    
     console.print(Panel.fit(
         t("interactive_content", "panels"),
         title=t("interactive_title", "panels"),
-        border_style="green"
+        border_style="blue"
     ))
     
-    # 1. Sélection du type d'opération
-    operation_choices = [
-        t("process", "interactive_choices"),
-        t("chunks", "interactive_choices"),
-        t("match", "interactive_choices"),
-        t("unified", "interactive_choices"),
-        t("clean", "interactive_choices"),
-        t("compress", "interactive_choices"),
-        t("describe_images", "interactive_choices"),
-        # Ajouter l'option pour changer de langue
-        f"🌐 {t('change_language', 'interactive_choices', 'fr')} / {t('change_language', 'interactive_choices', 'en')}",
-        t("quit", "interactive_choices")
-    ]
-    
-    questions = [
-        inquirer.List('operation',
-                     message=t("select_operation", "messages"),
-                     choices=operation_choices)
-    ]
-    answers = inquirer.prompt(questions)
-    
-    if not answers:
-        return
+    while True:
+        choices = [
+            t("process", "interactive_choices"),
+            t("chunks", "interactive_choices"),
+            t("match", "interactive_choices"),
+            t("unified", "interactive_choices"),
+            t("clean", "interactive_choices"),
+            t("compress", "interactive_choices"),
+            t("decompress", "interactive_choices"),
+            t("describe_images", "interactive_choices"),
+            t("change_language", "interactive_choices"),
+            t("quit", "interactive_choices")
+        ]
         
-    selected_operation = answers['operation']
-    
-    # Vérifier si l'utilisateur veut changer de langue
-    if "🌐" in selected_operation:
-        current_lang = get_current_language()
-        new_lang = "en" if current_lang == "fr" else "fr"
+        questions = [
+            inquirer.List('choice',
+                        message=t("select_operation", "messages"),
+                        choices=choices)
+        ]
         
-        console.print(f"[bold]Changing language to {new_lang}[/bold]" if new_lang == "en" else f"[bold]Changement de langue vers {new_lang}[/bold]")
-        set_language(new_lang)
+        answer = inquirer.prompt(questions)
         
-        # Relancer le menu avec la nouvelle langue explicitement spécifiée
-        return interactive(language=new_lang)
-    
-    # Quitter si demandé
-    if selected_operation == t("quit", "interactive_choices"):
-        return
-    
-    # 2. Selon l'opération choisie, poser les questions appropriées
-    if t("process", "interactive_choices") in selected_operation:
-        _run_interactive_process()
-    elif t("chunks", "interactive_choices") in selected_operation:
-        _run_interactive_chunks()
-    elif t("match", "interactive_choices") in selected_operation:
-        _run_interactive_match()
-    elif t("unified", "interactive_choices") in selected_operation:
-        _run_interactive_unified()
-    elif t("clean", "interactive_choices") in selected_operation:
-        _run_interactive_clean()
-    elif t("compress", "interactive_choices") in selected_operation:
-        _run_interactive_compress()
-    elif t("describe_images", "interactive_choices") in selected_operation:
-        _run_interactive_describe_images()
+        if not answer:
+            break
+            
+        choice = answer['choice']
+        
+        if choice == t("process", "interactive_choices"):
+            _run_interactive_process()
+        elif choice == t("chunks", "interactive_choices"):
+            _run_interactive_chunks()
+        elif choice == t("match", "interactive_choices"):
+            _run_interactive_match()
+        elif choice == t("unified", "interactive_choices"):
+            _run_interactive_unified()
+        elif choice == t("clean", "interactive_choices"):
+            _run_interactive_clean()
+        elif choice == t("compress", "interactive_choices"):
+            _run_interactive_compress()
+        elif choice == t("decompress", "interactive_choices"):
+            _run_interactive_decompress()
+        elif choice == t("describe_images", "interactive_choices"):
+            _run_interactive_describe_images()
+        elif choice == t("change_language", "interactive_choices"):
+            # Changer de langue
+            langs = ["fr", "en"]
+            questions = [
+                inquirer.List('lang',
+                            message="Choisissez une langue / Choose a language:",
+                            choices=langs)
+            ]
+            lang_answer = inquirer.prompt(questions)
+            if lang_answer:
+                set_language(lang_answer['lang'])
+        elif choice == t("quit", "interactive_choices"):
+            break
 
 
 def _run_interactive_process():
@@ -1552,6 +1616,122 @@ def compress(
             console.print("\n[bold cyan]Résumé de compression:[/bold cyan]")
             console.print(Markdown(summary_section))
 
+@app.command()
+def decompress(
+    file_path: str = typer.Argument(..., help="Fichier ZST à décompresser"),
+    output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Chemin du fichier JSON de sortie (par défaut: même nom sans extension .zst)"),
+):
+    """
+    Décompresse un fichier ZST en fichier JSON.
+    Permet de retrouver le contenu original d'un fichier compressé.
+    """
+    console = Console()
+    lang = get_current_language()
+    
+    # Vérifier que le chemin existe
+    if not os.path.exists(file_path):
+        console.print(f"[bold red]Le fichier {file_path} n'existe pas.[/bold red]")
+        raise typer.Exit(1)
+    
+    # Vérifier que le fichier est bien un .zst
+    if not file_path.lower().endswith('.zst'):
+        console.print(f"[bold red]Le fichier doit avoir l'extension .zst[/bold red]")
+        raise typer.Exit(1)
+    
+    # Déterminer le fichier de sortie
+    if not output_file:
+        output_file = file_path.replace('.zst', '')
+    
+    # Importer zstandard pour la décompression
+    try:
+        import zstandard as zstd
+        import zipfile
+    except ImportError:
+        console.print("[bold yellow]Les modules nécessaires ne sont pas disponibles. Installation...[/bold yellow]")
+        subprocess.run([sys.executable, "-m", "pip", "install", "zstandard"], check=True)
+        import zstandard as zstd
+        import zipfile
+    
+    # Afficher les infos
+    console.print(Panel.fit(
+        f"[bold]{t('decompression_desc', 'compression')}[/bold]\n\n"
+        f"{t('file_input', 'messages')} : [cyan]{file_path}[/cyan]\n"
+        f"{t('file_output', 'messages')} : [cyan]{output_file}[/cyan]",
+        title=t("decompress", "interactive_choices"),
+        border_style="blue"
+    ))
+    
+    # Vérifier le type de fichier en examinant sa signature
+    with open(file_path, 'rb') as test_file:
+        header = test_file.read(4)
+    
+    # Décompresser le fichier
+    try:
+        with console.status(f"[bold blue]{t('decompressing_file', 'compression')}..."):
+            # Si c'est un fichier ZIP (signature PK\x03\x04)
+            if header.startswith(b'PK\x03\x04'):
+                console.print("[bold yellow]Le fichier semble être un ZIP avec extension .zst. Traitement comme ZIP...[/bold yellow]")
+                
+                try:
+                    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                        # Lister les fichiers dans le ZIP
+                        json_files = [f for f in zip_ref.namelist() if f.lower().endswith('.json')]
+                        
+                        if not json_files:
+                            raise ValueError("Le fichier ZIP ne contient pas de fichiers JSON.")
+                        
+                        # Extraire le premier fichier JSON trouvé
+                        temp_dir = os.path.dirname(output_file) if os.path.dirname(output_file) else "."
+                        zip_ref.extract(json_files[0], path=temp_dir)
+                        extracted_path = os.path.join(temp_dir, json_files[0])
+                        
+                        # Renommer le fichier extrait si nécessaire
+                        if extracted_path != output_file:
+                            import shutil
+                            shutil.move(extracted_path, output_file)
+                
+                except zipfile.BadZipFile:
+                    raise ValueError("Le fichier n'est ni un ZIP valide ni un fichier ZST.")
+            
+            # Sinon, essayer de le décompresser comme un fichier ZST
+            else:
+                with open(file_path, 'rb') as compressed_file:
+                    with open(output_file, 'wb') as decompressed_file:
+                        dctx = zstd.ZstdDecompressor()
+                        dctx.copy_stream(compressed_file, decompressed_file)
+        
+        # Obtenir les tailles des fichiers
+        original_size = os.path.getsize(file_path)
+        decompressed_size = os.path.getsize(output_file)
+        
+        # Calculer le ratio de décompression
+        ratio = decompressed_size / original_size if original_size > 0 else 0
+        
+        # Afficher les statistiques
+        console.print(f"[bold green]{t('file_decompressed_success', 'compression')}![/bold green]")
+        console.print(f"{t('original_file', 'compression')} : [cyan]{format_size(original_size)}[/cyan]")
+        console.print(f"{t('decompressed_file', 'compression')} : [cyan]{format_size(decompressed_size)}[/cyan]")
+        console.print(f"{t('decompression_ratio', 'compression')} : [cyan]{ratio:.2f}x[/cyan]")
+        
+        return output_file
+        
+    except Exception as e:
+        console.print(f"[bold red]Erreur lors de la décompression: {str(e)}[/bold red]")
+        import traceback
+        console.print(traceback.format_exc())
+        raise typer.Exit(1)
+
+# Fonction utilitaire pour formater la taille des fichiers
+def format_size(size_in_bytes):
+    """Formate une taille en bytes en une chaîne lisible (KB, MB, etc.)"""
+    if size_in_bytes < 1024:
+        return f"{size_in_bytes} B"
+    elif size_in_bytes < 1024 * 1024:
+        return f"{size_in_bytes/1024:.2f} KB"
+    elif size_in_bytes < 1024 * 1024 * 1024:
+        return f"{size_in_bytes/(1024*1024):.2f} MB"
+    else:
+        return f"{size_in_bytes/(1024*1024*1024):.2f} GB"
 
 def _run_interactive_compress():
     """Interface interactive pour la commande compress."""
@@ -1592,6 +1772,39 @@ def _run_interactive_compress():
     if confirm and confirm['confirm']:
         # Exécuter la compression
         compress(directory, compress_level, keep_originals)
+
+def _run_interactive_decompress():
+    """Interface interactive pour la commande decompress."""
+    # Sélection du fichier à décompresser
+    input_path = _prompt_for_file(t("select_file_decompress", "prompts"), file_extension=".zst")
+    if not input_path:
+        return
+    
+    # Demander un fichier de sortie (facultatif)
+    questions = [
+        inquirer.Text('output',
+                      message=t("output_file_json", "prompts"),
+                      default=input_path.replace('.zst', ''))
+    ]
+    answers = inquirer.prompt(questions)
+    
+    output_path = answers['output'] if answers['output'] else input_path.replace('.zst', '')
+    
+    # Confirmation
+    console.print(f"\n[bold]{t('summary', 'messages')}[/bold]")
+    console.print(f"- {t('input_path', 'messages')} [cyan]{input_path}[/cyan]")
+    console.print(f"- {t('output_path', 'messages')} [cyan]{output_path}[/cyan]")
+    
+    questions = [
+        inquirer.Confirm('confirm',
+                         message=t("launch_decompression", "confirmations"),
+                         default=True)
+    ]
+    confirm = inquirer.prompt(questions)
+    
+    if confirm and confirm['confirm']:
+        # Exécuter la décompression
+        decompress(input_path, output_path)
 
 
 @app.command()
@@ -2554,6 +2767,99 @@ def _run_interactive_extract_complete():
     
     # Appeler la commande avec les options
     extract_pdf_complete(input_path, **options)
+
+
+# Commande pour le traitement JSON
+@app.command("json-process")
+def json_process(
+    input: Path = typer.Argument(..., help="Le fichier JSON d'entrée"),
+    output: Path = typer.Option(None, help="Le fichier JSON de sortie"),
+    llm_enrichment: bool = typer.Option(True, "--llm-enrichment/--no-llm-enrichment", help="Activer l'enrichissement avec LLM"),
+    preserve_source: bool = typer.Option(True, "--preserve-source/--no-preserve-source", help="Préserver la structure source du JSON"),
+):
+    """
+    Traite un fichier JSON pour le normaliser et l'enrichir.
+    """
+    # Vérifier que le fichier d'entrée existe
+    if not input.exists():
+        print(f"❌ Le fichier d'entrée n'existe pas: {input}")
+        raise typer.Exit(code=1)
+    
+    # Déterminer le fichier de sortie si non spécifié
+    if output is None:
+        output = input.with_name(f"{input.stem}_processed.json")
+    
+    print(f"🔄 Traitement du fichier JSON: {input}")
+    print(f"✅ Préservation de la structure: {'Activée' if preserve_source else 'Désactivée'}")
+    print(f"✅ Enrichissement LLM: {'Activé' if llm_enrichment else 'Désactivé'}")
+    
+    try:
+        # Utiliser le processeur JSON générique
+        from extract.generic_json_processor import GenericJsonProcessor
+        
+        processor = GenericJsonProcessor(
+            use_llm_fallback=llm_enrichment,  # Utiliser le LLM pour l'enrichissement
+            llm_model=os.environ.get("DEFAULT_LLM_MODEL", "gpt-4o"),  # Modèle LLM par défaut
+            preserve_source=preserve_source,
+            generate_llm_reports=llm_enrichment
+        )
+        
+        # Traiter le fichier
+        success = processor.process_file(
+            str(input),
+            str(output),
+            max_items=None  # Pas de limite
+        )
+        
+        if success:
+            print(f"✅ Fichier traité avec succès")
+            print(f"📄 Résultat sauvegardé dans: {output}")
+            
+            # Analyser le résultat pour s'assurer que l'enrichissement LLM a bien été appliqué si demandé
+            if llm_enrichment:
+                try:
+                    import json
+                    with open(output, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    
+                    has_llm_enrichment = False
+                    
+                    # Vérifier d'abord dans les métadonnées
+                    if "meta" in data and "llm_summary" in data["meta"]:
+                        has_llm_enrichment = True
+                        print("✅ Enrichissement LLM détecté dans les métadonnées")
+                    # Vérifier ensuite dans les items
+                    elif "items" in data and isinstance(data["items"], list) and len(data["items"]) > 0:
+                        for item in data["items"][:5]:  # Vérifier les 5 premiers éléments
+                            if "analysis" in item and "llm" in item["analysis"]:
+                                has_llm_enrichment = True
+                                print("✅ Enrichissement LLM détecté dans les items")
+                                break
+                    
+                    if not has_llm_enrichment:
+                        print("⚠️ Aucun enrichissement LLM n'a été détecté dans le fichier de sortie")
+                        
+                        # Vérifier si l'API key est disponible
+                        api_key = os.environ.get("OPENAI_API_KEY")
+                        if not api_key:
+                            print("⚠️ Clé API OpenAI non trouvée dans les variables d'environnement - c'est probablement la cause du problème")
+                        
+                        # Vérifier si le modèle est disponible
+                        model = os.environ.get("DEFAULT_LLM_MODEL")
+                        if not model:
+                            print("⚠️ Modèle LLM par défaut non défini - utiliser la variable d'environnement DEFAULT_LLM_MODEL")
+                except Exception as e:
+                    print(f"⚠️ Impossible de vérifier l'enrichissement LLM: {e}")
+            
+            return True
+        else:
+            print(f"❌ Échec du traitement du fichier")
+            raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"❌ Erreur: {e}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

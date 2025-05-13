@@ -259,19 +259,23 @@ export async function cleanJson(
 }
 
 /**
- * Compress a JSON file
+ * Compress a JSON file or decompress a ZST file
  */
 export async function compressJson(
   file: File,
-  compressionLevel: number = 19,
-  keepOriginal: boolean = true
+  compressionLevel: number = 19, // Niveau par défaut (équilibré)
+  keepOriginal: boolean = false
 ): Promise<Blob> {
-  console.log(`Compressing JSON: ${file.name}, compressionLevel: ${compressionLevel}, keepOriginal: ${keepOriginal}`);
+  // Déterminer si c'est une compression ou une décompression basé sur l'extension du fichier
+  const isCompression = file.name.toLowerCase().endsWith('.json');
+  const isDecompression = file.name.toLowerCase().endsWith('.zst');
+  
+  console.log(`${isCompression ? 'Compressing' : 'Decompressing'} JSON: ${file.name}, compressionLevel: ${compressionLevel}, keepOriginal: ${keepOriginal}`);
   
   try {
     const response = await processFile(file, "/json/compress", {
       compression_level: compressionLevel,
-      keep_original: true,
+      keep_original: keepOriginal,
     });
     
     const blob = await response.blob();
@@ -284,19 +288,29 @@ export async function compressJson(
       throw new Error("Empty response received from server");
     }
     
-    // Le résultat devrait être un fichier ZIP
-    if (!blob.type.includes('zip') && !blob.type.includes('octet-stream')) {
-      console.warn(`Warning: Expected ZIP but got ${blob.type}`);
-      
-      // Si le contenu est HTML et de petite taille, il s'agit probablement d'une erreur
-      if (blob.type.includes('html') && blob.size < 1000) {
-        const text = await blob.text();
-        console.error('HTML response instead of ZIP:', text.substring(0, 200));
-        throw new Error('Received HTML instead of ZIP file. API error or redirect occurred.');
+    // Si c'est une compression, le résultat devrait être un fichier ZST
+    if (isCompression) {
+      // S'assurer que le type MIME est correct pour ZST
+      if (!blob.type.includes('zstd') && !blob.type.includes('octet-stream')) {
+        console.warn(`Warning: Expected ZST but got ${blob.type}`);
+        return new Blob([blob], { type: 'application/zstd' });
       }
-      
-      // Tenter de corriger le type MIME
-      return new Blob([blob], { type: 'application/zip' });
+    } 
+    // Si c'est une décompression, le résultat devrait être un fichier JSON
+    else if (isDecompression) {
+      // S'assurer que le type MIME est correct pour JSON
+      if (!blob.type.includes('json')) {
+        console.warn(`Warning: Expected JSON but got ${blob.type}`);
+        
+        // Si le contenu est HTML et de petite taille, il s'agit probablement d'une erreur
+        if (blob.type.includes('html') && blob.size < 1000) {
+          const text = await blob.text();
+          console.error('HTML response instead of JSON:', text.substring(0, 200));
+          throw new Error('Received HTML instead of JSON file. API error or redirect occurred.');
+        }
+        
+        return new Blob([blob], { type: 'application/json' });
+      }
     }
     
     return blob;
