@@ -39,6 +39,17 @@ python -m tools.clean_sensitive_data path/to/file.json
 python -m tools.clean_sensitive_data path/to/directory --output path/to/output
 ```
 
+### 📌 Exceptions pour les fichiers légitimes
+
+Certains fichiers peuvent légitimement contenir des modèles de données sensibles (comme les fichiers de test pour l'outil de nettoyage). Ces fichiers sont exclus des vérifications du hook pre-commit :
+
+- `tools/clean_sensitive_data.py` (L'outil de nettoyage lui-même)
+- `tests/test_clean_sensitive_data.py` (Tests de l'outil)
+- `tests/test_stripe_patterns.py` (Tests des patterns pour Stripe)
+- `tests/test_final_patterns.py` (Tests des patterns finaux)
+
+> ⚠️ **Attention**: Si vous devez ajouter d'autres fichiers à cette liste d'exclusions, modifiez le hook pre-commit (`.git/hooks/pre-commit`) et ajoutez-les à la liste `EXCLUDED_FILES`. N'utilisez cette option que pour des fichiers contenant des données **fictives** pour des tests, jamais pour des données réelles.
+
 ### 🚨 Que faire en cas de fuite
 
 1. **Ne paniquez pas** - Mais agissez rapidement

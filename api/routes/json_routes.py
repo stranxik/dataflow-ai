@@ -171,33 +171,75 @@ async def clean_json(
     
     # Save uploaded file
     input_file_path = temp_dir / f"input.json"
-    output_file_path = temp_dir / f"cleaned_{file.filename}"
+    output_file_path = temp_dir / f"cleaned_sensitive.json"
+    
     with open(input_file_path, "wb") as f:
         f.write(await file.read())
     
     try:
-        # Prepare command
-        cmd = ["python", "-m", "cli.cli", "clean", str(input_file_path), 
-               "--output", str(output_file_path)]
-        
-        if recursive:
-            cmd.append("--recursive")
-        
-        # Run the CLI command
-        result = await run_cli_command(cmd)
-        
-        # Verify output file exists
-        if not output_file_path.exists():
-            raise HTTPException(status_code=500, detail="Cleaning completed but no output file was generated")
-        
-        # Return the file to the client
-        return FileResponse(
-            path=output_file_path,
-            filename=f"cleaned_{file.filename}",
-            media_type="application/json",
-            # Clean up after sending
-            background=BackgroundTask(lambda: cleanup_files([temp_dir]))
-        )
+        # Import the clean_sensitive_data module directly
+        try:
+            from tools.clean_sensitive_data import clean_json_file
+            import logging
+            
+            # Configure logging
+            logger = logging.getLogger("json_routes")
+            logger.info(f"Processing JSON file: {file.filename}, job_id: {job_id}")
+            logger.info(f"Recursive mode: {recursive}")
+            
+            # Call the function directly instead of using subprocess
+            success = clean_json_file(
+                input_file=input_file_path, 
+                output_file=output_file_path,
+                recursive=recursive,
+                generate_report=False
+            )
+            
+            if not success:
+                raise HTTPException(status_code=500, detail="JSON cleaning failed")
+                
+            # Verify output file exists
+            if not output_file_path.exists():
+                raise HTTPException(status_code=500, detail="Cleaning completed but no output file was generated")
+            
+            # Return the file to the client
+            return FileResponse(
+                path=output_file_path,
+                filename=f"cleaned_{file.filename}",
+                media_type="application/json",
+                # Clean up after sending
+                background=BackgroundTask(lambda: cleanup_files([temp_dir]))
+            )
+            
+        except ImportError:
+            # Fall back to CLI if direct import fails
+            logger.warning("Could not import clean_json_file directly, falling back to CLI")
+            
+            # Prepare command
+            cmd = ["python", "-m", "cli.cli", "clean", str(input_file_path), 
+                "--output", str(output_file_path)]
+            
+            if recursive:
+                cmd.append("--recursive")
+            
+            # Run the CLI command
+            result = await run_cli_command(cmd)
+            
+            if result["return_code"] != 0:
+                raise HTTPException(status_code=500, detail=f"JSON cleaning failed: {result['stderr']}")
+            
+            # Verify output file exists
+            if not output_file_path.exists():
+                raise HTTPException(status_code=500, detail="Cleaning completed but no output file was generated")
+            
+            # Return the file to the client
+            return FileResponse(
+                path=output_file_path,
+                filename=f"cleaned_{file.filename}",
+                media_type="application/json",
+                # Clean up after sending
+                background=BackgroundTask(lambda: cleanup_files([temp_dir]))
+            )
         
     except Exception as e:
         # Clean up in case of error

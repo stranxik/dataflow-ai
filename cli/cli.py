@@ -1343,7 +1343,8 @@ def _create_custom_mapping() -> str:
 def clean(
     input_file: str = typer.Argument(..., help="Fichier ou dossier à nettoyer"),
     output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Fichier ou dossier de sortie"),
-    recursive: bool = typer.Option(True, "--recursive/--no-recursive", help="Traiter récursivement les sous-dossiers"),
+    recursive: bool = typer.Option(True, "--recursive/--no-recursive", help="Traiter récursivement les objets JSON"),
+    report: bool = typer.Option(False, "--report/--no-report", help="Générer un rapport des données sensibles détectées"),
 ):
     """
     Nettoie les données sensibles (clés API, identifiants, etc.) des fichiers JSON.
@@ -1358,7 +1359,7 @@ def clean(
     
     # Importer le module clean_sensitive_data
     try:
-        from tools import clean_json_file
+        from tools.clean_sensitive_data import clean_json_file
     except ImportError:
         console.print("[bold red]Module tools non trouvé. Installez-le avec pip install -e .[/bold red]")
         raise typer.Exit(1)
@@ -1368,103 +1369,61 @@ def clean(
         "[bold]Nettoyage des données sensibles[/bold]\n\n"
         f"Chemin d'entrée : [cyan]{input_file}[/cyan]\n"
         f"Chemin de sortie : [cyan]{output_file or 'Auto-généré'}[/cyan]\n"
-        f"Récursif : [cyan]{'Oui' if recursive else 'Non'}[/cyan]",
+        f"Récursif : [cyan]{'Oui' if recursive else 'Non'}[/cyan]\n"
+        f"Rapport : [cyan]{'Oui' if report else 'Non'}[/cyan]",
         title="Nettoyage de données",
         border_style="blue"
     ))
     
-    # Si le chemin est un fichier
-    if os.path.isfile(input_file):
-        # Obtenir le chemin absolu vers le répertoire racine du projet
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Traitement du fichier ou dossier
+    input_path = Path(input_file)
+    
+    if input_path.is_file():
+        output_path = Path(output_file) if output_file else None
         
-        # Utiliser le dossier results comme base à la racine du projet
-        base_results_dir = os.path.join(project_root, "results")
-        os.makedirs(base_results_dir, exist_ok=True)
+        with console.status("[bold blue]Nettoyage en cours...[/bold blue]"):
+            success = clean_json_file(input_path, output_path, recursive, report)
         
-        # Fichier unique
-        if output_file:
-            if not os.path.isabs(output_file):
-                # Si le chemin n'est pas absolu, le placer dans results
-                out_file = os.path.join(base_results_dir, output_file)
-            else:
-                out_file = output_file
+        if success:
+            console.print(f"[bold green]✅ Nettoyage terminé avec succès![/bold green]")
         else:
-            # Créer un nom par défaut dans le dossier results
-            base, ext = os.path.splitext(os.path.basename(input_file))
-            out_file = os.path.join(base_results_dir, f"{base}_clean{ext}")
+            console.print(f"[bold red]❌ Erreur lors du nettoyage![/bold red]")
+            raise typer.Exit(1)
+    
+    elif input_path.is_dir():
+        output_dir = Path(output_file) if output_file else input_path / "cleaned"
+        os.makedirs(output_dir, exist_ok=True)
         
-        with console.status(f"[bold blue]Nettoyage de {input_file}..."):
-            result = clean_json_file(input_file, out_file)
-        
-        if result:
-            console.print(f"[bold green]✅ Fichier nettoyé: {out_file}[/bold green]")
-        else:
-            console.print(f"[bold red]❌ Échec du nettoyage de {input_file}[/bold red]")
-            
-    # Si le chemin est un répertoire
-    elif os.path.isdir(input_file):
-        # Obtenir le chemin absolu vers le répertoire racine du projet
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
-        # Utiliser le dossier results comme base à la racine du projet
-        base_results_dir = os.path.join(project_root, "results")
-        os.makedirs(base_results_dir, exist_ok=True)
-        
-        # Répertoire
-        timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-        if output_file:
-            if not os.path.isabs(output_file):
-                # Si le chemin n'est pas absolu, le placer dans results
-                out_dir = os.path.join(base_results_dir, output_file)
-            else:
-                out_dir = output_file
-        else:
-            # Créer un nom par défaut dans le dossier results
-            base = os.path.basename(input_file)
-            out_dir = os.path.join(base_results_dir, f"{base}_cleaned_{timestamp}")
-        
-        # Créer le répertoire de sortie s'il n'existe pas
-        os.makedirs(out_dir, exist_ok=True)
-        
-        # Trouver tous les fichiers JSON
-        if recursive:
-            json_files = glob.glob(os.path.join(input_file, "**", "*.json"), recursive=True)
-        else:
-            json_files = glob.glob(os.path.join(input_file, "*.json"))
+        json_files = list(input_path.glob("**/*.json"))
         
         if not json_files:
-            console.print(f"[bold yellow]Aucun fichier JSON trouvé dans {input_file}[/bold yellow]")
-            return
+            console.print(f"[bold yellow]⚠️ Aucun fichier JSON trouvé dans {input_path}[/bold yellow]")
+            raise typer.Exit(0)
         
-        # Traiter chaque fichier
-        success_count = 0
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]{task.description}"),
-            BarColumn(),
-            TextColumn("[bold]{task.completed}/{task.total}"),
-            TimeElapsedColumn(),
-        ) as progress:
+        console.print(f"[bold blue]🔍 {len(json_files)} fichiers JSON trouvés[/bold blue]")
+        
+        with Progress() as progress:
             task = progress.add_task("[cyan]Nettoyage des fichiers...", total=len(json_files))
             
-            for file_path in json_files:
-                # Calculer le chemin relatif au dossier d'entrée
-                rel_path = os.path.relpath(file_path, input_file)
-                # Construire le chemin dans le dossier de sortie
-                out_file_dir = os.path.dirname(os.path.join(out_dir, rel_path))
-                os.makedirs(out_file_dir, exist_ok=True)
-                out_file = os.path.join(out_dir, f"{os.path.splitext(rel_path)[0]}_clean{os.path.splitext(rel_path)[1]}")
+            success_count = 0
+            for file in json_files:
+                rel_path = file.relative_to(input_path)
+                output_file_path = output_dir / rel_path.parent / f"{file.stem}_clean{file.suffix}"
+                os.makedirs(output_file_path.parent, exist_ok=True)
                 
-                # Nettoyer le fichier
-                result = clean_json_file(file_path, out_file)
-                if result:
+                if clean_json_file(file, output_file_path, recursive, report):
                     success_count += 1
-                    
+                
                 progress.update(task, advance=1)
         
-        console.print(f"[bold green]✅ Nettoyage terminé: {success_count}/{len(json_files)} fichiers nettoyés.[/bold green]")
-        console.print(f"Fichiers nettoyés disponibles dans : [bold cyan]{out_dir}[/bold cyan]")
+        console.print(f"[bold green]✅ {success_count}/{len(json_files)} fichiers nettoyés avec succès![/bold green]")
+        
+        if success_count < len(json_files):
+            console.print(f"[bold yellow]⚠️ {len(json_files) - success_count} fichiers n'ont pas pu être nettoyés[/bold yellow]")
+    
+    else:
+        console.print(f"[bold red]Le chemin {input_file} n'est ni un fichier ni un dossier.[/bold red]")
+        raise typer.Exit(1)
 
 
 def _run_interactive_clean():
