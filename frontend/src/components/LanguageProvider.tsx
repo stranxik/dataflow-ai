@@ -228,6 +228,23 @@ const translations: Record<Language, Record<string, string>> = {
     'error_decompressing': 'Erreur lors de la décompression du fichier',
     'your_json_file_has_been_compressed_successfully': 'Votre fichier JSON a été compressé avec succès',
     'your_json_file_has_been_decompressed_successfully': 'Votre fichier ZST a été décompressé avec succès',
+    
+    // Traductions pour l'orchestrateur de tâches
+    'active_tasks': 'Tâches actives',
+    'retry': 'Réessayer',
+    'started': 'Démarré',
+    'last_updated': 'Dernière mise à jour',
+    'retries': 'Tentatives',
+    'error': 'Erreur',
+    'processing_started': 'Traitement démarré',
+    'processing_status_available': 'Vous pouvez suivre le statut du traitement ci-dessous',
+    'empty_result': 'Résultat vide',
+    'task_status_message': 'Le traitement des PDF est géré par un orchestrateur de tâches qui assure la fiabilité du traitement. Vous pouvez suivre la progression des tâches ci-dessus.',
+    'no_active_tasks': 'Aucune tâche active',
+    'upload_and_process': 'Téléchargez et traitez un fichier pour voir apparaître des tâches ici',
+    'processing_in_progress': 'Traitement en cours',
+    'paused': 'En pause',
+    'pending': 'En attente'
   },
   en: {
     // Navigation
@@ -436,6 +453,23 @@ const translations: Record<Language, Record<string, string>> = {
     'error_decompressing': 'Error decompressing file',
     'your_json_file_has_been_compressed_successfully': 'Your JSON file has been compressed successfully',
     'your_json_file_has_been_decompressed_successfully': 'Your ZST file has been decompressed successfully',
+    
+    // Traductions pour l'orchestrateur de tâches
+    'active_tasks': 'Active tasks',
+    'retry': 'Retry',
+    'started': 'Started',
+    'last_updated': 'Last updated',
+    'retries': 'Retries',
+    'error': 'Error',
+    'processing_started': 'Processing started',
+    'processing_status_available': 'You can follow the processing status below',
+    'empty_result': 'Empty result',
+    'task_status_message': 'Processing is managed by a task orchestrator which ensures the reliability of the processing. You can follow the progress of the tasks above.',
+    'no_active_tasks': 'No active tasks',
+    'upload_and_process': 'Upload and process a file to see tasks here',
+    'processing_in_progress': 'Processing in progress',
+    'paused': 'Paused',
+    'pending': 'Pending'
   }
 };
 

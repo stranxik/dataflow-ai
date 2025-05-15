@@ -175,13 +175,29 @@ async def extract_images_from_pdf(
         if not os.path.exists(extract_script):
             logger.error(f"Extract script not found at {extract_script}")
             raise HTTPException(status_code=500, detail=f"Extract script not found at {extract_script}")
-            
+        
+        # Lire la langue définie dans le fichier .language
+        language = "fr"  # Par défaut en français
+        language_file = os.path.join(base_path, ".language")
+        if os.path.exists(language_file):
+            try:
+                with open(language_file, "r") as f:
+                    lang = f.read().strip()
+                    if lang in ["fr", "en"]:
+                        language = lang
+                        logger.info(f"Using language from .language file: {language}")
+                    else:
+                        logger.warning(f"Invalid language in .language file: {lang}, using default: fr")
+            except Exception as e:
+                logger.error(f"Error reading .language file: {e}")
+                
         cmd = [
             python_executable,
             extract_script,
             input_file_path,
             "--output", output_dir,
-            "--max-images", str(max_images)
+            "--max-images", str(max_images),
+            "--language", language
         ]
         
         logger.info(f"Running command: {' '.join(cmd)}")

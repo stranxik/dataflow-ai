@@ -29,6 +29,7 @@ const TaskStatusIcon = ({ status }: { status: string }) => {
 };
 
 const TaskStatusBadge = ({ status }: { status: string }) => {
+  const { t } = useLanguage();
   let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
   
   switch (status) {
@@ -46,11 +47,29 @@ const TaskStatusBadge = ({ status }: { status: string }) => {
       variant = 'outline';
       break;
   }
+
+  // Traduire les statuts
+  const getTranslatedStatus = () => {
+    switch (status) {
+      case 'running':
+        return t('processing_in_progress');
+      case 'completed':
+        return t('processing_complete');
+      case 'failed':
+        return t('processing_failed');
+      case 'paused':
+        return t('paused') || 'Paused';
+      case 'pending':
+        return t('pending') || 'Pending';
+      default:
+        return status;
+    }
+  };
   
   return (
     <Badge variant={variant} className="ml-2">
       <TaskStatusIcon status={status} />
-      <span className="ml-1">{status}</span>
+      <span className="ml-1">{getTranslatedStatus()}</span>
     </Badge>
   );
 };
@@ -120,9 +139,20 @@ export function TaskManager({
     ? tasks.filter(task => task.status !== 'completed')
     : tasks;
 
-  // S'il n'y a pas de tâches à afficher, ne rien rendre
+  // S'il n'y a pas de tâches à afficher, montrer un placeholder
   if (filteredTasks.length === 0) {
-    return null;
+    return (
+      <div className="bg-background border border-primary/10 rounded-md shadow-sm p-4 max-w-xl mx-auto mb-6 task-manager-container opacity-75 hover:opacity-100 transition-opacity duration-300">
+        <h3 className="text-lg font-semibold mb-4 text-primary">{t('active_tasks') || 'Tâches actives'}</h3>
+        <div className="text-center py-6 text-muted-foreground">
+          <div className="mb-2">
+            <Loader2 className="h-8 w-8 mx-auto text-primary/30 animate-pulse" />
+          </div>
+          <p className="font-medium">{t('no_active_tasks') || 'Aucune tâche active'}</p>
+          <p className="text-xs mt-1">{t('upload_and_process') || 'Téléchargez et traitez un fichier pour voir apparaître des tâches ici'}</p>
+        </div>
+      </div>
+    );
   }
 
   // Toggle l'expansion d'une tâche
@@ -139,13 +169,15 @@ export function TaskManager({
   };
 
   return (
-    <div className="bg-background border rounded-md shadow-sm p-4 max-w-xl mx-auto">
-      <h3 className="text-lg font-semibold mb-4">{t('active_tasks')}</h3>
+    <div className="bg-background border border-primary/20 rounded-md shadow-lg p-4 max-w-xl mx-auto mb-6 task-manager-container">
+      <h3 className="text-lg font-semibold mb-4 text-primary">{t('active_tasks') || 'Tâches actives'}</h3>
       
       <div className="space-y-4">
         {filteredTasks.map(task => (
           <div 
-            key={task.id} 
+            key={task.id}
+            data-task-id={task.id}
+            data-filename={task.metadata?.fileName || 'unknown'}
             className="border rounded-md p-3 hover:bg-accent/5 transition-colors cursor-pointer"
             onClick={() => toggleTaskExpand(task.id)}
           >
@@ -167,7 +199,7 @@ export function TaskManager({
                     }}
                   >
                     <RefreshCw className="h-4 w-4 mr-1" />
-                    {t('retry')}
+                    {t('retry') || 'Réessayer'}
                   </Button>
                 )}
               </div>
@@ -180,22 +212,22 @@ export function TaskManager({
             {expandedTasks[task.id] && (
               <div className="mt-3 pt-2 border-t text-sm">
                 <div>
-                  <span className="font-medium">{t('started')}:</span>{' '}
+                  <span className="font-medium">{t('started') || 'Démarré'}:</span>{' '}
                   {new Date(task.startTime).toLocaleString()}
                 </div>
                 <div>
-                  <span className="font-medium">{t('last_updated')}:</span>{' '}
+                  <span className="font-medium">{t('last_updated') || 'Dernière mise à jour'}:</span>{' '}
                   {new Date(task.lastUpdated).toLocaleString()}
                 </div>
                 {task.retryCount > 0 && (
                   <div>
-                    <span className="font-medium">{t('retries')}:</span>{' '}
+                    <span className="font-medium">{t('retries') || 'Tentatives'}:</span>{' '}
                     {task.retryCount}/{task.maxRetries}
                   </div>
                 )}
                 {task.error && (
                   <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded">
-                    <span className="font-medium">{t('error')}:</span>{' '}
+                    <span className="font-medium">{t('error') || 'Erreur'}:</span>{' '}
                     {task.error.message}
                   </div>
                 )}

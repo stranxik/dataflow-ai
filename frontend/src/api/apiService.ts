@@ -114,8 +114,8 @@ export async function processPdf(
   formData.append('format', format);
   
   // Utiliser le bon endpoint du backend
-  const endpoint = '/api/pdf/extract-images';
-  console.log(`Sending request to ${endpoint} with max_images=${maxImages}, format=${format}`);
+  const endpoint = '/pdf/extract-images';
+  console.log(`Sending request to ${API_BASE_URL}${endpoint} with max_images=${maxImages}, format=${format}`);
   
   // Inclure la clé API dans les en-têtes
   const headers: Record<string, string> = {};
@@ -126,7 +126,7 @@ export async function processPdf(
     console.warn('No API key found, request may fail authentication');
   }
   
-  const response = await fetch(endpoint, {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: 'POST',
     headers,
     body: formData,

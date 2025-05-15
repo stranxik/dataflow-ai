@@ -19,6 +19,7 @@ DataFlow AI is a complete solution for processing, analyzing, and transforming J
 - **Flexible Access**: Use either the web interface or the CLI
 - **LLM Enrichment**: Enhance your data with AI-powered analysis
 - **Security Built-in**: Automatic removal of sensitive data
+- **Task Orchestration**: Resilient task management with 86% faster PDF processing
 
 ## 🖥️ Getting Started
 
@@ -155,6 +156,7 @@ Comprehensive documentation is available in the `/documentation` folder:
 - **[PDF Processing](documentation/pdf/)**: PDF extraction capabilities
 - **[JSON Processing](documentation/extract/)**: JSON handling features
 - **[Security](documentation/security/)**: Data security features
+- **[Task Orchestrator](documentation/orchestracteur/)**: Advanced task management system
 
 ![JIRA and Confluence Integration](documentation/images/en/jira_confluence.png)
 

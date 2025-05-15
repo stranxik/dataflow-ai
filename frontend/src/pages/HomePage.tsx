@@ -154,7 +154,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
 
     try {
       // Créer une nouvelle tâche pour le traitement du PDF
-      const pdfProcessor = new PdfProcessingTask({ processPdf });
+      const pdfProcessor = new PdfProcessingTask(processPdf);
       
       // Définir les paramètres de traitement
       const taskInput: PdfProcessingInput = {
@@ -319,12 +319,17 @@ Explore our ecosystem at https://blaike.cc/ecosystem
       </div>
       
       {/* Afficher les tâches en cours */}
-      <div className="mb-16">
+      <div className="mb-8">
         <TaskManager 
           onTaskComplete={handleTaskComplete}
           hideCompleted={false}
           autoCleanup={true} 
         />
+      </div>
+
+      {/* Ajouter un message d'explication pour les tâches */}
+      <div className="max-w-3xl mx-auto mb-12 text-center text-sm text-muted-foreground">
+        <p>{t('task_status_message') || "Le traitement des PDF est géré par un orchestrateur de tâches qui assure la fiabilité du traitement. Vous pouvez suivre la progression des tâches ci-dessus."}</p>
       </div>
 
       <div className="py-16 bg-gray-50 dark:bg-gray-900/10 w-full my-20 -mx-4">
