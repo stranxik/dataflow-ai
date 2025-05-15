@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/Progress';
 import { Loader2, AlertCircle, CheckCircle, PauseCircle, RefreshCw } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
+import React from 'react';
 
 interface TaskManagerProps {
   onTaskComplete?: (taskId: string, result: any) => void;
@@ -28,7 +29,7 @@ const TaskStatusIcon = ({ status }: { status: string }) => {
   }
 };
 
-const TaskStatusBadge = ({ status }: { status: string }) => {
+const TaskStatusBadge = ({ status, progress }: { status: string, progress?: number }) => {
   const { t } = useLanguage();
   let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
   
@@ -50,6 +51,11 @@ const TaskStatusBadge = ({ status }: { status: string }) => {
 
   // Traduire les statuts
   const getTranslatedStatus = () => {
+    // Si la tâche est en cours et la progression est ≥ 95%, afficher le message de finalisation
+    if (status === 'running' && progress !== undefined && progress >= 95) {
+      return t('finalizing_extraction');
+    }
+    
     switch (status) {
       case 'running':
         return t('processing_in_progress');
@@ -185,7 +191,7 @@ export function TaskManager({
               <div className="flex items-center">
                 <TaskStatusIcon status={task.status} />
                 <span className="ml-2 font-medium">{task.name}</span>
-                <TaskStatusBadge status={task.status} />
+                <TaskStatusBadge status={task.status} progress={task.progress} />
               </div>
               
               <div className="flex items-center gap-2">
@@ -206,7 +212,14 @@ export function TaskManager({
             </div>
             
             {task.status === 'running' && (
-              <Progress value={task.progress} className="mt-2" />
+              <React.Fragment>
+                <Progress value={task.progress} className="mt-2" />
+                {task.progress >= 95 && (
+                  <div className="text-xs text-muted-foreground mt-1 italic">
+                    {t('finalizing_message')}
+                  </div>
+                )}
+              </React.Fragment>
             )}
             
             {expandedTasks[task.id] && (

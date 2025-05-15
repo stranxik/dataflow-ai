@@ -4,7 +4,7 @@
 
 The Task Orchestrator is a powerful and resilient system for managing asynchronous operations in DataFlow AI. Initially implemented for PDF processing, it provides a robust framework for handling long-running tasks with built-in error recovery, progress tracking, and state persistence.
 
-**Performance Impact**: Implementation of the Task Orchestrator has resulted in a dramatic improvement in processing times, reducing the average PDF processing time from **1 minute 50 seconds to just 15 seconds** - an **86% reduction** in processing time.
+**Performance Impact**: Implementation of the Task Orchestrator has resulted in a dramatic improvement in processing times, an **86% reduction** in processing time.
 
 ## Key Features
 

@@ -243,6 +243,8 @@ const translations: Record<Language, Record<string, string>> = {
     'no_active_tasks': 'Aucune tâche active',
     'upload_and_process': 'Téléchargez et traitez un fichier pour voir apparaître des tâches ici',
     'processing_in_progress': 'Traitement en cours',
+    'finalizing_extraction': 'Finalisation de l\'extraction...',
+    'finalizing_message': 'Nous finalisons votre extraction. Cette dernière étape peut prendre quelques instants.',
     'paused': 'En pause',
     'pending': 'En attente'
   },
@@ -468,6 +470,8 @@ const translations: Record<Language, Record<string, string>> = {
     'no_active_tasks': 'No active tasks',
     'upload_and_process': 'Upload and process a file to see tasks here',
     'processing_in_progress': 'Processing in progress',
+    'finalizing_extraction': 'Finalizing extraction...',
+    'finalizing_message': 'We are finalizing your extraction. This last step may take a moment.',
     'paused': 'Paused',
     'pending': 'Pending'
   }

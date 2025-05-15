@@ -4,7 +4,7 @@
 
 L'Orchestrateur de Tâches est un système puissant et résilient pour gérer les opérations asynchrones dans DataFlow AI. Initialement mis en œuvre pour le traitement des PDF, il fournit un cadre robuste pour gérer les tâches de longue durée avec récupération d'erreurs intégrée, suivi de progression et persistance d'état.
 
-**Impact sur les performances** : La mise en œuvre de l'Orchestrateur de Tâches a entraîné une amélioration spectaculaire des temps de traitement, réduisant le temps moyen de traitement des PDF de **1 minute 50 secondes à seulement 15 secondes** - une **réduction de 86%** du temps de traitement.
+**Impact sur les performances** : La mise en œuvre de l'Orchestrateur de Tâches a entraîné une amélioration spectaculaire des temps de traitement, une **réduction de 86%** du temps de traitement.
 
 ## Caractéristiques principales
 
