@@ -94,88 +94,56 @@ export async function processFile(
 }
 
 /**
- * Process a PDF file for extraction
+ * Process a PDF file
  */
 export async function processPdf(
   file: File,
-  mode: "complete" | "text-only" | "structured" = "complete",
+  _mode: string = 'complete', // Renommé avec underscore pour indiquer qu'il n'est pas utilisé
   maxImages: number = 10,
-  schema?: string,
-  format: "json" | "zip" = "json"
+  customPrompt?: string,
+  format: string = 'json'
 ): Promise<Blob> {
-  console.log(`Processing PDF: ${file.name}, mode: ${mode}, maxImages: ${maxImages}, format: ${format}`);
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('max_images', maxImages.toString());
   
-  // Toujours utiliser extract-images pour le mode complet
-  let endpoint = "/pdf/extract-images";
-  if (mode === "text-only") {
-    endpoint = "/pdf/extract-text";
-  } else if (mode === "structured") {
-    endpoint = "/pdf/extract-structured";
+  if (customPrompt) {
+    formData.append('custom_prompt', customPrompt);
   }
   
-  const options: Record<string, any> = { 
-    max_images: maxImages,
-    format: format
-  };
+  formData.append('format', format);
   
-  if (schema) {
-    options.schema = schema;
+  // Utiliser le bon endpoint du backend
+  const endpoint = '/api/pdf/extract-images';
+  console.log(`Sending request to ${endpoint} with max_images=${maxImages}, format=${format}`);
+  
+  // Inclure la clé API dans les en-têtes
+  const headers: Record<string, string> = {};
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+    console.log('Including API key in request headers');
+  } else {
+    console.warn('No API key found, request may fail authentication');
   }
   
-  console.log(`Calling endpoint: ${endpoint} with options:`, options);
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
   
-  try {
-    const response = await processFile(file, endpoint, options);
-    const blob = await response.blob();
-    
-    // Vérifier que le blob est valide et a un type de contenu approprié
-    console.log(`Response blob type: ${blob.type}, size: ${blob.size} bytes`);
-    
-    // Corriger le type MIME pour les fichiers ZIP si nécessaire
-    if (format === 'zip') {
-      // Si on a demandé un ZIP, on devrait recevoir un ZIP
-      if (!blob.type.includes('zip') && !blob.type.includes('octet-stream')) {
-        console.warn(`Warning: Expected zip format but got ${blob.type}`);
-        
-        // Si le contenu est HTML et de petite taille, il s'agit probablement d'une erreur
-        if (blob.type.includes('html') && blob.size < 1000) {
-          const text = await blob.text();
-          console.error('HTML response instead of ZIP:', text.substring(0, 200));
-          throw new Error('Received HTML instead of ZIP file. API error or redirect occurred.');
-        }
-        
-        // Si c'est du JSON et qu'on attendait un ZIP, il y a eu une erreur
-        if (blob.type.includes('json')) {
-          // Essayons de voir si c'est un message d'erreur
-          try {
-            const jsonText = await blob.text();
-            const jsonContent = JSON.parse(jsonText);
-            if (jsonContent.detail) {
-              throw new Error(`API error: ${jsonContent.detail}`);
-            }
-          } catch (err) {
-            // En cas d'erreur de parsing, on continue avec notre correction
-            console.warn('Failed to parse potential error response as JSON');
-          }
-        }
-        
-        // Tenter de corriger le type MIME
-        return new Blob([blob], { type: 'application/zip' });
-      }
-      return blob;
-    } else {
-      // Pour le format JSON, vérifier si on a bien reçu du JSON
-      if (!blob.type.includes('json')) {
-        console.warn(`Warning: Expected JSON but got ${blob.type}`);
-        // Tenter de corriger le type MIME
-        return new Blob([blob], { type: 'application/json' });
-      }
-      return blob;
+  if (!response.ok) {
+    let errorMessage = 'Failed to process PDF';
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.detail || errorData.message || errorMessage;
+    } catch (e) {
+      // Si la réponse n'est pas du JSON, on utilise le message d'erreur par défaut
     }
-  } catch (error) {
-    console.error('Error in processPdf:', error);
-    throw error;
+    throw new Error(errorMessage);
   }
+  
+  return await response.blob();
 }
 
 /**

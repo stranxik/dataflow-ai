@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0"
+  }
+}

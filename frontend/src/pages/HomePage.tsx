@@ -8,6 +8,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useLanguage } from '@/components/LanguageProvider';
 import { HelpTooltip } from '@/components/ui/HelpTooltip';
 import { MAX_PDF_SIZE_MB, MAX_PDF_SIZE_BYTES, MAX_IMAGES_ANALYSIS, DEFAULT_IMAGES_ANALYSIS, validatePdfSize } from '@/lib/config';
+import { useTaskOrchestrator, PdfProcessingTask, PdfProcessingInput } from '@/lib/taskOrchestrator';
+import { TaskManager } from '@/components/TaskManager';
 
 export default function HomePage() {
   const { t } = useLanguage();
@@ -15,6 +17,17 @@ export default function HomePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [maxImages, setMaxImages] = useState(DEFAULT_IMAGES_ANALYSIS);
   const { toast } = useToast();
+  const { executeTask } = useTaskOrchestrator({
+    maxRetries: 3,
+    retryBackoffFactor: 2,
+    onError: (_, error) => {
+      toast({
+        title: t('processing_failed'),
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
 
   // Easter egg pour la console
   useEffect(() => {
@@ -126,7 +139,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
     maxSize: MAX_PDF_SIZE_BYTES,
   });
 
-  // Traitement du PDF avec téléchargement automatique
+  // Traitement du PDF avec l'orchestrateur de tâches
   const handleProcessPDF = async () => {
     if (!selectedFile) {
       toast({
@@ -140,47 +153,33 @@ Explore our ecosystem at https://blaike.cc/ecosystem
     setIsProcessing(true);
 
     try {
-      console.log(`Starting PDF processing: ${selectedFile.name}`);
+      // Créer une nouvelle tâche pour le traitement du PDF
+      const pdfProcessor = new PdfProcessingTask({ processPdf });
       
-      const result = await processPdf(
-        selectedFile,
-        'complete',
+      // Définir les paramètres de traitement
+      const taskInput: PdfProcessingInput = {
+        file: selectedFile,
+        mode: 'complete',
         maxImages,
-        undefined,
-        'zip'
+        format: 'zip'
+      };
+      
+      // Lancer le traitement comme une tâche orchestrée
+      const taskId = await executeTask(
+        `${t('processing')}: ${selectedFile.name}`,
+        pdfProcessor,
+        taskInput,
+        { fileName: selectedFile.name, fileSize: selectedFile.size }
       );
       
-      console.log(`PDF processing completed, blob received: ${result.size} bytes, type: ${result.type}`);
-      
-      // Vérifier la validité du blob retourné
-      if (result.size === 0) {
-        throw new Error('Empty response received from server');
-      }
-      
-      if (result.size < 1000 && result.type.includes('html')) {
-        const text = await result.text();
-        if (text.includes('error') || text.includes('Error')) {
-          throw new Error('Server returned an error page');
-        }
-      }
-      
-      // Déclencher le téléchargement directement
-      const zipBlob = (!result.type.includes('zip') && !result.type.includes('octet-stream'))
-        ? new Blob([result], { type: 'application/zip' })
-        : result;
-      
-      // Déclencher le téléchargement immédiatement
-      createDownloadLink(
-        zipBlob,
-        `${selectedFile.name.replace('.pdf', '')}_analysis.zip`
-      );
+      console.log(`PDF processing started as task: ${taskId}`);
       
       toast({
-        title: t('processing_complete'),
-        description: t('your_pdf_has_been_processed_successfully'),
+        title: t('processing_started'),
+        description: t('processing_status_available'),
       });
     } catch (error) {
-      console.error('Error processing PDF:', error);
+      console.error('Error starting PDF processing task:', error);
       toast({
         title: t('processing_failed'),
         description: error instanceof Error ? error.message : 'An unknown error occurred',
@@ -190,6 +189,40 @@ Explore our ecosystem at https://blaike.cc/ecosystem
       setIsProcessing(false);
     }
   };
+
+  // Gérer la complétion d'une tâche
+  const handleTaskComplete = useCallback((taskId: string, result: Blob) => {
+    console.log(`Task ${taskId} completed, downloading result...`);
+    
+    // Vérifier la validité du blob
+    if (result.size === 0) {
+      toast({
+        title: t('processing_failed'),
+        description: t('empty_result'),
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    // Déclencher le téléchargement
+    const zipBlob = (!result.type.includes('zip') && !result.type.includes('octet-stream'))
+      ? new Blob([result], { type: 'application/zip' })
+      : result;
+    
+    // Trouver le nom du fichier associé à cette tâche
+    const task = document.querySelector(`[data-task-id="${taskId}"]`);
+    const fileName = task?.getAttribute('data-filename') || 'result';
+    
+    createDownloadLink(
+      zipBlob,
+      `${fileName.replace('.pdf', '')}_analysis.zip`
+    );
+    
+    toast({
+      title: t('processing_complete'),
+      description: t('your_pdf_has_been_processed_successfully'),
+    });
+  }, [t, toast]);
 
   return (
     <div className="py-10 px-4">
@@ -207,7 +240,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
         </p>
       </div>
 
-      <div className="max-w-3xl mx-auto bg-card shadow-lg rounded-none p-8 mb-16">
+      <div className="max-w-3xl mx-auto bg-card shadow-lg rounded-none p-8 mb-8">
         <div className="space-y-8">
           <div className="flex items-center justify-center space-x-4 mx-auto max-w-sm">
             <label className="text-sm font-medium whitespace-nowrap">
@@ -283,6 +316,15 @@ Explore our ecosystem at https://blaike.cc/ecosystem
             </Button>
           </div>
         </div>
+      </div>
+      
+      {/* Afficher les tâches en cours */}
+      <div className="mb-16">
+        <TaskManager 
+          onTaskComplete={handleTaskComplete}
+          hideCompleted={false}
+          autoCleanup={true} 
+        />
       </div>
 
       <div className="py-16 bg-gray-50 dark:bg-gray-900/10 w-full my-20 -mx-4">
