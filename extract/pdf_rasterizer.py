@@ -5,6 +5,7 @@ import argparse
 import time
 from extract.image_describer import PDFImageDescriber
 from rich.console import Console
+import threading
 
 console = Console()
 
@@ -98,7 +99,36 @@ def create_human_readable_report(images, output_dir, filename="rasterized_report
         console.print(f"[bold red]Erreur lors de la création du rapport: {str(e)}[/bold red]")
         return None
 
+def update_progress(progress_path, phase, progress, step, extra=None):
+    data = {"phase": phase, "progress": progress, "step": step}
+    if extra:
+        data.update(extra)
+    lock = threading.Lock()
+    with lock:
+        # Charger l'historique existant si présent
+        if os.path.exists(progress_path):
+            try:
+                with open(progress_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+                history = existing.get("history", [])
+            except Exception:
+                history = []
+        else:
+            history = []
+        # Ajouter la nouvelle étape à l'historique
+        history.append({
+            "timestamp": int(time.time()),
+            "phase": phase,
+            "progress": progress,
+            "step": step
+        })
+        data["history"] = history
+        with open(progress_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
 def rasterize_and_analyze_pdf(pdf_path, output_dir, dpi=300, pages=None, language=None, model=None, timeout=30):
+    progress_path = os.path.join(output_dir, "progress.json")
+    update_progress(progress_path, "raster", 0, "Initialisation rasterisation")
     os.makedirs(output_dir, exist_ok=True)
     from dotenv import load_dotenv
     load_dotenv()
@@ -129,7 +159,8 @@ def rasterize_and_analyze_pdf(pdf_path, output_dir, dpi=300, pages=None, languag
     mat = fitz.Matrix(zoom, zoom)
     images = []
     page_indices = range(len(doc)) if pages is None else pages
-    for page_num in page_indices:
+    for idx, page_num in enumerate(page_indices):
+        update_progress(progress_path, "raster", int(100 * idx / len(page_indices)), f"Rasterisation page {page_num+1}/{len(page_indices)}")
         page = doc[page_num]
         pix = page.get_pixmap(matrix=mat, alpha=False)
         img_path = os.path.join(output_dir, "img", f"page_{page_num+1}_raster.png")
@@ -180,6 +211,7 @@ def rasterize_and_analyze_pdf(pdf_path, output_dir, dpi=300, pages=None, languag
     
     console.print(f"[green]Rasterisation et analyse IA terminées. {len(images)} images générées et analysées.[/green]")
     console.print(f"JSON de résultat : {result_json}")
+    update_progress(progress_path, "raster", 100, "Rasterisation terminée")
     return images
 
 def detect_vector_pages(pdf_path, min_drawings=10, max_text_len=500):

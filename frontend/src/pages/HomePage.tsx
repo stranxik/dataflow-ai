@@ -9,6 +9,7 @@ import { HelpTooltip } from '@/components/ui/HelpTooltip';
 import { MAX_PDF_SIZE_MB, MAX_PDF_SIZE_BYTES, validatePdfSize } from '@/lib/config';
 import { useTaskOrchestrator } from '@/lib/taskOrchestrator';
 import { TaskManager } from '@/components/TaskManager';
+import { Progress } from '@/components/ui/Progress';
 
 export default function HomePage() {
   const { t, language } = useLanguage();
@@ -18,6 +19,7 @@ export default function HomePage() {
   const [rasterPagesInput, setRasterPagesInput] = useState('');
   const [maxImages, setMaxImages] = useState(10);
   const { toast } = useToast();
+  const [currentProgress, setCurrentProgress] = useState(0);
   const { executeTask, orchestrator } = useTaskOrchestrator({
     maxRetries: 3,
     retryBackoffFactor: 2,
@@ -27,6 +29,9 @@ export default function HomePage() {
         description: error.message,
         variant: 'destructive',
       });
+    },
+    onProgress: (_unused, progress) => {
+      setCurrentProgress(progress);
     }
   });
 
@@ -165,6 +170,8 @@ Explore our ecosystem at https://blaike.cc/ecosystem
         taskParams,
         { fileName: selectedFile.name, fileSize: selectedFile.size }
       );
+      // Démarrer le polling de la progression réelle (jobId = taskId)
+      orchestrator.startProgressPolling(taskId, taskId);
       console.log(`Rasterisation PDF lancée comme tâche: ${taskId}`);
       toast({
         title: t('processing_started'),
@@ -258,6 +265,12 @@ Explore our ecosystem at https://blaike.cc/ecosystem
 
   return (
     <div className="py-10 px-4">
+      {/* Progression globale */}
+      {isProcessing && (
+        <div className="max-w-3xl mx-auto mb-4">
+          <Progress value={currentProgress} />
+        </div>
+      )}
       <div className="text-center mb-12">
         <h1 className="text-5xl font-black tracking-tight mb-6 flex items-center justify-center flex-wrap">
           {t('pdf_analysis')}

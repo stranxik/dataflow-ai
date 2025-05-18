@@ -16,7 +16,7 @@ import threading
 import openai
 import requests
 
-from fastapi import APIRouter, File, UploadFile, BackgroundTasks, HTTPException, Form, Query
+from fastapi import APIRouter, File, UploadFile, BackgroundTasks, HTTPException, Form, Query, Path as FastAPIPath
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
@@ -203,20 +203,16 @@ async def extract_images_from_pdf(
     try:
         logger.info(f"Processing PDF: {file.filename}, job_id: {job_id}, format: {format}")
         logger.info(f"Using max_images: {max_images}")
-        
         # Check if OpenAI API key is available
         if "OPENAI_API_KEY" in os.environ:
             logger.info("OPENAI_API_KEY found in environment variables")
         else:
             logger.warning("OPENAI_API_KEY not found in environment variables")
-        
         # Check if output directory has proper permissions
         logger.info(f"Checking permissions for {output_dir}")
-        
         # Get python executable
         python_executable = sys.executable
         logger.info(f"Using Python executable: {python_executable}")
-        
         # Priorité : paramètre explicite > .language > fr
         lang = language
         if not lang:
@@ -232,15 +228,16 @@ async def extract_images_from_pdf(
         if lang not in ["fr", "en"]:
             lang = "fr"
         logger.info(f"Language for extraction/report: {lang}")
-        
-        # Use extract/pdf_complete_extractor.py first in any case for text and embedded images
         extract_script = os.path.join(base_path, "extract", "pdf_complete_extractor.py")
-        
+        rasterizer_script = os.path.join(base_path, "extract", "pdf_rasterizer.py")
         if not os.path.exists(extract_script):
             logger.error(f"Extract script not found at {extract_script}")
             raise HTTPException(status_code=500, detail=f"Extract script not found at {extract_script}")
-                
-        cmd = [
+        if not os.path.exists(rasterizer_script):
+            logger.error(f"Rasterizer script not found at {rasterizer_script}")
+            raise HTTPException(status_code=500, detail=f"Rasterizer script not found at {rasterizer_script}")
+        # Préparer les commandes
+        cmd_classic = [
             python_executable,
             extract_script,
             input_file_path,
@@ -248,18 +245,35 @@ async def extract_images_from_pdf(
             "--max-images", str(max_images),
             "--language", lang
         ]
-        
-        logger.info(f"Running extract command: {' '.join(cmd)}")
-        
-        # Execute the command
-        result = await run_cli_command(cmd, timeout=300)
-        
-        if result["return_code"] != 0:
-            logger.error(f"Extract command failed: {result}")
-            raise HTTPException(status_code=500, detail=f"PDF processing failed: {result['stderr']}")
-        
-        logger.info(f"Extract command completed successfully")
-        
+        cmd_raster = [
+            python_executable,
+            rasterizer_script,
+            input_file_path,
+            "--output", output_dir,
+            "--dpi", str(dpi)
+        ]
+        if pages:
+            cmd_raster += ["--pages", pages]
+        logger.info(f"[PDF Extraction] Lancement extraction + rasterisation en parallèle: fichier={file.filename}, job_id={job_id}, timeout=7200s, params={{max_images: {max_images}, language: {language}}}")
+        import asyncio
+        start_time = time.time()
+        # Lancer les deux jobs en parallèle
+        results = await asyncio.gather(
+            run_cli_command(cmd_classic, timeout=7200),
+            run_cli_command(cmd_raster, timeout=600)
+        )
+        result_classic, result_raster = results
+        end_time = time.time()
+        duration = end_time - start_time
+        logger.info(f"[PDF Extraction] Extraction + rasterisation terminées: fichier={file.filename}, job_id={job_id}, durée={duration:.1f}s, statut={{'classique': 'succès' if result_classic['return_code']==0 else 'échec', 'raster': 'succès' if result_raster['return_code']==0 else 'échec'}}")
+        if result_classic["return_code"] != 0:
+            logger.error(f"Extract command failed: {result_classic}")
+            raise HTTPException(status_code=500, detail=f"PDF processing failed: {result_classic['stderr']}")
+        if result_raster["return_code"] != 0:
+            logger.error(f"Rasterization command failed: {result_raster}")
+            raise HTTPException(status_code=500, detail=f"PDF rasterization failed: {result_raster['stderr']}")
+        logger.info(f"Extract + rasterization commands completed successfully")
+        # La suite (génération du rapport combiné, zip, etc.) reste inchangée
         # Additional rasterization if requested
         if format and format.lower() == "rasterize":
             # Also run the rasterizer to get full page images analyzed
@@ -575,8 +589,18 @@ async def extract_images_from_pdf(
                     # On insère les deux synthèses AVANT le reste du rapport
                     summary_lines = synthese_brute + synthese_naturelle + summary_lines
                     # Ajouter la comparaison dans le JSON combiné
-                    # ... (après la génération de combined_json["summary"])
                     combined_json["summary"]["comparison"] = comparison_json
+                    # Ajout enrichi : synthèse brute, synthèse naturelle, comparaison textuelle, métadonnées
+                    combined_json["summary"]["comparison_text"] = "\n".join(comparison_md)
+                    combined_json["summary"]["natural_language"] = natural_summary if natural_summary else None
+                    combined_json["summary"]["brute_synthesis"] = "\n".join(synthese_brute)
+                    combined_json["summary"]["metadata"] = {
+                        "nb_pages": nb_pages,
+                        "nb_images": nb_images,
+                        "nb_raster_pages": nb_raster_pages,
+                        "file": file.filename,
+                        "date": time.strftime('%Y-%m-%d %H:%M:%S')
+                    }
                     # Générer le rapport Markdown combiné
                     combined_report_path = Path(output_dir) / "combined_analysis_report.md"
                     with open(combined_report_path, "w", encoding="utf-8") as combined_f:
@@ -596,95 +620,6 @@ async def extract_images_from_pdf(
                     logger.warning(f"Impossible de générer le rapport/JSON combiné : fichiers manquants (classique ou raster)")
             except Exception as e:
                 logger.error(f"Erreur lors de la génération du rapport/JSON combiné : {e}")
-                # Initialisation fallback si combined_json n'existe pas (sécurité extrême)
-                if 'combined_json' not in locals():
-                    combined_json = {"file": file.filename, "date": time.strftime('%Y-%m-%d %H:%M:%S'), "classic": None, "raster": None, "summary": {}}
-                if "summary" not in combined_json:
-                    combined_json["summary"] = {}
-                combined_json["summary"]["error"] = str(e) if 'e' in locals() else "Erreur inconnue lors de la génération du rapport combiné."
-                with open(Path(output_dir) / "combined_analysis.json", "w", encoding="utf-8") as f:
-                    json.dump(combined_json, f, ensure_ascii=False, indent=2)
-                with open(Path(output_dir) / "combined_analysis_report.md", "w", encoding="utf-8") as f:
-                    f.write(f"# Erreur lors de la génération du rapport combiné\n\n{str(e) if 'e' in locals() else 'Erreur inconnue lors de la génération du rapport combiné.'}\n")
-        
-        # Check that output files were generated
-        output_files = list(Path(output_dir).glob("**/*"))
-        logger.info(f"Generated files: {[str(f) for f in output_files]}")
-        
-        if not output_files:
-            logger.error("No output files were generated")
-            raise HTTPException(status_code=500, detail="No output files were generated")
-        
-        # Handle the requested output format
-        if format and format.lower() == "zip":
-            # Create a ZIP filename based on the original PDF name
-            zip_filename = f"{file.filename.rsplit('.', 1)[0]}_extraction.zip"
-            zip_path = os.path.join(temp_dir, zip_filename)
-            
-            logger.info(f"Creating ZIP file at: {zip_path}")
-            
-            # Use shutil.make_archive for reliability
-            base_name = zip_path.rsplit('.', 1)[0]  # remove .zip extension for make_archive
-            logger.info(f"Zipping directory: {output_dir} to {base_name}")
-            
-            archive_path = shutil.make_archive(base_name, 'zip', output_dir)
-            logger.info(f"Created ZIP archive at: {archive_path}")
-            
-            # Verify the ZIP file was created
-            if not os.path.exists(archive_path):
-                logger.error(f"Failed to create ZIP file at: {archive_path}")
-                raise HTTPException(status_code=500, detail="Failed to create ZIP file")
-            
-            # Verify the ZIP file is not empty
-            zip_size = os.path.getsize(archive_path)
-            logger.info(f"ZIP file size: {zip_size} bytes")
-            
-            if zip_size == 0:
-                logger.error("Created ZIP file is empty")
-                raise HTTPException(status_code=500, detail="Created ZIP file is empty")
-            
-            # Return the ZIP file with proper headers
-            headers = {
-                "Content-Disposition": f"attachment; filename={zip_filename}",
-                "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache, no-store, must-revalidate" 
-            }
-            
-            logger.info(f"Returning ZIP file response with headers: {headers}")
-            
-            # Directement retourner le fichier avec FileResponse plutôt que StreamingResponse
-            return FileResponse(
-                path=archive_path,
-                filename=zip_filename,
-                media_type="application/zip",
-                headers=headers
-            )
-            
-        elif format and format.lower() == "rasterize":
-            # Rasterize mode
-            logger.info(f"Entering rasterize mode. Parameters: dpi={dpi}, pages={pages}")
-            
-            # Utiliser le script pdf_rasterizer.py
-            rasterizer_script = os.path.join(base_path, "extract", "pdf_rasterizer.py")
-            
-            if not os.path.exists(rasterizer_script):
-                logger.error(f"Rasterizer script not found at {rasterizer_script}")
-                raise HTTPException(status_code=500, detail=f"Rasterizer script not found at {rasterizer_script}")
-            
-            cmd = [python_executable, rasterizer_script, input_file_path, "--output", output_dir, "--dpi", str(dpi)]
-            if pages:
-                cmd += ["--pages", pages]
-            
-            logger.info(f"Running rasterizer command: {' '.join(cmd)}")
-            result = await run_cli_command(cmd, timeout=600)
-            
-            if result["return_code"] != 0:
-                logger.error(f"Rasterization command failed: {result}")
-                raise HTTPException(status_code=500, detail=f"PDF rasterization failed: {result['stderr']}")
-            
-            logger.info(f"Rasterization command completed successfully")
-            
             # Check that output files were generated
             output_files = list(Path(output_dir).glob("**/*"))
             logger.info(f"Generated files: {[str(f) for f in output_files]}")
@@ -693,80 +628,158 @@ async def extract_images_from_pdf(
                 logger.error("No output files were generated")
                 raise HTTPException(status_code=500, detail="No output files were generated")
             
-            # Create a ZIP file with the results
-            zip_filename = f"{file.filename.rsplit('.', 1)[0]}_rasterized.zip"
-            zip_path = os.path.join(temp_dir, zip_filename)
-            
-            logger.info(f"Creating ZIP file at: {zip_path}")
-            
-            # Use shutil.make_archive for reliability
-            base_name = zip_path.rsplit('.', 1)[0]  # remove .zip extension for make_archive
-            logger.info(f"Zipping directory: {output_dir} to {base_name}")
-            
-            archive_path = shutil.make_archive(base_name, 'zip', output_dir)
-            logger.info(f"Created ZIP archive at: {archive_path}")
-            
-            # Verify the ZIP file was created
-            if not os.path.exists(archive_path):
-                logger.error(f"Failed to create ZIP file at: {archive_path}")
-                raise HTTPException(status_code=500, detail="Failed to create ZIP file")
-            
-            # Verify the ZIP file is not empty
-            zip_size = os.path.getsize(archive_path)
-            logger.info(f"ZIP file size: {zip_size} bytes")
-            
-            if zip_size == 0:
-                logger.error("Created ZIP file is empty")
-                raise HTTPException(status_code=500, detail="Created ZIP file is empty")
-            
-            # Return the ZIP file with proper headers
-            headers = {
-                "Content-Disposition": f"attachment; filename={zip_filename}",
-                "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache, no-store, must-revalidate" 
-            }
-            
-            logger.info(f"Returning ZIP file response with headers: {headers}")
-            
-            # Retourner le fichier ZIP
-            return FileResponse(
-                path=archive_path,
-                filename=zip_filename,
-                media_type="application/zip",
-                headers=headers
-            )
-            
-        else:  # format.lower() == "json" ou format par défaut
-            # Find the JSON result file
-            result_files = list(Path(output_dir).glob("*_complete.json"))
-            
-            if not result_files:
-                # Chercher n'importe quel fichier JSON si pas de fichier complet
-                result_files = list(Path(output_dir).glob("*.json"))
+            # Handle the requested output format
+            if format and format.lower() == "zip":
+                # Create a ZIP filename based on the original PDF name
+                zip_filename = f"{file.filename.rsplit('.', 1)[0]}_extraction.zip"
+                zip_path = os.path.join(temp_dir, zip_filename)
                 
-            if not result_files:
-                logger.error("No JSON result files found")
-                raise HTTPException(status_code=500, detail="No JSON result files found")
+                logger.info(f"Creating ZIP file at: {zip_path}")
+                
+                # Use shutil.make_archive for reliability
+                base_name = zip_path.rsplit('.', 1)[0]  # remove .zip extension for make_archive
+                logger.info(f"Zipping directory: {output_dir} to {base_name}")
+                
+                archive_path = shutil.make_archive(base_name, 'zip', output_dir)
+                logger.info(f"Created ZIP archive at: {archive_path}")
+                
+                # Verify the ZIP file was created
+                if not os.path.exists(archive_path):
+                    logger.error(f"Failed to create ZIP file at: {archive_path}")
+                    raise HTTPException(status_code=500, detail="Failed to create ZIP file")
+                
+                # Verify the ZIP file is not empty
+                zip_size = os.path.getsize(archive_path)
+                logger.info(f"ZIP file size: {zip_size} bytes")
+                
+                if zip_size == 0:
+                    logger.error("Created ZIP file is empty")
+                    raise HTTPException(status_code=500, detail="Created ZIP file is empty")
+                
+                # Return the ZIP file with proper headers
+                headers = {
+                    "Content-Disposition": f"attachment; filename={zip_filename}",
+                    "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "no-cache, no-store, must-revalidate" 
+                }
+                
+                logger.info(f"Returning ZIP file response with headers: {headers}")
+                
+                # Directement retourner le fichier avec FileResponse plutôt que StreamingResponse
+                return FileResponse(
+                    path=archive_path,
+                    filename=zip_filename,
+                    media_type="application/zip",
+                    headers=headers
+                )
             
-            result_file = result_files[0]  # Take the first JSON file
-            logger.info(f"Returning JSON file: {result_file}")
+            elif format and format.lower() == "rasterize":
+                # Rasterize mode
+                logger.info(f"Entering rasterize mode. Parameters: dpi={dpi}, pages={pages}")
+                
+                # Utiliser le script pdf_rasterizer.py
+                rasterizer_script = os.path.join(base_path, "extract", "pdf_rasterizer.py")
+                
+                if not os.path.exists(rasterizer_script):
+                    logger.error(f"Rasterizer script not found at {rasterizer_script}")
+                    raise HTTPException(status_code=500, detail=f"Rasterizer script not found at {rasterizer_script}")
+                
+                cmd = [python_executable, rasterizer_script, input_file_path, "--output", output_dir, "--dpi", str(dpi)]
+                if pages:
+                    cmd += ["--pages", pages]
+                
+                logger.info(f"Running rasterizer command: {' '.join(cmd)}")
+                result = await run_cli_command(cmd, timeout=600)
+                
+                if result["return_code"] != 0:
+                    logger.error(f"Rasterization command failed: {result}")
+                    raise HTTPException(status_code=500, detail=f"PDF rasterization failed: {result['stderr']}")
+                
+                logger.info(f"Rasterization command completed successfully")
+                
+                # Check that output files were generated
+                output_files = list(Path(output_dir).glob("**/*"))
+                logger.info(f"Generated files: {[str(f) for f in output_files]}")
+                
+                if not output_files:
+                    logger.error("No output files were generated")
+                    raise HTTPException(status_code=500, detail="No output files were generated")
+                
+                # Create a ZIP file with the results
+                zip_filename = f"{file.filename.rsplit('.', 1)[0]}_rasterized.zip"
+                zip_path = os.path.join(temp_dir, zip_filename)
+                
+                logger.info(f"Creating ZIP file at: {zip_path}")
+                
+                # Use shutil.make_archive for reliability
+                base_name = zip_path.rsplit('.', 1)[0]  # remove .zip extension for make_archive
+                logger.info(f"Zipping directory: {output_dir} to {base_name}")
+                
+                archive_path = shutil.make_archive(base_name, 'zip', output_dir)
+                logger.info(f"Created ZIP archive at: {archive_path}")
+                
+                # Verify the ZIP file was created
+                if not os.path.exists(archive_path):
+                    logger.error(f"Failed to create ZIP file at: {archive_path}")
+                    raise HTTPException(status_code=500, detail="Failed to create ZIP file")
+                
+                # Verify the ZIP file is not empty
+                zip_size = os.path.getsize(archive_path)
+                logger.info(f"ZIP file size: {zip_size} bytes")
+                
+                if zip_size == 0:
+                    logger.error("Created ZIP file is empty")
+                    raise HTTPException(status_code=500, detail="Created ZIP file is empty")
+                
+                # Return the ZIP file with proper headers
+                headers = {
+                    "Content-Disposition": f"attachment; filename={zip_filename}",
+                    "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "no-cache, no-store, must-revalidate" 
+                }
+                
+                logger.info(f"Returning ZIP file response with headers: {headers}")
+                
+                # Retourner le fichier ZIP
+                return FileResponse(
+                    path=archive_path,
+                    filename=zip_filename,
+                    media_type="application/zip",
+                    headers=headers
+                )
             
-            # Return the JSON file with proper headers
-            headers = {
-                "Content-Disposition": f"attachment; filename={file.filename.rsplit('.', 1)[0]}_extraction.json",
-                "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache, no-store, must-revalidate" 
-            }
-            
-            # Directement retourner le fichier avec FileResponse plutôt que StreamingResponse
-            return FileResponse(
-                path=result_file,
-                filename=f"{file.filename.rsplit('.', 1)[0]}_extraction.json",
-                media_type="application/json",
-                headers=headers
-            )
+            else:  # format.lower() == "json" ou format par défaut
+                # Find the JSON result file
+                result_files = list(Path(output_dir).glob("*_complete.json"))
+                
+                if not result_files:
+                    # Chercher n'importe quel fichier JSON si pas de fichier complet
+                    result_files = list(Path(output_dir).glob("*.json"))
+                    
+                if not result_files:
+                    logger.error("No JSON result files found")
+                    raise HTTPException(status_code=500, detail="No JSON result files found")
+                
+                result_file = result_files[0]  # Take the first JSON file
+                logger.info(f"Returning JSON file: {result_file}")
+                
+                # Return the JSON file with proper headers
+                headers = {
+                    "Content-Disposition": f"attachment; filename={file.filename.rsplit('.', 1)[0]}_extraction.json",
+                    "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "no-cache, no-store, must-revalidate" 
+                }
+                
+                # Directement retourner le fichier avec FileResponse plutôt que StreamingResponse
+                return FileResponse(
+                    path=result_file,
+                    filename=f"{file.filename.rsplit('.', 1)[0]}_extraction.json",
+                    media_type="application/json",
+                    headers=headers
+                )
             
     except Exception as e:
         logger.exception(f"Error processing PDF for job_id {job_id}: {str(e)}")
@@ -959,4 +972,19 @@ async def generate_natural_summary(comparison_md, lang='fr'):
             return "[Erreur OpenAI: Réponse inattendue]"
         except Exception as e:
             return f"[Erreur OpenAI: {e}]"
-    return await loop.run_in_executor(None, sync_post) 
+    return await loop.run_in_executor(None, sync_post)
+
+@router.get("/progress/{job_id}", summary="Get progress of PDF extraction job")
+async def get_pdf_progress(job_id: str = FastAPIPath(..., description="Job ID"), history: Optional[bool] = Query(False, description="Inclure l'historique complet des étapes")):
+    """Retourne la progression d'un job PDF (lecture du fichier progress.json du dossier de job). Si ?history=1, retourne aussi l'historique complet."""
+    base_path = os.environ.get("BASE_PATH", os.getcwd())
+    progress_path = os.path.join(base_path, "results", f"pdf_extraction_{job_id}", "progress.json")
+    if not os.path.exists(progress_path):
+        return {"status": "not_found", "progress": 0, "message": "Aucune progression trouvée pour ce job."}
+    with open(progress_path, "r", encoding="utf-8") as f:
+        progress = json.load(f)
+    if history:
+        return progress
+    # Sinon, ne retourner que l'état courant (sans l'historique)
+    progress.pop("history", None)
+    return progress 

@@ -8,8 +8,36 @@ import io
 from typing import Dict, List, Any, Optional, Tuple
 from rich.console import Console
 from extract.image_describer import PDFImageDescriber
+import threading
 
 console = Console()
+
+def update_progress(progress_path, phase, progress, step, extra=None):
+    data = {"phase": phase, "progress": progress, "step": step}
+    if extra:
+        data.update(extra)
+    lock = threading.Lock()
+    with lock:
+        # Charger l'historique existant si présent
+        if os.path.exists(progress_path):
+            try:
+                with open(progress_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+                history = existing.get("history", [])
+            except Exception:
+                history = []
+        else:
+            history = []
+        # Ajouter la nouvelle étape à l'historique
+        history.append({
+            "timestamp": int(time.time()),
+            "phase": phase,
+            "progress": progress,
+            "step": step
+        })
+        data["history"] = history
+        with open(progress_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
 class PDFCompleteExtractor:
     """
@@ -198,6 +226,9 @@ class PDFCompleteExtractor:
             }
         }
         
+        progress_path = os.path.join(output_dir, "progress.json")
+        update_progress(progress_path, "init", 0, "Initialisation")
+        
         try:
             console.print(f"\n[bold green]Extraction complète du document[/bold green]: {pdf_path}")
             
@@ -217,7 +248,7 @@ class PDFCompleteExtractor:
             console.print("[bold]Phase 1: Extraction du texte et des images intégrées[/bold]")
             
             for page_num, page in enumerate(doc):
-                console.print(f"  Traitement de la page {page_num+1}/{len(doc)}")
+                update_progress(progress_path, "classic", int(100 * page_num / len(doc)), f"Traitement de la page {page_num+1}/{len(doc)}")
                 
                 # Extraire le texte de la page
                 page_data = self.extract_text_from_page(page)
@@ -239,14 +270,11 @@ class PDFCompleteExtractor:
                     if processed_images >= self.max_images:
                         console.print(f"[yellow]Nombre maximum d'images atteint ({self.max_images}). Arrêt du traitement.[/yellow]")
                         break
-                    
                     try:
                         # Extraire les informations de l'image
                         xref = img[0]  # Référence xref de l'image
-                        
                         # Extraire l'image directement du PDF sans rendering la page
                         pix = fitz.Pixmap(doc, xref)
-                        
                         # Rechercher la position de l'image sur la page
                         img_bbox = None
                         for item in page.get_text("dict")["blocks"]:
@@ -255,17 +283,13 @@ class PDFCompleteExtractor:
                                 if abs(item.get("width") - pix.width) <= 5 and abs(item.get("height") - pix.height) <= 5:
                                     img_bbox = item["bbox"]
                                     break
-                        
                         # Si on n'a pas trouvé de position exacte, utiliser les dimensions de la page
                         if not img_bbox:
                             img_bbox = [0, 0, page.rect.width, page.rect.height]
-                        
                         # Extraire le texte environnant
                         surrounding_text = self._get_surrounding_text(page, img_bbox)
-                        
                         # Convertir l'image en PNG pour le traitement
                         img_bytes = pix.tobytes("png")
-                        
                         # Sauvegarder l'image en tant que fichier PNG si demandé
                         image_file_path = None
                         if self.save_images:
@@ -274,31 +298,40 @@ class PDFCompleteExtractor:
                             with open(image_file_path, "wb") as f:
                                 f.write(img_bytes)
                             console.print(f"  [dim]Image sauvegardée: {image_filename}[/dim]")
-                        
                         # Encoder l'image en base64 pour l'envoi à l'API
                         img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-                        
                         # Obtenir la description de l'image via l'API
                         console.print(f"  [bold]Analyse de l'image {img_idx+1} (page {page_num+1})...[/bold]")
-                        
+                        description = None
                         if not self.openai_api_key:
                             console.print(f"  [yellow]⚠️ Pas de clé API OpenAI, l'image ne sera pas analysée[/yellow]")
                             description = "Aucune analyse d'image (clé API non configurée)"
                         else:
                             try:
-                                console.print(f"  [dim]Envoi à l'API OpenAI - Image {len(img_b64)//1000}K caractères, modèle {self.image_describer.model}[/dim]")
-                                description = self.image_describer._get_image_description(img_b64, surrounding_text)
-                                
+                                import signal
+                                class TimeoutException(Exception): pass
+                                def handler(signum, frame):
+                                    raise TimeoutException("Timeout sur analyse image OpenAI")
+                                signal.signal(signal.SIGALRM, handler)
+                                signal.alarm(60)  # 60 secondes max par image
+                                try:
+                                    console.print(f"  [dim]Envoi à l'API OpenAI - Image {len(img_b64)//1000}K caractères, modèle {self.image_describer.model}[/dim]")
+                                    description = self.image_describer._get_image_description(img_b64, surrounding_text)
+                                    signal.alarm(0)
+                                except TimeoutException:
+                                    description = "Timeout lors de l'analyse de l'image (60s)"
+                                    console.print(f"  [red]Timeout lors de l'analyse de l'image {img_idx+1} (page {page_num+1})[/red]")
+                                except Exception as e:
+                                    signal.alarm(0)
+                                    raise e
                                 if description:
                                     # Déterminer si la description est un message d'erreur
                                     error_prefixes = ["Erreur", "Error", "Aucune analyse", "Timeout"]
                                     is_error = any(description.startswith(prefix) for prefix in error_prefixes)
-                                    
                                     if is_error:
                                         console.print(f"  [yellow]⚠️ L'analyse a échoué: {description[:100]}...[/yellow]")
                                     else:
                                         console.print(f"  [green]✓[/green] Description obtenue: {len(description)} caractères")
-                                        # Incrémenter le compteur d'images analysées uniquement si ce n'est pas une erreur
                                         result["nb_images_analysees"] += 1
                                         console.print(f"  [green]✓[/green] Analyse réussie")
                                 else:
@@ -306,12 +339,10 @@ class PDFCompleteExtractor:
                                     description = "Erreur lors de la description de l'image: réponse vide"
                             except Exception as e:
                                 console.print(f"  [red]✗[/red] Exception lors de l'appel à l'API: {str(e)}")
-                                # Enregistrer les détails de l'erreur pour débogage
-                                console.print(f"  [red]Détails: {type(e).__name__}[/red]")
                                 import traceback
+                                console.print(f"  [red]Détails: {type(e).__name__}[/red]")
                                 console.print(f"  [dim]{traceback.format_exc()}[/dim]")
                                 description = f"Erreur lors de l'analyse: {str(e)}"
-                        
                         # Ajouter l'image au résultat
                         image_info = {
                             "page": page_num + 1,
@@ -324,12 +355,12 @@ class PDFCompleteExtractor:
                             "surrounding_text": surrounding_text,
                             "file_path": image_file_path
                         }
-                        
                         result["images"].append(image_info)
                         processed_images += 1
-                        
                     except Exception as e:
                         console.print(f"  [red]Erreur lors du traitement de l'image {img_idx+1}: {str(e)}[/red]")
+                        import traceback
+                        console.print(traceback.format_exc())
                         continue
             
             # Fermer le document
@@ -414,6 +445,8 @@ class PDFCompleteExtractor:
             console.print(f"  • Fichier JSON unifié: [bold]{unified_json_path}[/bold]")
             console.print(f"  • Fichier JSON détaillé: [bold]{original_json_path}[/bold]")
             console.print(f"  • Rapport texte lisible: [bold]{report_path}[/bold]")
+            
+            update_progress(progress_path, "classic", 100, "Extraction classique terminée")
             
             return result
             

@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/Progress';
 import { Loader2, AlertCircle, CheckCircle, PauseCircle, RefreshCw } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 import React from 'react';
+import Modal from '@/components/ui/modal';
 
 interface TaskManagerProps {
   onTaskComplete?: (taskId: string, result: any) => void;
@@ -90,6 +91,10 @@ export function TaskManager({
   const { orchestrator, getAllTasks, retryTask } = useTaskOrchestrator();
   const [tasks, setTasks] = useState<TaskState[]>([]);
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+  const [logModalTaskId, setLogModalTaskId] = useState<string|null>(null);
+  const [logHistory, setLogHistory] = useState<any[]>([]);
+  const [logLoading, setLogLoading] = useState(false);
+  const [logError, setLogError] = useState<string|null>(null);
 
   // Récupérer les tâches toutes les 2 secondes
   useEffect(() => {
@@ -174,6 +179,30 @@ export function TaskManager({
     retryTask(taskId);
   };
 
+  const openLogModal = async (task: TaskState) => {
+    setLogModalTaskId(task.id);
+    setLogLoading(true);
+    setLogError(null);
+    try {
+      const resp = await fetch(`/api/pdf/progress/${task.id}?history=1`, {
+        headers: { 'X-API-Key': import.meta.env.VITE_API_KEY }
+      });
+      if (!resp.ok) throw new Error(`Erreur API: ${resp.status}`);
+      const data = await resp.json();
+      setLogHistory(data.history || []);
+    } catch (e: any) {
+      setLogError(e.message);
+      setLogHistory([]);
+    } finally {
+      setLogLoading(false);
+    }
+  };
+  const closeLogModal = () => {
+    setLogModalTaskId(null);
+    setLogHistory([]);
+    setLogError(null);
+  };
+
   return (
     <div className="bg-background border border-primary/20 rounded-md shadow-lg p-4 max-w-xl mx-auto mb-6 task-manager-container">
       <h3 className="text-lg font-semibold mb-4 text-primary">{t('active_tasks') || 'Tâches actives'}</h3>
@@ -208,6 +237,16 @@ export function TaskManager({
                     {t('retry') || 'Réessayer'}
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={e => {
+                    e.stopPropagation();
+                    openLogModal(task);
+                  }}
+                >
+                  Voir les logs détaillés
+                </Button>
               </div>
             </div>
             
@@ -238,6 +277,16 @@ export function TaskManager({
                     {task.retryCount}/{task.maxRetries}
                   </div>
                 )}
+                {task.metadata?.phase && (
+                  <div>
+                    <span className="font-medium">Phase:</span> {task.metadata.phase}
+                  </div>
+                )}
+                {task.metadata?.step && (
+                  <div>
+                    <span className="font-medium">Étape:</span> {task.metadata.step}
+                  </div>
+                )}
                 {task.error && (
                   <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded">
                     <span className="font-medium">{t('error') || 'Erreur'}:</span>{' '}
@@ -249,6 +298,41 @@ export function TaskManager({
           </div>
         ))}
       </div>
+
+      {/* Modal logs détaillés */}
+      <Modal isOpen={!!logModalTaskId} onClose={closeLogModal} title="Logs détaillés de la tâche">
+        {logLoading ? (
+          <div className="py-8 text-center text-muted-foreground">Chargement des logs...</div>
+        ) : logError ? (
+          <div className="py-8 text-center text-red-500">{logError}</div>
+        ) : (
+          <div className="max-h-96 overflow-y-auto text-xs mt-4">
+            {(!Array.isArray(logHistory) || logHistory.length === 0) ? (
+              <div>Aucun log disponible.</div>
+            ) : (
+              <ul className="space-y-1">
+                {(() => {
+                  try {
+                    return logHistory.map((log, i) => (
+                      <li key={i} className="border-b pb-1">
+                        <span className="font-mono text-gray-500">{new Date(log.timestamp * 1000).toLocaleTimeString()} </span>
+                        <span className="font-semibold">[{log.phase}]</span> 
+                        <span>{log.step}</span> 
+                        <span className="ml-2 text-primary">({log.progress}%)</span>
+                      </li>
+                    ));
+                  } catch (e) {
+                    return <div className="text-red-500">Erreur lors de l'affichage des logs : {String(e)}</div>;
+                  }
+                })()}
+              </ul>
+            )}
+          </div>
+        )}
+        <div className="mt-6 text-right">
+          <Button onClick={closeLogModal}>Fermer</Button>
+        </div>
+      </Modal>
     </div>
   );
 } 
