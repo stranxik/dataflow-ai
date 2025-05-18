@@ -64,7 +64,7 @@ export default function Navbar() {
               {theme === 'dark' ? '🌙' : '☀️'}
             </Button>
             <a 
-              href="https://github.com/stranxik/json_parser" 
+              href="https://dub.sh/VrSDKLA" 
               target="_blank" 
               rel="noopener noreferrer"
               className="ml-2"
@@ -130,7 +130,7 @@ export default function Navbar() {
               {theme === 'dark' ? t('switch_to_light') : t('switch_to_dark')}
             </Button>
             <a 
-              href="https://github.com/stranxik/json_parser" 
+              href="https://dub.sh/VrSDKLA" 
               target="_blank" 
               rel="noopener noreferrer"
               className="block w-full mt-2"

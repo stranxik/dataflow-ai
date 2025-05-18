@@ -32,7 +32,10 @@
       "output_file_json": "Fichier JSON de sortie (vide = même nom sans extension .zst)",
       "select_jira_file": "Sélectionnez le fichier JIRA traité:",
       "select_confluence_file": "Sélectionnez le fichier Confluence traité:",
-      "select_file_pdf": "Sélectionnez le fichier PDF à analyser :"
+      "select_file_pdf": "Sélectionnez le fichier PDF à analyser :",
+      "raster_mode_auto": "Automatique (détecte et rasterise uniquement les pages contenant des plans ou schémas)",
+      "raster_mode_manual": "Manuel (rasterise toutes les pages ou celles sélectionnées)",
+      "raster_mode_explanation": "Choisissez le mode de rasterisation : automatique pour ne traiter que les pages contenant des éléments graphiques (plans, schémas), ou manuel pour rasteriser toutes les pages du PDF."
     },
     "confirmations": {
       "use_llm": "Voulez-vous enrichir avec LLM (OpenAI) ?",
@@ -223,7 +226,10 @@
       "output_file_json": "Output JSON file (empty = same name without .zst extension)",
       "select_jira_file": "Select the processed JIRA file:",
       "select_confluence_file": "Select the processed Confluence file:",
-      "select_file_pdf": "Select the PDF file to analyze:"
+      "select_file_pdf": "Select the PDF file to analyze:",
+      "raster_mode_auto": "Automatic (detects and rasterizes only pages containing plans or diagrams)",
+      "raster_mode_manual": "Manual (rasterizes all pages or selected ones)",
+      "raster_mode_explanation": "Choose the rasterization mode: automatic to process only pages with graphical elements (plans, diagrams), or manual to rasterize all PDF pages."
     },
     "confirmations": {
       "use_llm": "Do you want to enrich with LLM (OpenAI)?",

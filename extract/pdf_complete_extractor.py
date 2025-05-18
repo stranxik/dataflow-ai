@@ -165,9 +165,11 @@ class PDFCompleteExtractor:
         # Utiliser le répertoire de sortie spécifié ou créer un sous-répertoire dans results
         if output_dir is None:
             output_dir = os.path.join("results", result_id)
-        
-        # Créer le répertoire de sortie s'il n'existe pas
-        os.makedirs(output_dir, exist_ok=True)
+        # Créer les sous-dossiers
+        classic_dir = os.path.join(output_dir, "classic")
+        img_dir = os.path.join(output_dir, "img")
+        os.makedirs(classic_dir, exist_ok=True)
+        os.makedirs(img_dir, exist_ok=True)
         
         # Log des informations pour le débogage
         console.print(f"[bold]Configuration:[/bold]")
@@ -268,7 +270,7 @@ class PDFCompleteExtractor:
                         image_file_path = None
                         if self.save_images:
                             image_filename = f"{result_id}_image_p{page_num+1}_i{img_idx+1}.png"
-                            image_file_path = os.path.join(output_dir, image_filename)
+                            image_file_path = os.path.join(img_dir, image_filename)
                             with open(image_file_path, "wb") as f:
                                 f.write(img_bytes)
                             console.print(f"  [dim]Image sauvegardée: {image_filename}[/dim]")
@@ -392,17 +394,17 @@ class PDFCompleteExtractor:
                 unified_result["pages"].append(unified_page)
             
             # 3. Sauvegarder le JSON unifié
-            unified_json_path = os.path.join(output_dir, f"{result_id}_unified.json")
+            unified_json_path = os.path.join(classic_dir, f"{result_id}_unified.json")
             with open(unified_json_path, 'w', encoding='utf-8') as f:
                 json.dump(unified_result, f, ensure_ascii=False, indent=2)
             
             # 4. Sauvegarder aussi le résultat détaillé original
-            original_json_path = os.path.join(output_dir, f"{result_id}_complete.json")
+            original_json_path = os.path.join(classic_dir, f"{result_id}_complete.json")
             with open(original_json_path, 'w', encoding='utf-8') as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)
             
             # 5. Créer un rapport texte lisible par l'homme
-            report_path = os.path.join(output_dir, f"{result_id}_report.md")
+            report_path = os.path.join(classic_dir, f"{result_id}_report.md")
             self._create_human_readable_report(unified_result, report_path)
             
             console.print(f"\n[bold green]Extraction complète terminée[/bold green]")

@@ -2,20 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { FileText, Upload, Loader2, Shield, Wrench, Database, Bot, DollarSign } from 'lucide-react';
-import { processPdf } from '@/api/apiService';
 import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { useLanguage } from '@/components/LanguageProvider';
 import { HelpTooltip } from '@/components/ui/HelpTooltip';
-import { MAX_PDF_SIZE_MB, MAX_PDF_SIZE_BYTES, MAX_IMAGES_ANALYSIS, DEFAULT_IMAGES_ANALYSIS, validatePdfSize } from '@/lib/config';
-import { useTaskOrchestrator, PdfProcessingTask, PdfProcessingInput } from '@/lib/taskOrchestrator';
+import { MAX_PDF_SIZE_MB, MAX_PDF_SIZE_BYTES, validatePdfSize } from '@/lib/config';
+import { useTaskOrchestrator } from '@/lib/taskOrchestrator';
 import { TaskManager } from '@/components/TaskManager';
 
 export default function HomePage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [maxImages, setMaxImages] = useState(DEFAULT_IMAGES_ANALYSIS);
+  const [rasterMode, setRasterMode] = useState<'auto' | 'manual'>('auto');
+  const [rasterPagesInput, setRasterPagesInput] = useState('');
   const { toast } = useToast();
   const { executeTask } = useTaskOrchestrator({
     maxRetries: 3,
@@ -149,37 +149,27 @@ Explore our ecosystem at https://blaike.cc/ecosystem
       });
       return;
     }
-
     setIsProcessing(true);
-
     try {
-      // Créer une nouvelle tâche pour le traitement du PDF
-      const pdfProcessor = new PdfProcessingTask(processPdf);
-      
-      // Définir les paramètres de traitement
-      const taskInput: PdfProcessingInput = {
-        file: selectedFile,
-        mode: 'complete',
-        maxImages,
-        format: 'zip'
-      };
-      
-      // Lancer le traitement comme une tâche orchestrée
+      // Toujours rasterisation + extraction classique
+      const rasterTask = new RasterizePdfTask();
+      const taskParams: any = { file: selectedFile, dpi: 300 };
+      if (rasterMode === 'manual' && rasterPagesInput.trim()) {
+        taskParams.pages = rasterPagesInput.trim();
+      }
+      taskParams.rasterMode = rasterMode;
       const taskId = await executeTask(
-        `${t('processing')}: ${selectedFile.name}`,
-        pdfProcessor,
-        taskInput,
+        `${t('processing')}: ${selectedFile.name} (rasterisation + extraction)`,
+        rasterTask,
+        taskParams,
         { fileName: selectedFile.name, fileSize: selectedFile.size }
       );
-      
-      console.log(`PDF processing started as task: ${taskId}`);
-      
+      console.log(`Rasterisation PDF lancée comme tâche: ${taskId}`);
       toast({
         title: t('processing_started'),
         description: t('processing_status_available'),
       });
     } catch (error) {
-      console.error('Error starting PDF processing task:', error);
       toast({
         title: t('processing_failed'),
         description: error instanceof Error ? error.message : 'An unknown error occurred',
@@ -190,12 +180,9 @@ Explore our ecosystem at https://blaike.cc/ecosystem
     }
   };
 
-  // Gérer la complétion d'une tâche
+  // Gérer la complétion d'une tâche (rasterisation ou extraction)
   const handleTaskComplete = useCallback((taskId: string, result: Blob) => {
-    console.log(`Task ${taskId} completed, downloading result...`);
-    
-    // Vérifier la validité du blob
-    if (result.size === 0) {
+    if (!result || result.size === 0) {
       toast({
         title: t('processing_failed'),
         description: t('empty_result'),
@@ -203,26 +190,56 @@ Explore our ecosystem at https://blaike.cc/ecosystem
       });
       return;
     }
-    
     // Déclencher le téléchargement
     const zipBlob = (!result.type.includes('zip') && !result.type.includes('octet-stream'))
       ? new Blob([result], { type: 'application/zip' })
       : result;
-    
     // Trouver le nom du fichier associé à cette tâche
     const task = document.querySelector(`[data-task-id="${taskId}"]`);
     const fileName = task?.getAttribute('data-filename') || 'result';
-    
     createDownloadLink(
       zipBlob,
-      `${fileName.replace('.pdf', '')}_analysis.zip`
+      `${fileName.replace('.pdf', '')}_rasterized.zip`
     );
-    
     toast({
       title: t('processing_complete'),
-      description: t('your_pdf_has_been_processed_successfully'),
+      description: 'Les pages rasterisées sont prêtes au téléchargement.',
     });
   }, [t, toast]);
+
+  // Déplacer RasterizePdfTask ici pour accéder à language
+  class RasterizePdfTask {
+    async execute(input: { file: File; dpi: number }, onProgress?: (progress: number) => void): Promise<Blob> {
+      // Simuler la progression
+      let simulatedProgress = 0;
+      const progressInterval = setInterval(() => {
+        if (simulatedProgress < 95) {
+          simulatedProgress += Math.random() * 3;
+          onProgress?.(simulatedProgress);
+        } else {
+          clearInterval(progressInterval);
+        }
+      }, 500);
+      // Appel API réel
+      const formData = new FormData();
+      formData.append('file', input.file);
+      formData.append('format', 'rasterize');
+      formData.append('dpi', String(input.dpi));
+      formData.append('language', language);
+      const response = await fetch('/api/pdf/extract-images', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-API-Key': import.meta.env.VITE_API_KEY
+        }
+      });
+      clearInterval(progressInterval);
+      if (!response.ok) throw new Error('Erreur lors du traitement du PDF (rasterisation)');
+      const blob = await response.blob();
+      onProgress?.(100);
+      return blob;
+    }
+  }
 
   return (
     <div className="py-10 px-4">
@@ -242,18 +259,44 @@ Explore our ecosystem at https://blaike.cc/ecosystem
 
       <div className="max-w-3xl mx-auto bg-card shadow-lg rounded-none p-8 mb-8">
         <div className="space-y-8">
-          <div className="flex items-center justify-center space-x-4 mx-auto max-w-sm">
-            <label className="text-sm font-medium whitespace-nowrap">
-              {t('max_images')}
-            </label>
-            <input
-              type="number"
-              min="0"
-              max={MAX_IMAGES_ANALYSIS}
-              value={maxImages}
-              onChange={(e) => setMaxImages(Number(e.target.value))}
-              className="w-24 p-2 border rounded-none bg-background text-center"
-            />
+          <div className="mb-2">
+            <div className="text-xs text-muted-foreground mb-1">
+              {t('raster_mode_explanation')}
+            </div>
+            <div className="flex items-center gap-4 mb-2">
+              <label>
+                <input
+                  type="radio"
+                  name="rasterMode"
+                  value="auto"
+                  checked={rasterMode === 'auto'}
+                  onChange={() => setRasterMode('auto')}
+                />
+                <span className="ml-1">{t('raster_mode_auto')}</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="rasterMode"
+                  value="manual"
+                  checked={rasterMode === 'manual'}
+                  onChange={() => setRasterMode('manual')}
+                />
+                <span className="ml-1">{t('raster_mode_manual')}</span>
+              </label>
+            </div>
+            {rasterMode === 'manual' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Ex: 1,3,5-7"
+                  value={rasterPagesInput}
+                  onChange={e => setRasterPagesInput(e.target.value)}
+                  className="w-40 p-2 border rounded-none bg-background text-xs"
+                />
+                <span className="text-xs text-muted-foreground">Pages à rasteriser</span>
+              </div>
+            )}
           </div>
           
           <div
@@ -383,6 +426,39 @@ Explore our ecosystem at https://blaike.cc/ecosystem
       <HelpTooltip explanationKey="pdf_extraction_page_info" />
       
       <div className="mt-24 max-w-4xl mx-auto">
+        <h2 className="text-2xl font-bold mb-10 text-center">{t('perfect_for_professionals')}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            {
+              title: t('engineering_title'),
+              description: t('engineering_description'),
+              icon: Wrench,
+            },
+            {
+              title: t('medical_research_title'),
+              description: t('medical_research_description'),
+              icon: DollarSign,
+            },
+            {
+              title: t('technical_documentation_title'),
+              description: t('technical_documentation_description'),
+              icon: Upload,
+            }
+          ].map(({ title, description, icon: Icon }, index) => (
+            <div key={index} className="bg-gradient-to-r from-[#ff220c]/10 to-[#ff220c]/5 p-6 rounded-none shadow-sm hover:shadow-md transition-all duration-300 border border-border">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="h-10 w-10 rounded-none bg-[#ff220c]/10 flex items-center justify-center">
+                  <Icon className="h-5 w-5 text-primary" />
+                </div>
+                <h4 className="text-lg font-semibold">{title}</h4>
+                <p className="text-sm text-muted-foreground">{description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <div className="mt-24 max-w-4xl mx-auto">
         <h2 className="text-2xl font-bold mb-10 text-center">
           {t('why_our_image_extraction_is_different')}
         </h2>
@@ -420,39 +496,6 @@ Explore our ecosystem at https://blaike.cc/ecosystem
               </div>
             </div>
           ))}
-        </div>
-
-        <div className="mt-24 mb-12">
-          <h2 className="text-2xl font-bold mb-10 text-center">{t('perfect_for_professionals')}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                title: t('engineering_title'),
-                description: t('engineering_description'),
-                icon: Wrench,
-              },
-              {
-                title: t('medical_research_title'),
-                description: t('medical_research_description'),
-                icon: DollarSign,
-              },
-              {
-                title: t('technical_documentation_title'),
-                description: t('technical_documentation_description'),
-                icon: Upload,
-              }
-            ].map(({ title, description, icon: Icon }, index) => (
-              <div key={index} className="bg-gradient-to-r from-[#ff220c]/10 to-[#ff220c]/5 p-6 rounded-none shadow-sm hover:shadow-md transition-all duration-300 border border-border">
-                <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="h-10 w-10 rounded-none bg-[#ff220c]/10 flex items-center justify-center">
-                    <Icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <h4 className="text-lg font-semibold">{title}</h4>
-                  <p className="text-sm text-muted-foreground">{description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

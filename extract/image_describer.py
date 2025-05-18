@@ -140,15 +140,21 @@ class PDFImageDescriber:
             console.print("[bold red]Erreur: Image en base64 invalide ou vide[/bold red]")
             return "Erreur: Image en base64 invalide ou vide"
         
-        console.print(f"[dim]Préparation de la requête API pour une image de {len(image_b64)} caractères en base64[/dim]")
-        console.print(f"[dim]Modèle utilisé: {self.model}[/dim]")
-        console.print(f"[dim]Texte environnant: {len(surrounding_text)} caractères[/dim]")
+        # Détection automatique du type de document (plan)
+        is_plan = False
+        plan_keywords = [
+            "plan", "PCMI", "surface habitable", "1:75", "chambre", "terrasse", "garage", "dressing", "cellier", "séjour", "sdb", "rdc", "étage", "cote", "profondeur", "largeur", "murs", "mur porteur", "échelle"
+        ]
+        text_lower = surrounding_text.lower()
+        for kw in plan_keywords:
+            if kw in text_lower:
+                is_plan = True
+                break
         
-        try:
-            # Construire le message pour le modèle
-            prompts_by_language = {
-                "fr": {
-                    "system": """Tu es un expert technique multidomaine, spécialisé dans l'analyse visuelle approfondie de documents techniques complexes, travaillant pour une équipe d'ingénieurs. 
+        # Construction du prompt dynamique
+        prompts_by_language = {
+            "fr": {
+                "system": """Tu es un expert technique multidomaine, spécialisé dans l'analyse visuelle approfondie de documents techniques complexes, travaillant pour une équipe d'ingénieurs. 
 
 Ton expertise couvre :
 - Schémas techniques et architecturaux
@@ -169,7 +175,7 @@ Compétences spécifiques :
 - Interprétation visuelle détaillée des images photographiques et médicales
 - Extraction des caractéristiques visuelles critiques et des informations contextuelles
 - Détection d'erreurs ou anomalies dans les documents techniques""",
-                    "user": f"""Contexte : texte autour de l'image :
+                "user": f"""Contexte : texte autour de l'image :
 "{surrounding_text}"
 
 Analyse technique exhaustive de l'image. Objectif : générer un JSON structuré et exploitable.
@@ -241,9 +247,9 @@ CONSIGNES COMPLÉMENTAIRES :
 - Si des entités métier spécifiques apparaissent (codes, composants, références), les inclure dans `data` ou `metadata`.
 - AUCUN COMMENTAIRE HORS JSON.
 - NE CORRIGE PAS les erreurs que tu pourrais voir dans les documents techniques - décris-les exactement comme tu les vois dans le champ `data` et signale-les dans le champ `errors`."""
-                },
-                "en": {
-                    "system": """You are a multi-domain technical expert specialized in in-depth visual analysis of complex technical documents, working for a team of specialized engineers.
+            },
+            "en": {
+                "system": """You are a multi-domain technical expert specialized in in-depth visual analysis of complex technical documents, working for a team of specialized engineers.
 
 Your expertise covers:
 - Technical and architectural diagrams
@@ -264,7 +270,7 @@ Specific competencies:
 - Detailed visual interpretation of photographic and medical images
 - Extraction of critical visual features and contextual information
 - Detection of errors or anomalies in technical documents""",
-                    "user": f"""Context: text surrounding the image:
+                "user": f"""Context: text surrounding the image:
 "{surrounding_text}"
 
 Comprehensive technical image analysis. Goal: generate a structured, actionable JSON.
@@ -336,126 +342,116 @@ ADDITIONAL GUIDELINES:
 - If specific business entities appear (codes, components, references), include them in `data` or `metadata`.
 - NO COMMENTS OUTSIDE JSON.
 - DO NOT CORRECT errors you might see in technical documents - describe them exactly as you see them in the `data` field and report them in the `errors` field."""
-                }
             }
-            
-            # Sélectionner les prompts selon la langue
-            prompts = prompts_by_language.get(self.language, prompts_by_language["en"])
-            
-            # Construction des messages pour l'API
-            messages = [
-                {
-                    "role": "system",
-                    "content": prompts["system"]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": prompts["user"]
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{image_b64}"
-                            }
+        }
+        # Ajout de la consigne de post-analyse structurante pour tous les documents
+        post_analysis_fr = """
+IMPORTANT - Post-analyse structurante (plans architecturaux) :
+Si le document est un plan, effectue une post-analyse structurante :
+- Déduis l'épaisseur des murs par différence de cotes ou mesure raster (avec l'échelle si détectée)
+- Reconnaitre deux cotes consécutives (intérieur/extérieur d'un mur)
+- Vérifie les traits épais sur le raster (souvent les murs porteurs)
+- Si possible, ajoute une section 'post_analysis' dans le JSON avec ces déductions (méthode utilisée, hypothèses, valeurs estimées, etc.)
+- Si la post-analyse n'est pas possible, indique-le explicitement dans 'post_analysis'.
+"""
+        prompts_by_language["fr"]["user"] += post_analysis_fr
+        post_analysis_attempted = True
+        # Sélectionner les prompts selon la langue
+        prompts = prompts_by_language.get(self.language, prompts_by_language["en"])
+        # Construction des messages pour l'API
+        messages = [
+            {
+                "role": "system",
+                "content": prompts["system"]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompts["user"]
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{image_b64}"
                         }
-                    ]
-                }
-            ]
-            
-            # Préparer les headers pour la requête
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}"
+                    }
+                ]
             }
-            
-            # Préparer les données de la requête
-            payload = {
-                "model": self.model,
-                "messages": messages,
-                "max_tokens": 800,
-                "temperature": 0.5,
-            }
-            
-            # Afficher un indicateur de démarrage
-            console.print(f"[bold cyan]Envoi de la requête à l'API OpenAI (modèle: {self.model})...[/bold cyan]")
-            
-            # Mesurer le temps de réponse
-            start_time = time.time()
-            
-            # Faire la requête à l'API
-            try:
-                response = requests.post(
-                    self.api_url,
-                    headers=headers,
-                    json=payload,
-                    timeout=self.timeout
-                )
-                
-                # Vérifier le code de statut HTTP
-                if response.status_code != 200:
-                    elapsed_time = time.time() - start_time
-                    console.print(f"[bold red]Erreur API HTTP {response.status_code} après {elapsed_time:.2f}s[/bold red]")
-                    console.print(f"[red]Détails: {response.text}[/red]")
-                    
-                    # Tenter d'extraire un message d'erreur plus détaillé
-                    error_detail = "Erreur inconnue"
+        ]
+        # Préparer les headers pour la requête
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        # Préparer les données de la requête
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": 800,
+            "temperature": 0.5,
+        }
+        # Afficher un indicateur de démarrage
+        console.print(f"[bold cyan]Envoi de la requête à l'API OpenAI (modèle: {self.model})...[/bold cyan]")
+        # Mesurer le temps de réponse
+        start_time = time.time()
+        # Faire la requête à l'API
+        try:
+            response = requests.post(
+                self.api_url,
+                headers=headers,
+                json=payload,
+                timeout=self.timeout
+            )
+            if response.status_code != 200:
+                elapsed_time = time.time() - start_time
+                console.print(f"[bold red]Erreur API HTTP {response.status_code} après {elapsed_time:.2f}s[/bold red]")
+                console.print(f"[red]Détails: {response.text}[/red]")
+                error_detail = "Erreur inconnue"
+                try:
+                    error_json = response.json()
+                    if 'error' in error_json and 'message' in error_json['error']:
+                        error_detail = error_json['error']['message']
+                except:
+                    error_detail = response.text[:100] if response.text else "Pas de détails"
+                return f"Erreur API OpenAI: {response.status_code} - {error_detail}"
+            elapsed_time = time.time() - start_time
+            console.print(f"[green]Réponse reçue en {elapsed_time:.2f}s[/green]")
+            response_json = response.json()
+            if 'choices' in response_json and len(response_json['choices']) > 0:
+                content = response_json['choices'][0]['message']['content']
+                if not content or len(content.strip()) == 0:
+                    console.print("[bold yellow]⚠️ L'API a retourné une réponse vide[/bold yellow]")
+                    return "Erreur lors de la description de l'image: réponse vide"
+                # Si la réponse est au format JSON, l'extraire
+                if content.strip().startswith('{') and content.strip().endswith('}'):
                     try:
-                        error_json = response.json()
-                        if 'error' in error_json and 'message' in error_json['error']:
-                            error_detail = error_json['error']['message']
-                    except:
-                        error_detail = response.text[:100] if response.text else "Pas de détails"
-                    
-                    return f"Erreur API OpenAI: {response.status_code} - {error_detail}"
-                
-                # Mesurer le temps de réponse total
-                elapsed_time = time.time() - start_time
-                console.print(f"[green]Réponse reçue en {elapsed_time:.2f}s[/green]")
-                
-                # Parser la réponse JSON
-                response_json = response.json()
-                
-                # Extraire la description générée
-                if 'choices' in response_json and len(response_json['choices']) > 0:
-                    content = response_json['choices'][0]['message']['content']
-                    
-                    # Vérifier que la description n'est pas vide
-                    if not content or len(content.strip()) == 0:
-                        console.print("[bold yellow]⚠️ L'API a retourné une réponse vide[/bold yellow]")
-                        return "Erreur lors de la description de l'image: réponse vide"
-                    
-                    # Si la réponse est au format JSON, l'extraire
-                    if content.strip().startswith('{') and content.strip().endswith('}'):
-                        try:
-                            json_desc = json.loads(content)
-                            # Format pour affichage
-                            description = json.dumps(json_desc, ensure_ascii=False, indent=2)
-                            console.print(f"[green]Description JSON extraite : {len(description)} caractères[/green]")
-                            return description
-                        except json.JSONDecodeError:
-                            # Si ce n'est pas du JSON valide, on continue avec le texte brut
-                            console.print("[yellow]La réponse ressemble à du JSON mais n'est pas valide, utilisation du texte brut[/yellow]")
-                    
-                    console.print(f"[green]Description extraite : {len(content)} caractères[/green]")
-                    return content
-                else:
-                    console.print("[bold red]Format de réponse API inattendu[/bold red]")
-                    console.print(f"[dim]Réponse brute: {response_json}[/dim]")
-                    return "Erreur lors de la description de l'image: format de réponse inattendu"
-                
-            except requests.exceptions.Timeout:
-                elapsed_time = time.time() - start_time
-                console.print(f"[bold red]Timeout API après {elapsed_time:.2f}s (limite: {self.timeout}s)[/bold red]")
-                return f"Erreur lors de la description de l'image: timeout API ({self.timeout}s)"
-                
-            except requests.exceptions.RequestException as e:
-                elapsed_time = time.time() - start_time
-                console.print(f"[bold red]Erreur réseau lors de l'appel API après {elapsed_time:.2f}s: {str(e)}[/bold red]")
-                return f"Erreur lors de la description de l'image: problème réseau - {str(e)}"
-            
+                        json_desc = json.loads(content)
+                        # Ajout de la clé post_analysis_attempted
+                        if post_analysis_attempted:
+                            json_desc["post_analysis_attempted"] = True
+                        else:
+                            json_desc["post_analysis_attempted"] = False
+                        description = json.dumps(json_desc, ensure_ascii=False, indent=2)
+                        console.print(f"[green]Description JSON extraite : {len(description)} caractères[/green]")
+                        return description
+                    except json.JSONDecodeError:
+                        console.print("[yellow]La réponse ressemble à du JSON mais n'est pas valide, utilisation du texte brut[/yellow]")
+                console.print(f"[green]Description extraite : {len(content)} caractères[/green]")
+                return content
+            else:
+                console.print("[bold red]Format de réponse API inattendu[/bold red]")
+                console.print(f"[dim]Réponse brute: {response_json}[/dim]")
+                return "Erreur lors de la description de l'image: format de réponse inattendu"
+        except requests.exceptions.Timeout:
+            elapsed_time = time.time() - start_time
+            console.print(f"[bold red]Timeout API après {elapsed_time:.2f}s (limite: {self.timeout}s)[/bold red]")
+            return f"Erreur lors de la description de l'image: timeout API ({self.timeout}s)"
+        except requests.exceptions.RequestException as e:
+            elapsed_time = time.time() - start_time
+            console.print(f"[bold red]Erreur réseau lors de l'appel API après {elapsed_time:.2f}s: {str(e)}[/bold red]")
+            return f"Erreur lors de la description de l'image: problème réseau - {str(e)}"
         except Exception as e:
             console.print(f"[bold red]Exception inattendue: {type(e).__name__} - {str(e)}[/bold red]")
             import traceback

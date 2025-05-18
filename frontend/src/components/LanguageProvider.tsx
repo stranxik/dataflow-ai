@@ -246,7 +246,10 @@ const translations: Record<Language, Record<string, string>> = {
     'finalizing_extraction': 'Finalisation de l\'extraction...',
     'finalizing_message': 'Nous finalisons votre extraction. Cette dernière étape peut prendre quelques instants.',
     'paused': 'En pause',
-    'pending': 'En attente'
+    'pending': 'En attente',
+    'raster_mode_auto': 'Automatique (détecte et rasterise uniquement les pages contenant des plans ou schémas)',
+    'raster_mode_manual': 'Manuel (rasterise toutes les pages ou celles sélectionnées)',
+    'raster_mode_explanation': 'Choisissez le mode de rasterisation : automatique pour ne traiter que les pages contenant des éléments graphiques (plans, schémas), ou manuel pour rasteriser toutes les pages du PDF.'
   },
   en: {
     // Navigation
@@ -473,7 +476,10 @@ const translations: Record<Language, Record<string, string>> = {
     'finalizing_extraction': 'Finalizing extraction...',
     'finalizing_message': 'We are finalizing your extraction. This last step may take a moment.',
     'paused': 'Paused',
-    'pending': 'Pending'
+    'pending': 'Pending',
+    'raster_mode_auto': 'Automatic (detects and rasterizes only pages containing plans or diagrams)',
+    'raster_mode_manual': 'Manual (rasterizes all pages or selected ones)',
+    'raster_mode_explanation': 'Choose the rasterization mode: automatic to process only pages with graphical elements (plans, diagrams), or manual to rasterize all PDF pages.'
   }
 };
 
