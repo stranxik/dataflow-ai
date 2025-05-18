@@ -249,7 +249,11 @@ const translations: Record<Language, Record<string, string>> = {
     'pending': 'En attente',
     'raster_mode_auto': 'Automatique (détecte et rasterise uniquement les pages contenant des plans ou schémas)',
     'raster_mode_manual': 'Manuel (rasterise toutes les pages ou celles sélectionnées)',
-    'raster_mode_explanation': 'Choisissez le mode de rasterisation : automatique pour ne traiter que les pages contenant des éléments graphiques (plans, schémas), ou manuel pour rasteriser toutes les pages du PDF.'
+    'raster_mode_explanation': "Le mode 'Automatique' détecte et analyse automatiquement les pages contenant des images vectorielles (plans, schémas, etc.) en plus des images classiques. Le mode 'Manuel' vous permet de spécifier vous-même les pages à analyser pour les images vectorielles (dans les deux cas, toutes les images classiques sont extraites).",
+    'pdf_extraction_config_title': "Configuration de l'extraction",
+    'raster_mode_label': 'Mode :',
+    'raster_pages_label': 'Pages à analyser',
+    'raster_pages_placeholder': 'Ex: 1,3,5-7'
   },
   en: {
     // Navigation
@@ -479,7 +483,11 @@ const translations: Record<Language, Record<string, string>> = {
     'pending': 'Pending',
     'raster_mode_auto': 'Automatic (detects and rasterizes only pages containing plans or diagrams)',
     'raster_mode_manual': 'Manual (rasterizes all pages or selected ones)',
-    'raster_mode_explanation': 'Choose the rasterization mode: automatic to process only pages with graphical elements (plans, diagrams), or manual to rasterize all PDF pages.'
+    'raster_mode_explanation': "‘Automatic’ mode detects and analyzes pages with vector images (such as plans, diagrams, etc.) in addition to standard images. 'Manual' mode lets you specify which pages to analyze for vector images (in both modes, all standard images are extracted).",
+    'pdf_extraction_config_title': 'Extraction settings',
+    'raster_mode_label': 'Mode:',
+    'raster_pages_label': 'Pages to analyze',
+    'raster_pages_placeholder': 'e.g. 1,3,5-7'
   }
 };
 

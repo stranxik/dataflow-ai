@@ -272,71 +272,78 @@ Explore our ecosystem at https://blaike.cc/ecosystem
         </p>
       </div>
 
-      <div className="max-w-3xl mx-auto bg-card shadow-lg rounded-none p-8 mb-8">
-        <div className="space-y-8">
-          <div className="mb-2">
-            <div className="text-xs text-muted-foreground mb-1">
-              {t('raster_mode_explanation')}
+      {/* Bloc configuration et upload */}
+      <div className="max-w-3xl mx-auto bg-card shadow-lg rounded-lg p-8 mb-8 flex flex-col gap-8">
+        {/* Section configuration extraction */}
+        <div>
+          <h2 className="text-xl font-semibold mb-2">{t('pdf_extraction_config_title') || "Configuration de l'extraction"}</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            {t('raster_mode_explanation')}
+          </p>
+          <div className="flex flex-wrap gap-6 items-end mb-4">
+            {/* Radios */}
+            <div>
+              <label className="font-medium">{t('raster_mode_label') || "Mode :"}</label>
+              <div className="flex gap-4 mt-1">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name="rasterMode"
+                    value="auto"
+                    checked={rasterMode === 'auto'}
+                    onChange={() => setRasterMode('auto')}
+                  />
+                  <span>{t('raster_mode_auto')}</span>
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name="rasterMode"
+                    value="manual"
+                    checked={rasterMode === 'manual'}
+                    onChange={() => setRasterMode('manual')}
+                  />
+                  <span>{t('raster_mode_manual')}</span>
+                </label>
+              </div>
             </div>
-            <div className="flex items-center gap-4 mb-2">
-              <label>
-                <input
-                  type="radio"
-                  name="rasterMode"
-                  value="auto"
-                  checked={rasterMode === 'auto'}
-                  onChange={() => setRasterMode('auto')}
-                />
-                <span className="ml-1">{t('raster_mode_auto')}</span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="rasterMode"
-                  value="manual"
-                  checked={rasterMode === 'manual'}
-                  onChange={() => setRasterMode('manual')}
-                />
-                <span className="ml-1">{t('raster_mode_manual')}</span>
-              </label>
-            </div>
+            {/* Pages à rasteriser */}
             {rasterMode === 'manual' && (
-              <div className="flex items-center gap-2">
+              <div>
+                <label className="block">{t('raster_pages_label') || "Pages à analyser"}</label>
                 <input
                   type="text"
-                  placeholder="Ex: 1,3,5-7"
+                  placeholder={t('raster_pages_placeholder') || "Ex: 1,3,5-7"}
                   value={rasterPagesInput}
                   onChange={e => setRasterPagesInput(e.target.value)}
-                  className="w-40 p-2 border rounded-none bg-background text-xs"
+                  className="w-40 p-2 border rounded bg-background text-xs mt-1"
                 />
-                <span className="text-xs text-muted-foreground">Pages à rasteriser</span>
               </div>
             )}
+            {/* Nombre max images */}
+            <div>
+              <label className="block">{t('max_images') || "Nombre maximum d'images à extraire"}</label>
+              <input
+                id="maxImages"
+                type="number"
+                min={1}
+                max={100}
+                value={maxImages}
+                onChange={e => setMaxImages(Number(e.target.value))}
+                className="w-32 p-2 border rounded bg-background text-xs mt-1"
+              />
+            </div>
           </div>
-          
-          <div className="mb-4">
-            <label htmlFor="maxImages" className="block text-sm font-medium">
-              Nombre maximum d'images à extraire
-            </label>
-            <input
-              id="maxImages"
-              type="number"
-              min={1}
-              max={100}
-              value={maxImages}
-              onChange={e => setMaxImages(Number(e.target.value))}
-              className="mt-1 block w-32 p-2 border rounded"
-            />
-          </div>
-          
+        </div>
+        {/* Upload PDF */}
+        <div>
           <div
             {...getRootProps()}
-            className={`border-2 border-dashed rounded-none p-10 text-center cursor-pointer transition-colors ${
+            className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors ${
               isDragActive ? 'border-primary bg-[#ff220c]/5' : 'border-border'
             } ${selectedFile ? 'bg-[#ff220c]/5' : ''}`}
           >
             <input {...getInputProps()} />
-            
             {selectedFile ? (
               <div className="flex flex-col items-center gap-2">
                 <div className="h-12 w-12 rounded-full bg-[#ff220c]/10 flex items-center justify-center">
@@ -350,7 +357,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
                   variant="outline" 
                   size="sm"
                   className="mt-2"
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
                     setSelectedFile(null);
                   }}
@@ -372,40 +379,37 @@ Explore our ecosystem at https://blaike.cc/ecosystem
               </div>
             )}
           </div>
-          
-          <div className="flex justify-center">
-            <Button 
-              size="lg" 
-              onClick={handleProcessPDF}
-              disabled={!selectedFile || isProcessing}
-              className="gap-2 min-w-[200px]"
-            >
-              {isProcessing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <FileText className="h-4 w-4" />
-              )}
-              {isProcessing ? t('processing') : t('process_pdf')}
-            </Button>
-          </div>
+        </div>
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-6">
+          <Button 
+            size="lg" 
+            onClick={handleProcessPDF}
+            disabled={!selectedFile || isProcessing}
+            className="gap-2 min-w-[200px]"
+          >
+            {isProcessing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4" />
+            )}
+            {isProcessing ? t('processing') : t('process_pdf')}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearTasks}
+            className="gap-2"
+          >
+            <Trash2 className="h-4 w-4" />
+            Nettoyer les tâches
+          </Button>
         </div>
       </div>
-      
-      {/* Bouton pour nettoyer les tâches */}
-      <div className="flex justify-end mb-2 max-w-xl mx-auto">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleClearTasks}
-          className="gap-2"
-        >
-          <Trash2 className="h-4 w-4" />
-          Nettoyer les tâches
-        </Button>
-      </div>
 
-      {/* Afficher les tâches en cours */}
-      <div className="mb-8">
+      {/* Bloc tâches actives */}
+      <div className="max-w-3xl mx-auto bg-card shadow-lg rounded-lg p-8 mb-8">
+        <h3 className="text-lg font-semibold mb-4">Tâches actives</h3>
         <TaskManager 
           onTaskComplete={handleTaskComplete}
           hideCompleted={false}
@@ -413,9 +417,12 @@ Explore our ecosystem at https://blaike.cc/ecosystem
         />
       </div>
 
-      {/* Ajouter un message d'explication pour les tâches */}
-      <div className="max-w-3xl mx-auto mb-12 text-center text-sm text-muted-foreground">
-        <p>{t('task_status_message') || "Le traitement des PDF est géré par un orchestrateur de tâches qui assure la fiabilité du traitement. Vous pouvez suivre la progression des tâches ci-dessus."}</p>
+      {/* Explication orchestrateur */}
+      <div className="max-w-3xl mx-auto mb-12 text-center text-sm text-muted-foreground bg-info/10 border-l-4 border-info p-4 rounded flex items-center gap-3">
+        <Shield className="h-5 w-5 text-primary mr-2" />
+        <span>
+          Le traitement des PDF est géré par un orchestrateur de tâches qui assure la fiabilité du traitement. Vous pouvez suivre la progression des tâches ci-dessus.
+        </span>
       </div>
 
       <div className="py-16 bg-gray-50 dark:bg-gray-900/10 w-full my-20 -mx-4">
