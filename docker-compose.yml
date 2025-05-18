@@ -66,3 +66,21 @@ services:
     # Commande par défaut en mode interactif remplacée dans le docker-compose
     command: ["--help"]
     profiles: ["cli"]  # Ne démarre pas automatiquement avec docker-compose up 
+
+  # Service MinIO (stockage objet S3-compatible)
+  minio:
+    image: minio/minio:latest
+    container_name: dataflow-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"  # API S3
+      - "9001:9001"  # Console web
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server --console-address ":9001" /data
+
+volumes:
+  minio_data: 

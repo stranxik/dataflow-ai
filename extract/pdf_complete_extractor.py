@@ -229,6 +229,17 @@ class PDFCompleteExtractor:
         progress_path = os.path.join(output_dir, "progress.json")
         update_progress(progress_path, "init", 0, "Initialisation")
         
+        resume_path = os.path.join(output_dir, "resume_classic.json")
+        if os.path.exists(resume_path):
+            with open(resume_path, "r", encoding="utf-8") as f:
+                resume = json.load(f)
+            done_pages = set(resume.get("ok", []))
+            failed_pages = set(resume.get("failed", []))
+        else:
+            resume = {"ok": [], "failed": []}
+            done_pages = set()
+            failed_pages = set()
+        
         try:
             console.print(f"\n[bold green]Extraction complète du document[/bold green]: {pdf_path}")
             
@@ -248,120 +259,129 @@ class PDFCompleteExtractor:
             console.print("[bold]Phase 1: Extraction du texte et des images intégrées[/bold]")
             
             for page_num, page in enumerate(doc):
-                update_progress(progress_path, "classic", int(100 * page_num / len(doc)), f"Traitement de la page {page_num+1}/{len(doc)}")
-                
-                # Extraire le texte de la page
-                page_data = self.extract_text_from_page(page)
-                result["pages"].append(page_data)
-                
-                # Obtenir les images intégrées dans la page
-                image_list = page.get_images(full=True)
-                
-                if not image_list:
-                    console.print(f"  [dim]Aucune image intégrée détectée sur la page {page_num+1}[/dim]")
+                if str(page_num) in done_pages:
+                    console.print(f"[RESUME] Page {page_num+1} déjà traitée, skip.")
                     continue
-                
-                console.print(f"  [green]{len(image_list)} image(s) intégrée(s) détectée(s) sur la page {page_num+1}[/green]")
-                result["nb_images_detectees"] += len(image_list)
-                
-                # Traiter chaque image intégrée
-                for img_idx, img in enumerate(image_list):
-                    # Vérifier si on a atteint le nombre maximum d'images à traiter
-                    if processed_images >= self.max_images:
-                        console.print(f"[yellow]Nombre maximum d'images atteint ({self.max_images}). Arrêt du traitement.[/yellow]")
-                        break
-                    try:
-                        # Extraire les informations de l'image
-                        xref = img[0]  # Référence xref de l'image
-                        # Extraire l'image directement du PDF sans rendering la page
-                        pix = fitz.Pixmap(doc, xref)
-                        # Rechercher la position de l'image sur la page
-                        img_bbox = None
-                        for item in page.get_text("dict")["blocks"]:
-                            if item.get("type") == 1:  # Type 1 = image
-                                # Rechercher par proximité de dimensions
-                                if abs(item.get("width") - pix.width) <= 5 and abs(item.get("height") - pix.height) <= 5:
-                                    img_bbox = item["bbox"]
-                                    break
-                        # Si on n'a pas trouvé de position exacte, utiliser les dimensions de la page
-                        if not img_bbox:
-                            img_bbox = [0, 0, page.rect.width, page.rect.height]
-                        # Extraire le texte environnant
-                        surrounding_text = self._get_surrounding_text(page, img_bbox)
-                        # Convertir l'image en PNG pour le traitement
-                        img_bytes = pix.tobytes("png")
-                        # Sauvegarder l'image en tant que fichier PNG si demandé
-                        image_file_path = None
-                        if self.save_images:
-                            image_filename = f"{result_id}_image_p{page_num+1}_i{img_idx+1}.png"
-                            image_file_path = os.path.join(img_dir, image_filename)
-                            with open(image_file_path, "wb") as f:
-                                f.write(img_bytes)
-                            console.print(f"  [dim]Image sauvegardée: {image_filename}[/dim]")
-                        # Encoder l'image en base64 pour l'envoi à l'API
-                        img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-                        # Obtenir la description de l'image via l'API
-                        console.print(f"  [bold]Analyse de l'image {img_idx+1} (page {page_num+1})...[/bold]")
-                        description = None
-                        if not self.openai_api_key:
-                            console.print(f"  [yellow]⚠️ Pas de clé API OpenAI, l'image ne sera pas analysée[/yellow]")
-                            description = "Aucune analyse d'image (clé API non configurée)"
-                        else:
-                            try:
-                                import signal
-                                class TimeoutException(Exception): pass
-                                def handler(signum, frame):
-                                    raise TimeoutException("Timeout sur analyse image OpenAI")
-                                signal.signal(signal.SIGALRM, handler)
-                                signal.alarm(60)  # 60 secondes max par image
-                                try:
-                                    console.print(f"  [dim]Envoi à l'API OpenAI - Image {len(img_b64)//1000}K caractères, modèle {self.image_describer.model}[/dim]")
-                                    description = self.image_describer._get_image_description(img_b64, surrounding_text)
-                                    signal.alarm(0)
-                                except TimeoutException:
-                                    description = "Timeout lors de l'analyse de l'image (60s)"
-                                    console.print(f"  [red]Timeout lors de l'analyse de l'image {img_idx+1} (page {page_num+1})[/red]")
-                                except Exception as e:
-                                    signal.alarm(0)
-                                    raise e
-                                if description:
-                                    # Déterminer si la description est un message d'erreur
-                                    error_prefixes = ["Erreur", "Error", "Aucune analyse", "Timeout"]
-                                    is_error = any(description.startswith(prefix) for prefix in error_prefixes)
-                                    if is_error:
-                                        console.print(f"  [yellow]⚠️ L'analyse a échoué: {description[:100]}...[/yellow]")
-                                    else:
-                                        console.print(f"  [green]✓[/green] Description obtenue: {len(description)} caractères")
-                                        result["nb_images_analysees"] += 1
-                                        console.print(f"  [green]✓[/green] Analyse réussie")
-                                else:
-                                    console.print(f"  [red]✗[/red] Échec de l'obtention de la description (réponse vide)")
-                                    description = "Erreur lors de la description de l'image: réponse vide"
-                            except Exception as e:
-                                console.print(f"  [red]✗[/red] Exception lors de l'appel à l'API: {str(e)}")
-                                import traceback
-                                console.print(f"  [red]Détails: {type(e).__name__}[/red]")
-                                console.print(f"  [dim]{traceback.format_exc()}[/dim]")
-                                description = f"Erreur lors de l'analyse: {str(e)}"
-                        # Ajouter l'image au résultat
-                        image_info = {
-                            "page": page_num + 1,
-                            "index": img_idx + 1,
-                            "width": pix.width,
-                            "height": pix.height,
-                            "position": img_bbox,
-                            "xref": xref,
-                            "description_ai": description,
-                            "surrounding_text": surrounding_text,
-                            "file_path": image_file_path
-                        }
-                        result["images"].append(image_info)
-                        processed_images += 1
-                    except Exception as e:
-                        console.print(f"  [red]Erreur lors du traitement de l'image {img_idx+1}: {str(e)}[/red]")
-                        import traceback
-                        console.print(traceback.format_exc())
+                try:
+                    update_progress(progress_path, "classic", int(100 * page_num / len(doc)), f"Traitement de la page {page_num+1}/{len(doc)}")
+                    
+                    # Extraire le texte de la page
+                    page_data = self.extract_text_from_page(page)
+                    result["pages"].append(page_data)
+                    resume["ok"].append(str(page_num))
+                    
+                    # Obtenir les images intégrées dans la page
+                    image_list = page.get_images(full=True)
+                    
+                    if not image_list:
+                        console.print(f"  [dim]Aucune image intégrée détectée sur la page {page_num+1}[/dim]")
                         continue
+                    
+                    console.print(f"  [green]{len(image_list)} image(s) intégrée(s) détectée(s) sur la page {page_num+1}[/green]")
+                    result["nb_images_detectees"] += len(image_list)
+                    
+                    # Traiter chaque image intégrée
+                    for img_idx, img in enumerate(image_list):
+                        # Vérifier si on a atteint le nombre maximum d'images à traiter
+                        if processed_images >= self.max_images:
+                            console.print(f"[yellow]Nombre maximum d'images atteint ({self.max_images}). Arrêt du traitement.[/yellow]")
+                            break
+                        try:
+                            # Extraire les informations de l'image
+                            xref = img[0]  # Référence xref de l'image
+                            # Extraire l'image directement du PDF sans rendering la page
+                            pix = fitz.Pixmap(doc, xref)
+                            # Rechercher la position de l'image sur la page
+                            img_bbox = None
+                            for item in page.get_text("dict")["blocks"]:
+                                if item.get("type") == 1:  # Type 1 = image
+                                    # Rechercher par proximité de dimensions
+                                    if abs(item.get("width") - pix.width) <= 5 and abs(item.get("height") - pix.height) <= 5:
+                                        img_bbox = item["bbox"]
+                                        break
+                            # Si on n'a pas trouvé de position exacte, utiliser les dimensions de la page
+                            if not img_bbox:
+                                img_bbox = [0, 0, page.rect.width, page.rect.height]
+                            # Extraire le texte environnant
+                            surrounding_text = self._get_surrounding_text(page, img_bbox)
+                            # Convertir l'image en PNG pour le traitement
+                            img_bytes = pix.tobytes("png")
+                            # Sauvegarder l'image en tant que fichier PNG si demandé
+                            image_file_path = None
+                            if self.save_images:
+                                image_filename = f"{result_id}_image_p{page_num+1}_i{img_idx+1}.png"
+                                image_file_path = os.path.join(img_dir, image_filename)
+                                with open(image_file_path, "wb") as f:
+                                    f.write(img_bytes)
+                                console.print(f"  [dim]Image sauvegardée: {image_filename}[/dim]")
+                            # Encoder l'image en base64 pour l'envoi à l'API
+                            img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+                            # Obtenir la description de l'image via l'API
+                            console.print(f"  [bold]Analyse de l'image {img_idx+1} (page {page_num+1})...[/bold]")
+                            description = None
+                            if not self.openai_api_key:
+                                console.print(f"  [yellow]⚠️ Pas de clé API OpenAI, l'image ne sera pas analysée[/yellow]")
+                                description = "Aucune analyse d'image (clé API non configurée)"
+                            else:
+                                try:
+                                    import signal
+                                    class TimeoutException(Exception): pass
+                                    def handler(signum, frame):
+                                        raise TimeoutException("Timeout sur analyse image OpenAI")
+                                    signal.signal(signal.SIGALRM, handler)
+                                    signal.alarm(60)  # 60 secondes max par image
+                                    try:
+                                        console.print(f"  [dim]Envoi à l'API OpenAI - Image {len(img_b64)//1000}K caractères, modèle {self.image_describer.model}[/dim]")
+                                        description = self.image_describer._get_image_description(img_b64, surrounding_text)
+                                        signal.alarm(0)
+                                    except TimeoutException:
+                                        description = "Timeout lors de l'analyse de l'image (60s)"
+                                        console.print(f"  [red]Timeout lors de l'analyse de l'image {img_idx+1} (page {page_num+1})[/red]")
+                                    except Exception as e:
+                                        signal.alarm(0)
+                                        raise e
+                                    if description:
+                                        # Déterminer si la description est un message d'erreur
+                                        error_prefixes = ["Erreur", "Error", "Aucune analyse", "Timeout"]
+                                        is_error = any(description.startswith(prefix) for prefix in error_prefixes)
+                                        if is_error:
+                                            console.print(f"  [yellow]⚠️ L'analyse a échoué: {description[:100]}...[/yellow]")
+                                        else:
+                                            console.print(f"  [green]✓[/green] Description obtenue: {len(description)} caractères")
+                                            result["nb_images_analysees"] += 1
+                                            console.print(f"  [green]✓[/green] Analyse réussie")
+                                    else:
+                                        console.print(f"  [red]✗[/red] Échec de l'obtention de la description (réponse vide)")
+                                        description = "Erreur lors de la description de l'image: réponse vide"
+                                except Exception as e:
+                                    console.print(f"  [red]✗[/red] Exception lors de l'appel à l'API: {str(e)}")
+                                    import traceback
+                                    console.print(f"  [red]Détails: {type(e).__name__}[/red]")
+                                    console.print(f"  [dim]{traceback.format_exc()}[/dim]")
+                                    description = f"Erreur lors de l'analyse: {str(e)}"
+                            # Ajouter l'image au résultat
+                            image_info = {
+                                "page": page_num + 1,
+                                "index": img_idx + 1,
+                                "width": pix.width,
+                                "height": pix.height,
+                                "position": img_bbox,
+                                "xref": xref,
+                                "description_ai": description,
+                                "surrounding_text": surrounding_text,
+                                "file_path": image_file_path
+                            }
+                            result["images"].append(image_info)
+                            processed_images += 1
+                        except Exception as e:
+                            console.print(f"  [red]Erreur lors du traitement de l'image {img_idx+1}: {str(e)}[/red]")
+                            import traceback
+                            console.print(traceback.format_exc())
+                            continue
+                except Exception as e:
+                    resume["failed"].append(str(page_num))
+                with open(resume_path, "w", encoding="utf-8") as f:
+                    json.dump(resume, f, indent=2)
             
             # Fermer le document
             doc.close()

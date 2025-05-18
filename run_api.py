@@ -24,7 +24,8 @@ def main():
         "api.main:app",
         host=host,
         port=port,
-        reload=os.getenv("API_RELOAD", "False").lower() == "true"
+        reload=os.getenv("API_RELOAD", "False").lower() == "true",
+        workers=int(os.getenv("API_WORKERS", "1"))
     )
 
 if __name__ == "__main__":

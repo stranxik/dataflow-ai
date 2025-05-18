@@ -6,6 +6,7 @@ import time
 from extract.image_describer import PDFImageDescriber
 from rich.console import Console
 import threading
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 console = Console()
 
@@ -99,8 +100,8 @@ def create_human_readable_report(images, output_dir, filename="rasterized_report
         console.print(f"[bold red]Erreur lors de la création du rapport: {str(e)}[/bold red]")
         return None
 
-def update_progress(progress_path, phase, progress, step, extra=None):
-    data = {"phase": phase, "progress": progress, "step": step}
+def update_progress(progress_path, phase, progress, step, extra=None, status="running"):
+    data = {"phase": phase, "progress": progress, "step": step, "status": status}
     if extra:
         data.update(extra)
     lock = threading.Lock()
@@ -120,11 +121,71 @@ def update_progress(progress_path, phase, progress, step, extra=None):
             "timestamp": int(time.time()),
             "phase": phase,
             "progress": progress,
-            "step": step
+            "step": step,
+            "status": status
         })
         data["history"] = history
         with open(progress_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+def process_page(args):
+    """
+    Fonction indépendante pour traiter une page PDF : rasterisation, analyse IA, etc.
+    Args:
+        args: tuple (page_num, pdf_path, output_dir, dpi, language, model, raster_timeout)
+    Returns:
+        dict: résultat pour la page
+    """
+    page_num, pdf_path, output_dir, dpi, language, model, raster_timeout = args
+    try:
+        doc = fitz.open(pdf_path)
+        page = doc[page_num]
+        zoom = dpi / 72
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        img_dir = os.path.join(output_dir, "img")
+        os.makedirs(img_dir, exist_ok=True)
+        img_path = os.path.join(img_dir, f"page_{page_num+1}_raster.png")
+        pix.save(img_path)
+        # Analyse IA de l'image rasterisée
+        with open(img_path, "rb") as f:
+            img_bytes = f.read()
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("OPENAI_API_KEY")
+        describer = PDFImageDescriber(
+            openai_api_key=api_key,
+            max_images=10000,
+            timeout=raster_timeout,
+            language=language,
+            model=model,
+            save_images=True
+        )
+        img_b64 = describer._encode_image(img_bytes)
+        surrounding_text = page.get_text()
+        dynamic_timeout = raster_timeout
+        if pix.width > 3000 or pix.height > 3000:
+            dynamic_timeout = 180
+        try:
+            description = describer._get_image_description(img_b64, surrounding_text)
+        except Exception as e:
+            if 'timeout' in str(e).lower() and dynamic_timeout < 180:
+                try:
+                    description = describer._get_image_description(img_b64, surrounding_text)
+                except Exception as e2:
+                    description = f"Erreur lors de la description de l'image: timeout API (180s)"
+            else:
+                description = f"Erreur lors de la description de l'image: {str(e)}"
+        return {
+            "page": page_num + 1,
+            "file_path": img_path,
+            "width": pix.width,
+            "height": pix.height,
+            "description_ai": description,
+            "surrounding_text": surrounding_text
+        }
+    except Exception as e:
+        return {"page": page_num + 1, "error": str(e)}
 
 def rasterize_and_analyze_pdf(pdf_path, output_dir, dpi=300, pages=None, language=None, model=None, timeout=30):
     progress_path = os.path.join(output_dir, "progress.json")
@@ -136,66 +197,48 @@ def rasterize_and_analyze_pdf(pdf_path, output_dir, dpi=300, pages=None, languag
     if not api_key:
         console.print("[bold red]Erreur: Clé API OpenAI non définie. Définissez la variable d'environnement OPENAI_API_KEY.[/bold red]")
         return None
-    # Déterminer la langue et le modèle
     language = language or get_default_language()
     model = model or get_default_model()
-    # Timeout plus élevé si rasterisation
     raster_timeout = 90
     console.print(f"[bold]Configuration rasterisation PDF:[/bold]")
     console.print(f"  • Langue: [bold]{language}[/bold]")
     console.print(f"  • Modèle: [bold]{model}[/bold]")
     console.print(f"  • DPI: [bold]{dpi}[/bold]")
     console.print(f"  • Timeout API: [bold]{raster_timeout}s[/bold]")
-    describer = PDFImageDescriber(
-        openai_api_key=api_key,
-        max_images=10000,  # Pas de limite ici, on traite toutes les pages
-        timeout=raster_timeout,
-        language=language,
-        model=model,
-        save_images=True
-    )
     doc = fitz.open(pdf_path)
-    zoom = dpi / 72  # 72 DPI est la base PDF
-    mat = fitz.Matrix(zoom, zoom)
-    images = []
     page_indices = range(len(doc)) if pages is None else pages
-    for idx, page_num in enumerate(page_indices):
-        update_progress(progress_path, "raster", int(100 * idx / len(page_indices)), f"Rasterisation page {page_num+1}/{len(page_indices)}")
-        page = doc[page_num]
-        pix = page.get_pixmap(matrix=mat, alpha=False)
-        img_path = os.path.join(output_dir, "img", f"page_{page_num+1}_raster.png")
-        pix.save(img_path)
-        # Analyse IA de l'image rasterisée
-        with open(img_path, "rb") as f:
-            img_bytes = f.read()
-        img_b64 = describer._encode_image(img_bytes)
-        surrounding_text = page.get_text()
-        # Timeout dynamique
-        dynamic_timeout = raster_timeout
-        if pix.width > 3000 or pix.height > 3000:
-            dynamic_timeout = 180
-        console.print(f"[yellow]Analyse page {page_num+1}: {pix.width}x{pix.height}px, timeout={dynamic_timeout}s[/yellow]")
-        description = None
-        try:
-            # Essayer avec le timeout dynamique
-            description = describer._get_image_description(img_b64, surrounding_text)
-        except Exception as e:
-            if 'timeout' in str(e).lower() and dynamic_timeout < 180:
-                console.print(f"[red]Timeout détecté, retry avec timeout=180s[/red]")
-                try:
-                    description = describer._get_image_description(img_b64, surrounding_text)
-                except Exception as e2:
-                    description = f"Erreur lors de la description de l'image: timeout API (180s)"
-            else:
-                description = f"Erreur lors de la description de l'image: {str(e)}"
-        images.append({
-            "page": page_num + 1,
-            "file_path": img_path,
-            "width": pix.width,
-            "height": pix.height,
-            "description_ai": description,
-            "surrounding_text": surrounding_text
-        })
+    num_pages = len(page_indices)
+    images = []
+    resume_path = os.path.join(output_dir, "resume.json")
+    if os.path.exists(resume_path):
+        with open(resume_path, "r", encoding="utf-8") as f:
+            resume = json.load(f)
+        done_pages = set(resume.get("ok", []))
+        failed_pages = set(resume.get("failed", []))
+    else:
+        resume = {"ok": [], "failed": []}
+        done_pages = set()
+        failed_pages = set()
+    with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+        futures = []
+        for page_num in range(doc.page_count):
+            # Vérifier si la page a déjà été traitée
+            if str(page_num) in done_pages:
+                console.log(f"[RESUME] Page {page_num} déjà traitée, skip.")
+                continue
+            args = (page_num, pdf_path, output_dir, dpi, language, model, raster_timeout)
+            futures.append(executor.submit(process_page, args))
+        for future in as_completed(futures):
+            result = future.result()
+            images.append(result)
+            page_num = result.get("page", None)
+            error = result.get("error", None)
+            if error is None and page_num is not None:
+                resume["ok"].append(str(page_num-1))
+            elif page_num is not None:
+                resume["failed"].append(str(page_num-1))
+            with open(resume_path, "w", encoding="utf-8") as f:
+                json.dump(resume, f, indent=2)
     # Créer les sous-dossiers
     raster_dir = os.path.join(output_dir, "raster")
     img_dir = os.path.join(output_dir, "img")
@@ -205,10 +248,8 @@ def rasterize_and_analyze_pdf(pdf_path, output_dir, dpi=300, pages=None, languag
     result_json = os.path.join(raster_dir, "rasterized_images_analysis.json")
     with open(result_json, "w", encoding="utf-8") as f:
         json.dump(images, f, ensure_ascii=False, indent=2)
-    
     # Créer également un rapport lisible au format Markdown
     create_human_readable_report(images, raster_dir, "rasterized_report.md", pdf_path)
-    
     console.print(f"[green]Rasterisation et analyse IA terminées. {len(images)} images générées et analysées.[/green]")
     console.print(f"JSON de résultat : {result_json}")
     update_progress(progress_path, "raster", 100, "Rasterisation terminée")

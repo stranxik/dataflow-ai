@@ -157,6 +157,7 @@ Une documentation complète est disponible dans le dossier `/documentation` :
 - **[Traitement JSON](documentation/extract/)** : Fonctionnalités de traitement JSON
 - **[Sécurité](documentation/security/)** : Fonctionnalités de sécurité des données
 - **[Orchestrateur de Tâches](documentation/orchestracteur/)** : Système avancé de gestion des tâches
+- **[Guide Migration & Scalabilité](documentation/orchestracteur/migrations.fr.md)** : Architecture, migration vers Temporal/Supabase, scalabilité
 
 ![Intégration JIRA et Confluence](documentation/images/fr/jira_confluence.png)
 
