@@ -636,9 +636,11 @@ async def extract_images_from_pdf(
             storage = get_file_storage()
             backend = os.environ.get('FILE_STORAGE_BACKEND', 'local').lower()
             if backend == 'minio':
-                # Uploader tous les fichiers du dossier de résultats dans MinIO
+                # Uploader tous les fichiers du dossier de résultats dans MinIO, sauf input.pdf
                 for root, dirs, files in os.walk(output_dir):
                     for fname in files:
+                        if fname == "input.pdf":
+                            continue  # Ne pas uploader input.pdf dans results
                         local_path = os.path.join(root, fname)
                         rel_path = os.path.relpath(local_path, output_dir)
                         remote_path = f"pdf_uploads/{job_id}/results/{rel_path}"
