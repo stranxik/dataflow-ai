@@ -194,9 +194,8 @@ async def extract_images_from_pdf(
     
     # Save the uploaded PDF file
     input_file_path = os.path.join(temp_dir, "input.pdf")
-    content = await file.read()
     with open(input_file_path, "wb") as f:
-        f.write(content)
+        f.write(await file.read())
     
     logger.info(f"File saved to {input_file_path}, size: {os.path.getsize(input_file_path)} bytes")
     

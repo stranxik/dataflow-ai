@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { FileText, Upload, Loader2, Shield, Wrench, Database, Bot, DollarSign } from 'lucide-react';
+import { FileText, Upload, Loader2, Shield, Wrench, Database, Bot, DollarSign, Trash2 } from 'lucide-react';
 import { formatFileSize, isValidFileType, createDownloadLink } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -16,8 +16,9 @@ export default function HomePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [rasterMode, setRasterMode] = useState<'auto' | 'manual'>('auto');
   const [rasterPagesInput, setRasterPagesInput] = useState('');
+  const [maxImages, setMaxImages] = useState(10);
   const { toast } = useToast();
-  const { executeTask } = useTaskOrchestrator({
+  const { executeTask, orchestrator } = useTaskOrchestrator({
     maxRetries: 3,
     retryBackoffFactor: 2,
     onError: (_, error) => {
@@ -153,7 +154,7 @@ Explore our ecosystem at https://blaike.cc/ecosystem
     try {
       // Toujours rasterisation + extraction classique
       const rasterTask = new RasterizePdfTask();
-      const taskParams: any = { file: selectedFile, dpi: 300 };
+      const taskParams: any = { file: selectedFile, dpi: 300, max_images: maxImages };
       if (rasterMode === 'manual' && rasterPagesInput.trim()) {
         taskParams.pages = rasterPagesInput.trim();
       }
@@ -207,9 +208,20 @@ Explore our ecosystem at https://blaike.cc/ecosystem
     });
   }, [t, toast]);
 
+  // Fonction pour nettoyer toutes les tâches
+  const handleClearTasks = useCallback(() => {
+    if (orchestrator && orchestrator.clearAllTasks) {
+      orchestrator.clearAllTasks();
+      toast({
+        title: 'Tâches nettoyées',
+        description: 'Toutes les tâches ont été supprimées.',
+      });
+    }
+  }, [orchestrator, toast]);
+
   // Déplacer RasterizePdfTask ici pour accéder à language
   class RasterizePdfTask {
-    async execute(input: { file: File; dpi: number }, onProgress?: (progress: number) => void): Promise<Blob> {
+    async execute(input: { file: File; dpi: number; max_images?: number }, onProgress?: (progress: number) => void): Promise<Blob> {
       // Simuler la progression
       let simulatedProgress = 0;
       const progressInterval = setInterval(() => {
@@ -226,6 +238,9 @@ Explore our ecosystem at https://blaike.cc/ecosystem
       formData.append('format', 'rasterize');
       formData.append('dpi', String(input.dpi));
       formData.append('language', language);
+      if (input.max_images !== undefined) {
+        formData.append('max_images', String(input.max_images));
+      }
       const response = await fetch('/api/pdf/extract-images', {
         method: 'POST',
         body: formData,
@@ -299,6 +314,21 @@ Explore our ecosystem at https://blaike.cc/ecosystem
             )}
           </div>
           
+          <div className="mb-4">
+            <label htmlFor="maxImages" className="block text-sm font-medium">
+              Nombre maximum d'images à extraire
+            </label>
+            <input
+              id="maxImages"
+              type="number"
+              min={1}
+              max={100}
+              value={maxImages}
+              onChange={e => setMaxImages(Number(e.target.value))}
+              className="mt-1 block w-32 p-2 border rounded"
+            />
+          </div>
+          
           <div
             {...getRootProps()}
             className={`border-2 border-dashed rounded-none p-10 text-center cursor-pointer transition-colors ${
@@ -361,6 +391,19 @@ Explore our ecosystem at https://blaike.cc/ecosystem
         </div>
       </div>
       
+      {/* Bouton pour nettoyer les tâches */}
+      <div className="flex justify-end mb-2 max-w-xl mx-auto">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleClearTasks}
+          className="gap-2"
+        >
+          <Trash2 className="h-4 w-4" />
+          Nettoyer les tâches
+        </Button>
+      </div>
+
       {/* Afficher les tâches en cours */}
       <div className="mb-8">
         <TaskManager 
